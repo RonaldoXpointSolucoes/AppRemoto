@@ -25,28 +25,55 @@ function currentOneHundredOneResourceGateway(): FakeGateway {
   for (const collection of REMOTE_MANAGEMENT_SCHEMA.collections) {
     gateway.collections.set(collection.id, collection);
     gateway.attributes.set(collection.id, collection.attributes.filter((attribute) =>
-      collection.id !== 'enrollment_receipts' || attribute.key !== 'expected_use_count'));
+      collection.id !== 'enrollment_receipts' || !['expected_use_count', 'recovery_frozen'].includes(attribute.key)));
     gateway.indexes.set(collection.id, [...collection.indexes]);
   }
   return gateway;
 }
 
-test('current 101-resource inventory plans one receipt attribute create and fake apply converges', async () => {
+test('prior 101-resource inventory plans two receipt attribute creates and fake apply converges', async () => {
   const gateway = currentOneHundredOneResourceGateway();
   const first = await planFor(gateway);
-  assert.equal(first.actions.length, 102);
+  assert.equal(first.actions.length, 103);
   assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 101);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'create').map(({ resource, id }) => [resource, id]), [
     ['attribute', 'enrollment_receipts/expected_use_count'],
+    ['attribute', 'enrollment_receipts/recovery_frozen'],
   ]);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'conflict'), []);
   await applyProvisionPlan(gateway, first);
-  assert.equal(gateway.writes, 1);
+  assert.equal(gateway.writes, 2);
   const second = await planFor(gateway);
-  assert.equal(second.actions.length, 102);
+  assert.equal(second.actions.length, 103);
   assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
   await applyProvisionPlan(gateway, second);
-  assert.equal(gateway.writes, 1);
+  assert.equal(gateway.writes, 2);
+});
+
+test('current 102-resource inventory plans only required recovery provenance and converges after one write', async () => {
+  const gateway = currentOneHundredOneResourceGateway();
+  gateway.attributes.get('enrollment_receipts')!.push({ key: 'expected_use_count', type: 'integer', required: true });
+  const first = await planFor(gateway);
+  assert.equal(first.actions.length, 103);
+  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 102);
+  assert.deepEqual(first.actions.filter((action) => action.outcome === 'create').map(({ resource, id }) => [resource, id]), [
+    ['attribute', 'enrollment_receipts/recovery_frozen'],
+  ]);
+  assert.deepEqual(first.actions.filter((action) => action.outcome === 'conflict'), []);
+  await applyProvisionPlan(gateway, first); assert.equal(gateway.writes, 1);
+  const second = await planFor(gateway); assert.equal(second.actions.length, 103);
+  assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
+  await applyProvisionPlan(gateway, second); assert.equal(gateway.writes, 1);
+});
+
+test('incompatible recovery provenance blocks generic apply without writes', async () => {
+  const gateway = currentOneHundredOneResourceGateway();
+  gateway.attributes.get('enrollment_receipts')!.push({ key: 'recovery_frozen', type: 'boolean', required: false });
+  const plan = await planFor(gateway);
+  assert.deepEqual(plan.actions.filter((action) => action.outcome === 'conflict'), [
+    { resource: 'attribute', id: 'enrollment_receipts/recovery_frozen', outcome: 'conflict', reason: 'definition_mismatch' },
+  ]);
+  await assert.rejects(applyProvisionPlan(gateway, plan), /conflict/i); assert.equal(gateway.writes, 0);
 });
 
 test('incompatible expected use count blocks the whole apply without writes', async () => {
@@ -63,10 +90,10 @@ test('incompatible expected use count blocks the whole apply without writes', as
   assert.equal(gateway.writes, 0);
 });
 
-test('prior 90-resource inventory plans only 12 receipt creates and fake apply converges', async () => {
+test('prior 90-resource inventory plans only 13 receipt creates and fake apply converges', async () => {
   const gateway = priorNinetyResourceGateway();
   const first = await planFor(gateway);
-  assert.equal(first.actions.length, 102);
+  assert.equal(first.actions.length, 103);
   assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 90);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'create').map(({ resource, id }) => [resource, id]), [
     ['collection', 'enrollment_receipts'],
@@ -77,18 +104,19 @@ test('prior 90-resource inventory plans only 12 receipt creates and fake apply c
     ['attribute', 'enrollment_receipts/status'],
     ['attribute', 'enrollment_receipts/token_use_consumed'],
     ['attribute', 'enrollment_receipts/expected_use_count'],
+    ['attribute', 'enrollment_receipts/recovery_frozen'],
     ['index', 'enrollment_receipts/u_enrollment_token_id_device_uuid'],
     ['index', 'enrollment_receipts/q_organization_id'],
     ['index', 'enrollment_receipts/q_device_id'],
     ['index', 'enrollment_receipts/q_status'],
   ]);
   await applyProvisionPlan(gateway, first);
-  assert.equal(gateway.writes, 12);
+  assert.equal(gateway.writes, 13);
   const second = await planFor(gateway);
-  assert.equal(second.actions.length, 102);
+  assert.equal(second.actions.length, 103);
   assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
   await applyProvisionPlan(gateway, second);
-  assert.equal(gateway.writes, 12);
+  assert.equal(gateway.writes, 13);
 });
 
 test('incompatible preexisting receipt field blocks the whole generic apply', async () => {

@@ -20,6 +20,7 @@ function fixture() {
     expires_at: '2030-01-01T00:00:00.000+00:00', max_uses: 3, use_count: 0, active: true, created_by_user_id: 'admin' });
   let delayedKind = ''; let delayedCount: number | undefined; let late: (() => void) | undefined; let rejectAudit = false;
   let commitOnFreeze = false;
+  let adminDisableOnDelay = false; let rejectFreeze = false;
   const updates: Array<{ kind: string; data: Record<string, unknown> }> = [];
   const normalize = (data: Record<string, unknown>) => Object.fromEntries(Object.entries(data).map(([k, v]) =>
     [k, typeof v === 'string' && ['last_seen_at', 'expires_at', 'last_used_at', 'revoked_at'].includes(k)
@@ -36,15 +37,20 @@ function fixture() {
       return { documents, total: documents.length };
     },
     async createDocument(_database: string, kind: string, id: string, data: Record<string, unknown>) {
+      if (kind === 'enrollment_receipts') {
+        assert.equal(typeof data.recovery_frozen, 'boolean'); assert.equal(Number.isInteger(data.expected_use_count), true);
+      }
       if (kind === 'audit_logs' && rejectAudit) throw new AppwriteException('audit unavailable', 400);
       if (rows.has(`${kind}/${id}`)) throw new AppwriteException('conflict', 409);
       rows.set(`${kind}/${id}`, normalize(data)); return { $id: id, ...data };
     },
     async updateDocument(_database: string, kind: string, id: string, data: Record<string, unknown>) {
       updates.push({ kind, data: structuredClone(data) });
+      if (kind === 'enrollment_tokens' && data.active === false && rejectFreeze) throw new AppwriteException('rejected', 400);
       if (kind === 'enrollment_tokens' && data.active === false && commitOnFreeze) late?.();
       const commit = () => rows.set(`${kind}/${id}`, { ...rows.get(`${kind}/${id}`), ...normalize(data) });
       if (kind === delayedKind && (delayedCount === undefined || data.use_count === delayedCount)) {
+        if (adminDisableOnDelay) rows.get('enrollment_tokens/token')!.active = false;
         delayedKind = ''; late = commit; throw new Error('synthetic network timeout');
       }
       commit(); return { $id: id, ...rows.get(`${kind}/${id}`) };
@@ -56,7 +62,8 @@ function fixture() {
     keyVersion: 1, now: () => new Date('2026-10-01T00:00:00Z') });
   return { rows, updates, repository, newService, delay: (kind: string, count?: number) => { delayedKind = kind; delayedCount = count; },
     complete: () => { assert.ok(late); late(); }, rejectAudit: () => { rejectAudit = true; },
-    completeOnFreeze: () => { commitOnFreeze = true; } };
+    completeOnFreeze: () => { commitOnFreeze = true; },
+    adminDisableOnDelay: () => { adminDisableOnDelay = true; }, rejectFreeze: () => { rejectFreeze = true; } };
 }
 
 for (const restart of [false, true]) test(`late consumption remains recoverable with real adapters; restart=${restart}`, async () => {
@@ -147,4 +154,69 @@ test('committed receipt target cannot be greater than the observed token count',
   const f = fixture(); const enroll = f.newService(); await enroll(input, '127.0.0.1');
   f.rows.get(`enrollment_receipts/${receiptId}`)!.expected_use_count = 2;
   await assert.rejects(enroll(input, '127.0.0.1'), EnrollmentError);
+});
+
+for (const restart of [false, true]) test(`lost frozen recovery response remains retriable; restart=${restart}`, async () => {
+  const f = fixture(); let enroll = f.newService(); f.delay('enrollment_tokens');
+  await assert.rejects(enroll(input, '127.0.0.1'), EnrollmentError); f.complete();
+  const first = await enroll(input, '127.0.0.1');
+  assert.equal(f.rows.get(`enrollment_receipts/${receiptId}`)!.recovery_frozen, true);
+  if (restart) enroll = f.newService();
+  const retried = await enroll(input, '127.0.0.1');
+  assert.notEqual(retried.deviceToken, first.deviceToken); assert.notEqual(retried.rustdeskPassword, first.rustdeskPassword);
+  assert.equal(f.rows.get('enrollment_tokens/token')!.use_count, 1);
+  assert.equal(f.rows.get('enrollment_tokens/token')!.active, false);
+  assert.equal(f.rows.get(`device_tokens/${deviceId}`)!.token_hash, hashToken(retried.deviceToken));
+  const credential = f.rows.get(`device_credentials/${deviceId}`)!;
+  assert.equal(decryptPassword({ passwordCiphertext: credential.password_ciphertext, passwordNonce: credential.password_nonce,
+    passwordTag: credential.password_tag, keyVersion: credential.key_version }, key), retried.rustdeskPassword);
+});
+
+for (const status of ['pending', 'committed']) test(`administratively disabled ${status} receipt does not acquire recovery provenance`, async () => {
+  const f = fixture(); const enroll = f.newService(); await enroll(input, '127.0.0.1');
+  assert.equal(f.rows.get(`enrollment_receipts/${receiptId}`)!.recovery_frozen, false);
+  Object.assign(f.rows.get(`enrollment_receipts/${receiptId}`)!, { status, token_use_consumed: status === 'committed' });
+  f.rows.get('enrollment_tokens/token')!.active = false;
+  const before = structuredClone([...f.rows].filter(([path]) => !path.startsWith('audit_logs/')));
+  await assert.rejects(f.newService()(input, '127.0.0.1'), (error: unknown) => error instanceof EnrollmentError && error.code === 'ENROLLMENT_DENIED');
+  assert.deepEqual([...f.rows].filter(([path]) => !path.startsWith('audit_logs/')), before);
+  const audit = [...f.rows].filter(([path]) => path.startsWith('audit_logs/')).at(-1)![1];
+  assert.equal(JSON.parse(audit.metadata_json as string).reason, 'token_inactive');
+});
+
+test('receipt freeze provenance survives the repository snapshot and pending projection', async () => {
+  const f = fixture(); const enroll = f.newService(); f.delay('enrollment_tokens');
+  await assert.rejects(enroll(input, '127.0.0.1'), EnrollmentError);
+  assert.equal((await f.repository.snapshot('enrollment_receipts', receiptId))!.recovery_frozen, true);
+  assert.equal((await f.repository.pendingReceipts('token'))[0]!.recovery_frozen, true);
+  const writes = f.updates.filter((u) => u.kind === 'enrollment_receipts' && u.data.recovery_frozen === true);
+  assert.equal(writes.length, 1); assert.deepEqual(writes[0]!.data, { recovery_frozen: true });
+  assert.ok(f.updates.indexOf(writes[0]!) > f.updates.findIndex((u) => u.kind === 'enrollment_tokens' && u.data.active === false));
+});
+
+test('live indeterminate handler never labels a preexisting administrative disable as its own freeze', async () => {
+  const f = fixture(); const enroll = f.newService(); f.delay('enrollment_tokens'); f.adminDisableOnDelay();
+  await assert.rejects(enroll(input, '127.0.0.1'), EnrollmentError); f.complete();
+  assert.equal(f.rows.get(`enrollment_receipts/${receiptId}`)!.recovery_frozen, false);
+  await assert.rejects(enroll(input, '127.0.0.1'), EnrollmentError);
+  await assert.rejects(f.newService()(input, '127.0.0.1'), EnrollmentError);
+});
+
+test('rejected safety freeze never writes recovery provenance', async () => {
+  const f = fixture(); const enroll = f.newService(); f.delay('enrollment_tokens'); f.rejectFreeze();
+  await assert.rejects(enroll(input, '127.0.0.1'), EnrollmentError); f.complete();
+  assert.equal(f.rows.get('enrollment_tokens/token')!.active, true);
+  assert.equal(f.rows.get(`enrollment_receipts/${receiptId}`)!.recovery_frozen, false);
+  await assert.rejects(enroll(input, '127.0.0.1'), EnrollmentError);
+  assert.ok(!f.updates.some((u) => u.kind === 'enrollment_receipts' && u.data.recovery_frozen === true));
+});
+
+test('frozen committed retry still requires exact count and consumed receipt', async () => {
+  const f = fixture(); const enroll = f.newService(); f.delay('enrollment_tokens');
+  await assert.rejects(enroll(input, '127.0.0.1'), EnrollmentError); f.complete(); await enroll(input, '127.0.0.1');
+  f.rows.get('enrollment_tokens/token')!.use_count = 2;
+  await assert.rejects(f.newService()(input, '127.0.0.1'), EnrollmentError);
+  f.rows.get('enrollment_tokens/token')!.use_count = 1;
+  f.rows.get(`enrollment_receipts/${receiptId}`)!.token_use_consumed = false;
+  await assert.rejects(f.newService()(input, '127.0.0.1'), EnrollmentError);
 });

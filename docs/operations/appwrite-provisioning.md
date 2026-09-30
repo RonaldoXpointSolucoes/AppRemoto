@@ -64,15 +64,15 @@ Inspect reports only the declared database and collections; it is not a dump of 
 | --- | ---: |
 | Database | 1 |
 | Collections | 10 |
-| Attributes | 64 |
+| Attributes | 65 |
 | Indexes | 27 |
-| Total | 102 |
+| Total | 103 |
 
 Check every action against `infra/appwrite/src/schema.ts`. Stop for any conflict, unknown resource, credential exposure, target mismatch, or failed command. Do not infer zero conflicts from a failed or missing plan.
 
-Apply re-inspects and builds a fresh plan before writing. It creates missing resources in dependency order, waits for attribute/index readiness, then bootstraps the administrator. It does not delete/recreate schema resources or reconcile incompatible schema definitions destructively. A successful post-apply plan for the current desired schema must show **102 unchanged, 0 create, 0 conflict**. Apply's own reported plan describes the actions selected before creation, not the post-apply inventory.
+Apply re-inspects and builds a fresh plan before writing. It creates missing resources in dependency order, waits for attribute/index readiness, then bootstraps the administrator. It does not delete/recreate schema resources or reconcile incompatible schema definitions destructively. A successful post-apply plan for the current desired schema must show **103 unchanged, 0 create, 0 conflict**. Apply's own reported plan describes the actions selected before creation, not the post-apply inventory.
 
-Against the 101-resource inventory with `enrollment_receipts` and its original six attributes, the current desired schema should plan **101 unchanged, 1 create, 0 conflict**. The sole create is the required integer attribute `enrollment_receipts/expected_use_count`. This is a local expected delta; use a fresh inspect/plan and independent review before the authorized production apply. The verified 90-resource foundation below predates the collection. Against that older inventory, the current desired schema would plan **90 unchanged, 12 create, 0 conflict**: one collection, seven attributes, and four indexes.
+Against the 102-resource inventory already containing `enrollment_receipts.expected_use_count`, the current desired schema should plan **102 unchanged, 1 create, 0 conflict**. The sole create is the required boolean `enrollment_receipts/recovery_frozen`. Against the 101-resource inventory with the original six receipt attributes, plan **101 unchanged, 2 create, 0 conflict** for that boolean and the required integer `expected_use_count`. These are local expected deltas; use fresh inspect/plan and independent review before any authorized production apply. The verified 90-resource foundation below predates the collection: it would plan **90 unchanged, 13 create, 0 conflict** (one collection, eight attributes, four indexes).
 
 Apply also saves a redacted `.local/remote-platform/apply-<uuid>.json`. Never treat the existence of that file as success; check its status and repeat inspect/plan.
 

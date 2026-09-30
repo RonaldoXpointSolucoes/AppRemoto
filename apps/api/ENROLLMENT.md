@@ -42,6 +42,15 @@ unexpired token, enabled matching device and existing credentials, it allows a
 retry to rotate credentials without consuming another use, including at max uses.
 Existence of a device alone does not authorize this operation.
 
+Every new receipt starts with required `recovery_frozen=false`. Only the live
+handler of an indeterminate write may set it true, after this operation changes an
+active token to inactive and reads back that durable inactive state. The receipt
+marker is then written and verified separately. Merely finding an inactive token,
+including after restart, never establishes why it became inactive. A rejected
+freeze cannot create this marker; a partial freeze without a verified marker
+requires manual reconciliation. This provenance covers uncertain consumption,
+device-token/password rotation, and indeterminate compensation safety freezes.
+
 Before any device/credential mutation, a pending receipt persists its
 `expected_use_count` target. Consumption updates **only** use_count, setting that
 target after credentials persist; it never rewrites a stale active flag.
@@ -55,13 +64,18 @@ the enrollment token with active=false, return a generic error and audit recover
 required. An indeterminate compensation also stops destructive cleanup. Queries
 for pending receipts block other devices even after process replacement.
 
-Recovery of a pending consumption requires matching identities and artifacts,
-token use_count exactly equal to expected_use_count, and durably observed
-active=false. Counts below or above the target remain pending; do not replay a
-write that may still be in flight. Recovery rotates credentials and commits the
-receipt without another count increment. The token remains permanently inactive
-for manual review, sacrificing remaining capacity so a late count-only write
-cannot affect later enrollment uses or reactivate the token.
+Recovery of a pending consumption requires matching identities and artifacts and
+use_count exactly equal to expected_use_count. An inactive token additionally
+requires recovery_frozen=true; administrator-disabled receipts without the marker
+remain denied and audited. Counts below or above target remain pending; do not
+replay a write that may still be in flight. Recovery rotates credentials and
+commits the receipt without another count increment, preserving the marker.
+The token remains permanently inactive for manual review, sacrificing remaining
+capacity so a late count-only write cannot affect later uses or reactivate it.
+A committed recovery receipt remains retriable, even after restart or response
+loss, only with recovery_frozen=true, exact target count, consumed flag, and all
+identity/device/credential checks. This exception never applies to an ordinary
+inactive token. Disable the bound device to stop further recovery retries.
 
 For indeterminate credential rotations, the same process must first observe the
 unique hash/envelope it attempted to write before another rotation is safe.

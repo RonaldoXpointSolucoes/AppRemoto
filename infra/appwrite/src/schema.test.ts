@@ -45,6 +45,7 @@ const fields: Record<string, readonly (readonly [string, string, number | null, 
     ['status', 'enum', null, true, ['pending', 'committed']],
     ['token_use_consumed', 'boolean', null, true, null],
     ['expected_use_count', 'integer', null, true, null],
+    ['recovery_frozen', 'boolean', null, true, null],
   ],
   connection_sessions: [
     ['organization_id', 'string', 36, true, null], ['device_id', 'string', 36, true, null],

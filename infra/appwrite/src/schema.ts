@@ -93,6 +93,7 @@ export const REMOTE_MANAGEMENT_SCHEMA: RemoteManagementSchema = deepFreeze({
       string('device_id', 36), string('device_uuid', 36),
       enumeration('status', ['pending', 'committed']), boolean('token_use_consumed'),
       integer('expected_use_count'),
+      boolean('recovery_frozen'),
     ], [
       unique('enrollment_token_id', 'device_uuid'), key('organization_id'),
       key('device_id'), key('status'),

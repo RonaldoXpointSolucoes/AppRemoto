@@ -72,12 +72,25 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
     if (unresolved.some((receipt) => receipt.device_uuid !== request.deviceUuid || receipt.organization_id !== token.organization_id)) {
       return deny('pending_recovery');
     }
-    async function freezeToken(): Promise<boolean> {
+    async function freezeFromIndeterminateHandler(receiptId: string): Promise<boolean> {
       try {
         const current = await repo.snapshot('enrollment_tokens', token!.id);
         if (!current || current.token_hash !== tokenHash) return false;
-        if (current.active !== false) await repo.write('enrollment_tokens', token!.id, { ...current, active: false }, current);
-        return (await repo.snapshot('enrollment_tokens', token!.id))?.active === false;
+        // A preexisting inactive token may have been disabled by an administrator.
+        // Only this handler's confirmed transition establishes new provenance.
+        if (current.active !== true) return false;
+        await repo.write('enrollment_tokens', token!.id, { ...current, active: false }, current);
+        if ((await repo.snapshot('enrollment_tokens', token!.id))?.active !== false) return false;
+        const durable = await repo.snapshot('enrollment_receipts', receiptId);
+        if (!durable || durable.organization_id !== token!.organization_id || durable.enrollment_token_id !== token!.id ||
+            durable.device_id !== deviceId || durable.device_uuid !== request.deviceUuid) return false;
+        await repo.write('enrollment_receipts', receiptId, { ...durable, recovery_frozen: true }, durable);
+        if ((await repo.snapshot('enrollment_receipts', receiptId))?.recovery_frozen !== true) return false;
+        const uncertain = uncertainWrites.get(tokenHash);
+        if (uncertain?.kind === 'enrollment_receipts' && uncertain.id === receiptId) {
+          uncertain.expected = { ...uncertain.expected, recovery_frozen: true };
+        }
+        return true;
       } catch { return false; }
     }
     return deviceQueue(deviceId, async () => {
@@ -94,14 +107,18 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
       event.retry = retry || recovering;
       const expectedCount = receipt?.expected_use_count;
       if (receipt && (!linked || !Number.isSafeInteger(expectedCount) || (expectedCount as number) < 1 ||
-          (expectedCount as number) > token.max_uses)) return deny('identity_mismatch');
+          (expectedCount as number) > token.max_uses || typeof receipt.recovery_frozen !== 'boolean')) return deny('identity_mismatch');
+      const recoveryFrozen = receipt?.recovery_frozen === true;
+      if (!token.active && !recoveryFrozen) return deny('token_inactive');
+      if (recoveryFrozen && (token.active !== false || token.use_count !== expectedCount)) return deny('pending_recovery');
       if (recovering) {
+        if (uncertain && !recoveryFrozen) return deny('pending_recovery');
         if (token.use_count !== expectedCount || (!uncertain && receipt!.token_use_consumed !== false)) return deny('pending_recovery');
         if (uncertain && uncertain.kind !== 'enrollment_tokens' &&
             !sameEnrollmentState(uncertain.kind, await repo.snapshot(uncertain.kind, uncertain.id), uncertain.expected)) {
           return deny('pending_recovery');
         }
-      } else if (!token.active) return deny('token_inactive');
+      }
       if (retry || recovering) {
         if (!device || device.organization_id !== token.organization_id || device.device_uuid !== request.deviceUuid ||
             device.enabled !== true || !deviceToken || deviceToken.device_id !== deviceId || !credential ||
@@ -110,8 +127,6 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
         if (receipt || device || deviceToken || credential) return deny('identity_mismatch');
         if (token.use_count >= token.max_uses) return deny('token_exhausted');
       }
-      if (recovering && !await freezeToken()) throw new EnrollmentError();
-
       const journal: Array<() => Promise<void>> = [];
       let indeterminate = false;
       async function write(kind: EnrollmentKind, id: string, data: EnrollmentData, previous: EnrollmentData | null) {
@@ -130,7 +145,7 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
         const response = EnrollResponseSchema.parse({ deviceId, deviceToken: deviceTokenPlaintext, rustdeskPassword, heartbeatIntervalSeconds: 30 });
         const pending: EnrollmentData = { organization_id: token.organization_id, enrollment_token_id: token.id,
           device_id: deviceId, device_uuid: request.deviceUuid, status: 'pending', token_use_consumed: retry || recovering,
-          expected_use_count: receipt ? expectedCount as number : token.use_count + 1 };
+          expected_use_count: receipt ? expectedCount as number : token.use_count + 1, recovery_frozen: recoveryFrozen };
         await write('enrollment_receipts', receiptId, pending, receipt);
         await write('devices', deviceId, { organization_id: token.organization_id, device_uuid: request.deviceUuid,
           display_name: request.displayName, hostname: request.hostname, operating_system: request.operatingSystem,
@@ -156,13 +171,13 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
         let recoveryRequired = indeterminate;
         if (indeterminate) {
           // Retain the receipt and credential artifacts: the server may still commit.
-          await freezeToken();
+          await freezeFromIndeterminateHandler(receiptId);
         } else {
           for (const undo of journal.reverse()) {
             try { await undo(); } catch (error) {
               recoveryRequired = true;
               if (error instanceof IndeterminateEnrollmentWrite) {
-                await freezeToken();
+                await freezeFromIndeterminateHandler(receiptId);
                 break;
               }
             }

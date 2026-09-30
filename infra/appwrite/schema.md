@@ -164,6 +164,7 @@ empty collection permissions and document security disabled (server-only access)
 | `status` | enum | - | yes | `pending`, `committed` |
 | `token_use_consumed` | boolean | - | yes | - |
 | `expected_use_count` | integer | - | yes | - |
+| `recovery_frozen` | boolean | - | yes | - |
 
 | Index ID | Type | Attributes |
 | --- | --- | --- |

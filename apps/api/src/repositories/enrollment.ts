@@ -25,7 +25,8 @@ export interface EnrollmentRepository {
 const database = 'remote_management';
 const fields: Record<EnrollmentKind, string[]> = {
   enrollment_tokens: ['organization_id', 'token_hash', 'expires_at', 'max_uses', 'use_count', 'active', 'created_by_user_id'],
-  enrollment_receipts: ['organization_id', 'enrollment_token_id', 'device_id', 'device_uuid', 'status', 'token_use_consumed', 'expected_use_count'],
+  enrollment_receipts: ['organization_id', 'enrollment_token_id', 'device_id', 'device_uuid', 'status', 'token_use_consumed',
+    'expected_use_count', 'recovery_frozen'],
   devices: ['organization_id', 'device_uuid', 'display_name', 'hostname', 'rustdesk_id', 'operating_system', 'os_version',
     'agent_version', 'rustdesk_version', 'last_seen_at', 'last_ip', 'enabled'],
   device_tokens: ['device_id', 'token_hash', 'last_used_at', 'revoked_at'],
