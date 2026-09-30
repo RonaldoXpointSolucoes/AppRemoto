@@ -124,6 +124,11 @@ function fixture() {
   let fail = new Set<string>();
   let gate: Promise<void> | null = null;
   const repository = {
+    async freezeHeartbeat(id: string, expectedHash: string, timestamp: string) {
+      const tokenRow = rows.get(`device_tokens/${id}`); const deviceRow = rows.get(`devices/${id}`);
+      if (!tokenRow || !deviceRow || tokenRow.token_hash !== expectedHash) return false;
+      tokenRow.revoked_at = timestamp; deviceRow.enabled = false; return true;
+    },
     async findDeviceToken(hash: string) {
       const match = [...rows].filter(([key, row]) => key.startsWith('device_tokens/') && row.token_hash === hash);
       if (match.length > 1) throw new Error('ambiguous');
@@ -183,13 +188,21 @@ test('wrong, revoked, disabled and mismatched device tokens fail generically wit
   }
 });
 
-test('partial device, token and audit failures restore previous state and report unavailable', async () => {
-  for (const point of ['write:devices', 'write:device_tokens', 'audit']) {
+test('known device and token write failures restore previous state and report unavailable', async () => {
+  for (const point of ['write:devices', 'write:device_tokens']) {
     const f = fixture(); const before = structuredClone([...f.rows]); f.setFail(point);
     await assert.rejects(f.service(hashToken(token), payload, '192.0.2.1'),
       (error: unknown) => error instanceof HeartbeatError && error.code === 'HEARTBEAT_UNAVAILABLE' && !error.recoveryRequired);
     assert.deepEqual([...f.rows], before);
   }
+});
+
+test('audit failure retains confirmed heartbeat state and reports recovery required', async () => {
+  const f = fixture(); f.setFail('audit');
+  await assert.rejects(f.service(hashToken(token), payload, '192.0.2.1'),
+    (error: unknown) => error instanceof HeartbeatError && error.code === 'HEARTBEAT_UNAVAILABLE' && error.recoveryRequired);
+  assert.equal(f.rows.get('devices/device-1')?.last_seen_at, observed.lastSeenAt);
+  assert.equal(f.rows.get('device_tokens/device-1')?.last_used_at, observed.lastSeenAt);
 });
 
 test('indeterminate write or failed restore reports recoveryRequired and blocks another heartbeat', async () => {
@@ -199,7 +212,9 @@ test('indeterminate write or failed restore reports recoveryRequired and blocks 
       (error: unknown) => error instanceof HeartbeatError && error.code === 'HEARTBEAT_UNAVAILABLE' && error.recoveryRequired);
     f.setFail();
     await assert.rejects(f.service(hashToken(token), payload, '192.0.2.1'),
-      (error: unknown) => error instanceof HeartbeatError && error.code === 'HEARTBEAT_UNAVAILABLE' && error.recoveryRequired);
+      (error: unknown) => error instanceof HeartbeatError && error.code === 'UNAUTHENTICATED');
+    assert.equal(f.rows.get('devices/device-1')?.enabled, false);
+    assert.equal(f.rows.get('device_tokens/device-1')?.revoked_at, observed.lastSeenAt);
     assert.ok(f.events.some(({ event }) => event.result === 'failure' && event.recoveryRequired));
   }
 });

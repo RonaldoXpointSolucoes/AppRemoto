@@ -1,7 +1,8 @@
 import type { HeartbeatRequest, HeartbeatResponse } from '@appremoto/contracts';
 import { HeartbeatRequestSchema } from '@appremoto/contracts';
 import { randomUUID } from 'node:crypto';
-import { IndeterminateEnrollmentWrite, type EnrollmentData, type EnrollmentRepository,
+import { enrollmentId, IndeterminateEnrollmentWrite, sameEnrollmentState,
+  type EnrollmentData, type EnrollmentRepository,
   type HeartbeatTokenRepository } from '../repositories/enrollment.ts';
 import type { HeartbeatAuditRepository } from '../repositories/audit.ts';
 
@@ -63,28 +64,41 @@ export function createHeartbeatService(dependencies: HeartbeatDependencies): Rec
       const event = { organizationId: device.organization_id, deviceId, sourceIp,
         result: 'success' as const, recoveryRequired: false };
       const undo: Array<() => Promise<void>> = [];
-      let uncertain = false;
+      async function failureAudit(recoveryRequired: boolean) {
+        try { await audit.recordHeartbeat(randomUUID(), { ...event, result: 'failure', recoveryRequired }); }
+        catch { /* The public error remains generic when audit storage is unavailable. */ }
+      }
+      async function freezeAndFail(): Promise<never> {
+        poisoned.add(deviceId);
+        try { await repository.freezeHeartbeat(deviceId, hash, timestamp); }
+        catch { /* Manual recovery is required when the durable freeze cannot be verified. */ }
+        await failureAudit(true);
+        throw new HeartbeatError('HEARTBEAT_UNAVAILABLE', true);
+      }
       try {
         undo.push(() => repository.restore('devices', deviceId, device, updatedDevice));
-        try { await repository.write('devices', deviceId, updatedDevice, device); }
-        catch (error) { if (error instanceof IndeterminateEnrollmentWrite) uncertain = true; throw error; }
+        await repository.write('devices', deviceId, updatedDevice, device);
         undo.push(() => repository.restore('device_tokens', deviceId, token, updatedToken));
-        try { await repository.write('device_tokens', deviceId, updatedToken, token); }
-        catch (error) { if (error instanceof IndeterminateEnrollmentWrite) uncertain = true; throw error; }
-        const auditId = randomUUID();
-        undo.push(() => audit.remove(auditId));
-        await audit.recordHeartbeat(auditId, event);
-        return { deviceId, lastSeenAt: timestamp };
-      } catch {
-        let recoveryRequired = uncertain;
+        await repository.write('device_tokens', deviceId, updatedToken, token);
+        const [confirmedDevice, confirmedToken] = await Promise.all([
+          repository.snapshot('devices', deviceId), repository.snapshot('device_tokens', deviceId),
+        ]);
+        if (!sameEnrollmentState('devices', confirmedDevice, updatedDevice) ||
+            !sameEnrollmentState('device_tokens', confirmedToken, updatedToken)) throw new Error('Heartbeat not confirmed');
+      } catch (error) {
+        if (error instanceof IndeterminateEnrollmentWrite) return freezeAndFail();
+        let restoreFailed = false;
         for (const restore of undo.reverse()) {
-          try { await restore(); } catch { recoveryRequired = true; }
+          try { await restore(); } catch { restoreFailed = true; }
         }
-        if (recoveryRequired) poisoned.add(deviceId);
-        try { await audit.recordHeartbeat(randomUUID(), { ...event, result: 'failure', recoveryRequired }); }
-        catch { /* Recovery state remains in memory even if audit is unavailable. */ }
-        throw new HeartbeatError('HEARTBEAT_UNAVAILABLE', recoveryRequired);
+        if (restoreFailed) return freezeAndFail();
+        await failureAudit(false);
+        throw new HeartbeatError('HEARTBEAT_UNAVAILABLE');
       }
+      const auditId = enrollmentId('heartbeat', deviceId, timestamp, hash, JSON.stringify(request.data), sourceIp);
+      try { await audit.recordHeartbeat(auditId, event); }
+      catch { throw new HeartbeatError('HEARTBEAT_UNAVAILABLE', true); }
+      return { deviceId, lastSeenAt: timestamp };
     });
     tails.set(deviceId, operation);
     const cleanup = () => { if (tails.get(deviceId) === operation) tails.delete(deviceId); };

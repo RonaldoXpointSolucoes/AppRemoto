@@ -25,6 +25,7 @@ export interface EnrollmentRepository {
 }
 export interface HeartbeatTokenRepository {
   findDeviceToken(hash: string): Promise<(EnrollmentData & { id: string }) | null>;
+  freezeHeartbeat(deviceId: string, hash: string, timestamp: string): Promise<boolean>;
 }
 
 const database = 'remote_management';
@@ -43,8 +44,10 @@ export function enrollmentId(...parts: string[]): string {
 }
 
 function project(kind: EnrollmentKind, document: object): EnrollmentData {
-  const record = (kind === 'enrollment_tokens' || kind === 'device_tokens' ?
-    { revoked_at: null, ...document } : document) as EnrollmentData;
+  const defaults = kind === 'devices' ? { agent_version: null, rustdesk_version: null,
+    last_seen_at: null, last_ip: null } : kind === 'device_tokens' ?
+    { last_used_at: null, revoked_at: null } : kind === 'enrollment_tokens' ? { revoked_at: null } : {};
+  const record = { ...defaults, ...document } as EnrollmentData;
   return Object.fromEntries(fields[kind].filter((field) => record[field] !== undefined).map((field) => {
     const value = record[field]!;
     return [field, ['expires_at', 'last_seen_at', 'last_used_at', 'revoked_at'].includes(field) &&
@@ -97,6 +100,29 @@ export function createEnrollmentRepository(databases: Databases): EnrollmentRepo
     }
   };
   return {
+    async freezeHeartbeat(deviceId, hash, timestamp) {
+      try {
+        const [device, token] = await Promise.all([snapshot('devices', deviceId), snapshot('device_tokens', deviceId)]);
+        if (!device || !token || token.device_id !== deviceId || token.token_hash !== hash) return false;
+        if (token.revoked_at === null) {
+          try { await databases.updateDocument(database, 'device_tokens', deviceId, { revoked_at: timestamp }); }
+          catch { /* A fresh read below determines whether the narrow write committed. */ }
+        }
+        if (device.enabled === true) {
+          try { await databases.updateDocument(database, 'devices', deviceId, { enabled: false }); }
+          catch { /* A fresh read below determines whether the narrow write committed. */ }
+        }
+        for (let read = 0; read < 2; read++) {
+          const [currentDevice, currentToken] = await Promise.all([
+            snapshot('devices', deviceId), snapshot('device_tokens', deviceId),
+          ]);
+          if (!currentDevice || currentDevice.enabled !== false || !currentToken ||
+              currentToken.device_id !== deviceId || currentToken.token_hash !== hash ||
+              currentToken.revoked_at === null) return false;
+        }
+        return true;
+      } catch { return false; }
+    },
     async findDeviceToken(hash) {
       try {
         const page = await databases.listDocuments(database, 'device_tokens', [
@@ -155,6 +181,7 @@ export function createEnrollmentRepository(databases: Databases): EnrollmentRepo
         if (!sameEnrollmentState(kind, current, expected)) throw unavailable();
         if (previous) await write(kind, id, previous, expected);
         else await databases.deleteDocument(database, kind, id);
+        if (!sameEnrollmentState(kind, await snapshot(kind, id), previous)) throw unavailable();
       } catch (error) {
         if (error instanceof IndeterminateEnrollmentWrite) throw error;
         // An unverified rollback must not permit destructive cleanup of its linkage.

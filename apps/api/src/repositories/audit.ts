@@ -31,14 +31,32 @@ export interface HeartbeatAudit {
 export function createAuditRepository(databases: Databases): AuditRepository & HeartbeatAuditRepository {
   return {
     async recordHeartbeat(id, event) {
-      try {
-        await databases.createDocument('remote_management', 'audit_logs', id, {
-          organization_id: event.organizationId, actor_type: 'device', actor_id: event.deviceId,
-          device_id: event.deviceId, action: 'device.heartbeat', result: event.result,
-          source_ip: event.sourceIp,
-          metadata_json: JSON.stringify({ recoveryRequired: event.recoveryRequired }),
-        }, []);
-      } catch { throw new Error('Heartbeat audit unavailable'); }
+      const data = { organization_id: event.organizationId, actor_type: 'device', actor_id: event.deviceId,
+        device_id: event.deviceId, action: 'device.heartbeat', result: event.result,
+        source_ip: event.sourceIp,
+        metadata_json: JSON.stringify({ recoveryRequired: event.recoveryRequired }) };
+      const unavailable = () => new Error('Heartbeat audit unavailable');
+      async function matchingRecord(): Promise<boolean> {
+        try {
+          const current = await databases.getDocument('remote_management', 'audit_logs', id);
+          return Object.entries(data).every(([key, value]) => current[key] === value);
+        } catch (error) {
+          if (error instanceof AppwriteException && error.code === 404) return false;
+          throw unavailable();
+        }
+      }
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          await databases.createDocument('remote_management', 'audit_logs', id, data, []);
+          return;
+        } catch (error) {
+          if (await matchingRecord()) return;
+          if (error instanceof AppwriteException && error.code >= 400 && error.code < 500 &&
+              ![408, 409, 429].includes(error.code)) throw unavailable();
+        }
+      }
+      if (await matchingRecord()) return;
+      throw unavailable();
     },
     async record(id, event) {
       try {
