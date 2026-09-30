@@ -93,15 +93,23 @@ test('sequential committed retry never returns plaintext credentials again', asy
   assert.equal([...f.events.values()][0]!.reason, 'already_enrolled');
 });
 
-test('concurrent identical calls share one promise and one usable response', async () => {
+test('concurrent identical calls allow exactly one plaintext response', async () => {
   const f = fixture(); const a = f.enroll(request, '127.0.0.1'); const b = f.enroll({ ...request }, '127.0.0.1');
-  assert.equal(a, b); const [first, second] = await Promise.all([a, b]); assert.deepEqual(first, second);
-  assert.equal(f.events.size, 1); assert.equal(f.rows.get('enrollment_tokens/enroll-1')!.use_count, 1);
+  assert.notEqual(a, b); const results = await Promise.allSettled([a, b]);
+  assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.equal(results.filter((result) => result.status === 'rejected' && result.reason instanceof EnrollmentError &&
+    result.reason.code === 'ENROLLMENT_DENIED').length, 1);
+  assert.equal([...f.events.values()].filter((event) => event.result === 'success').length, 1);
+  assert.equal([...f.events.values()].filter((event) => event.reason === 'already_enrolled').length, 1);
+  assert.equal(f.rows.get('enrollment_tokens/enroll-1')!.use_count, 1);
 });
 
-test('concurrent identical payloads from different source IPs still share usable credentials', async () => {
+test('concurrent identical payloads from different source IPs still expose plaintext once', async () => {
   const f = fixture(); const a = f.enroll(request, '127.0.0.1'); const b = f.enroll({ ...request }, '192.0.2.1');
-  assert.equal(a, b); assert.deepEqual(await a, await b); assert.equal(f.events.size, 1);
+  const results = await Promise.allSettled([a, b]);
+  assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.equal(results.filter((result) => result.status === 'rejected').length, 1);
+  assert.equal(f.rows.get('enrollment_tokens/enroll-1')!.use_count, 1);
 });
 
 test('same device enrolled with another token never uses the first token receipt', async () => {

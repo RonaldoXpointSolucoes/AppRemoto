@@ -42,8 +42,10 @@ are deterministic hashes of nonsecret identity tuples.
 
 A committed receipt binds token, organization, UUID and device ID and is terminal:
 a later POST is denied and never returns the device token or RustDesk password again.
-Identical concurrent calls may share the one in-flight response, but sequential
-retries do not. Device tokens are canonical 43-character base64url HMAC-SHA256
+Every HTTP call has its own queued operation: identical concurrent calls do not
+share a Promise or response. Exactly one caller can commit and receive plaintext;
+the queued callers observe the committed receipt and are denied. Device tokens are
+canonical 43-character base64url HMAC-SHA256
 values derived from the master key, the domain `appremoto:enrollment-device-token:v1`
 with a NUL terminator, and the JSON tuple [organization ID, enrollment token ID,
 device ID, device UUID, receipt ID]. Only the SHA-256 token hash is stored.

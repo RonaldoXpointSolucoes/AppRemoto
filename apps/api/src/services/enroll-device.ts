@@ -50,7 +50,7 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
   const { repository: repo, audit, encryptionKey, keyVersion } = dependencies;
   const now = dependencies.now ?? (() => new Date());
   const tokenQueue = serialQueue(); const deviceQueue = serialQueue();
-  const flights = new Map<string, Promise<EnrollResponse>>();
+  let pendingCalls = 0;
   const poisonedTokens = new Set<string>();
   const uncertainWrites = new Map<string, { kind: EnrollmentKind; id: string; expected: EnrollmentData }>();
 
@@ -229,19 +229,17 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
     if (!parsed.success) return Promise.reject(new EnrollmentError('ENROLLMENT_DENIED'));
     const request = { ...parsed.data, deviceUuid: parsed.data.deviceUuid.toLowerCase() };
     const tokenHash = hashToken(request.enrollmentToken);
-    const flightKey = enrollmentId(tokenHash, JSON.stringify(request));
-    const existing = flights.get(flightKey); if (existing) return existing;
-    if (flights.size >= 1000 || poisonedTokens.size >= 1000 ||
+    if (pendingCalls >= 1000 || poisonedTokens.size >= 1000 ||
         (uncertainWrites.size >= 1000 && !uncertainWrites.has(tokenHash)) || poisonedTokens.has(tokenHash)) {
       return Promise.reject(new EnrollmentError());
     }
+    pendingCalls++;
     const result = tokenQueue(tokenHash, async () => {
       if (poisonedTokens.has(tokenHash)) throw new EnrollmentError();
       try { return await execute(request, sourceIp, tokenHash); }
       catch (error) { throw error instanceof EnrollmentError ? error : new EnrollmentError(); }
     });
-    flights.set(flightKey, result);
-    const cleanup = () => { flights.delete(flightKey); };
+    const cleanup = () => { pendingCalls--; };
     void result.then(cleanup, cleanup);
     return result;
   };
