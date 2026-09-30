@@ -1,0 +1,15 @@
+{
+  "name": "appremoto",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "lint": "pnpm -r --if-present run lint",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "test": "node --test tests/workspace.test.mjs && pnpm -r --if-present run test",
+    "build": "pnpm -r --if-present run build"
+  }
+}
