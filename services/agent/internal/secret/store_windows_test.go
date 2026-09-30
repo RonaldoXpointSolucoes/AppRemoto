@@ -8,6 +8,14 @@ import (
 	"testing"
 )
 
+const secretSentinel = "SECRET-SENTINEL-94D3B61F-C7A829E4-5F1C08D2-END"
+
+var secretSentinelFragments = []string{
+	"SECRET-SENTINEL-94D3B61F",
+	"94D3B61F-C7A829E4-5F1C",
+	"C7A829E4-5F1C08D2-END",
+}
+
 func TestProtectRoundTripCurrentUser(t *testing.T) {
 	plaintext := []byte("device-token-for-current-user-round-trip")
 
@@ -27,24 +35,23 @@ func TestProtectRoundTripCurrentUser(t *testing.T) {
 }
 
 func TestProtectBlobDoesNotContainPlaintext(t *testing.T) {
-	plaintext := []byte("plain-device-token-that-must-not-appear-in-the-dpapi-blob")
+	plaintext := []byte(secretSentinel + "-plain-device-token-payload")
 
 	protected, err := Protect(plaintext)
 	if err != nil {
 		t.Fatalf("Protect() error = %v", err)
 	}
-	if bytes.Contains(protected, plaintext) {
-		t.Fatal("Protect() output contains the plaintext")
-	}
+	assertNoSecretSentinel(t, protected)
 }
 
 func TestUnprotectRejectsTamperedBlob(t *testing.T) {
-	protected, err := Protect([]byte("device-token-with-integrity"))
+	protected, err := Protect([]byte(secretSentinel + "-device-token-with-integrity"))
 	if err != nil {
 		t.Fatalf("Protect() error = %v", err)
 	}
 	tampered := append([]byte(nil), protected...)
-	tampered[len(tampered)/2] ^= 0xff
+	tampered[0] ^= 0xff
+	tampered = append(tampered, secretSentinel...)
 
 	plaintext, err := Unprotect(tampered)
 	if err == nil {
@@ -55,6 +62,7 @@ func TestUnprotectRejectsTamperedBlob(t *testing.T) {
 		clear(plaintext)
 		t.Fatal("Unprotect() returned plaintext for a tampered blob")
 	}
+	assertNoSecretSentinel(t, []byte(err.Error()))
 }
 
 func TestSecretStoreRejectsEmptyInput(t *testing.T) {
@@ -80,7 +88,7 @@ func TestSecretStoreRejectsEmptyInput(t *testing.T) {
 }
 
 func TestUnprotectRejectsMalformedBlobWithoutEchoingInput(t *testing.T) {
-	malformed := []byte("malformed-sensitive-value")
+	malformed := []byte(secretSentinel + "-malformed-input")
 
 	plaintext, err := Unprotect(malformed)
 	if err == nil {
@@ -91,7 +99,17 @@ func TestUnprotectRejectsMalformedBlobWithoutEchoingInput(t *testing.T) {
 		clear(plaintext)
 		t.Fatal("Unprotect() returned plaintext for malformed input")
 	}
-	if strings.Contains(err.Error(), string(malformed)) {
-		t.Fatal("Unprotect() error contains its input")
+	assertNoSecretSentinel(t, []byte(err.Error()))
+}
+
+func assertNoSecretSentinel(t *testing.T, value []byte) {
+	t.Helper()
+	if bytes.Contains(value, []byte(secretSentinel)) {
+		t.Fatal("value contains the complete secret sentinel")
+	}
+	for _, fragment := range secretSentinelFragments {
+		if strings.Contains(string(value), fragment) {
+			t.Fatal("value contains a secret sentinel fragment")
+		}
 	}
 }
