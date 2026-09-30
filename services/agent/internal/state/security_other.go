@@ -35,30 +35,101 @@ func (directory *identityDirectory) Sync() error  { return directory.file.Sync()
 func (directory *identityDirectory) Close() error { return directory.file.Close() }
 
 func prepareIdentityDirectory(path string) error {
-	file, err := os.Open(path)
+	parentPath := filepath.Dir(path)
+	if err := validateIdentityDirectoryChain(parentPath); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(parentPath)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
-	info, err := file.Stat()
+	defer root.Close()
+	parent, err := root.Open(".")
 	if err != nil {
 		return err
 	}
-	if !info.IsDir() {
-		return errors.New("identity directory is not a directory")
-	}
-	if err := file.Chmod(0o700); err != nil {
+	defer parent.Close()
+	pathParentInfo, err := os.Lstat(parentPath)
+	if err != nil {
 		return err
 	}
-	if err := file.Sync(); err != nil {
+	pinnedParentInfo, err := parent.Stat()
+	if err != nil {
 		return err
 	}
-	info, err = file.Stat()
+	if pathParentInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(pathParentInfo, pinnedParentInfo) {
+		return errors.New("identity parent changed while being pinned")
+	}
+
+	leaf := filepath.Base(path)
+	created := false
+	leafInfo, err := root.Lstat(leaf)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := root.Mkdir(leaf, 0o700); err != nil {
+			return err
+		}
+		created = true
+	} else if err != nil {
+		return err
+	} else if leafInfo.Mode()&os.ModeSymlink != 0 || !leafInfo.IsDir() {
+		return errors.New("identity directory is not a trusted directory")
+	}
+	leafRoot, err := root.OpenRoot(leaf)
+	if err != nil {
+		return err
+	}
+	defer leafRoot.Close()
+	directory, err := leafRoot.Open(".")
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	pinnedInfo, err := directory.Stat()
+	if err != nil {
+		return err
+	}
+	leafInfo, err = root.Lstat(leaf)
+	if err != nil || leafInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(leafInfo, pinnedInfo) {
+		return errors.New("identity directory changed while being pinned")
+	}
+	if !created {
+		if err := validateDedicatedIdentityDirectoryOther(leafRoot, directory); err != nil {
+			return err
+		}
+	}
+	if err := directory.Chmod(0o700); err != nil {
+		return err
+	}
+	if err := directory.Sync(); err != nil {
+		return err
+	}
+	info, err := directory.Stat()
 	if err != nil {
 		return err
 	}
 	if info.Mode().Perm() != 0o700 {
 		return errors.New("identity directory permissions are not restricted")
+	}
+	leafInfo, err = root.Lstat(leaf)
+	if err != nil || leafInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(leafInfo, info) {
+		return errors.New("identity directory changed while permissions were applied")
+	}
+	return nil
+}
+
+func validateDedicatedIdentityDirectoryOther(root *os.Root, directory *os.File) error {
+	entries, err := directory.ReadDir(-1)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !isKnownIdentityArtifact(entry.Name()) {
+			return errors.New("identity directory contains unrelated entries")
+		}
+		info, err := root.Lstat(entry.Name())
+		if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+			return errors.New("identity directory contains an unsafe state artifact")
+		}
 	}
 	return nil
 }
@@ -67,6 +138,23 @@ func restrictIdentityDirectory(path string) error { return prepareIdentityDirect
 
 func validateIdentityPath(path string) error {
 	parent := filepath.Dir(path)
+	if err := validateIdentityDirectoryChain(parent); err != nil {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return errors.New("identity file is not a regular file")
+	}
+	return nil
+}
+
+func validateIdentityDirectoryChain(parent string) error {
 	for current := parent; ; current = filepath.Dir(current) {
 		info, err := os.Lstat(current)
 		if err != nil {
@@ -82,16 +170,6 @@ func validateIdentityPath(path string) error {
 		if next == current {
 			break
 		}
-	}
-	info, err := os.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return errors.New("identity file is not a regular file")
 	}
 	return nil
 }

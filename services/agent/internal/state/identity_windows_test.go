@@ -234,6 +234,37 @@ func TestPrepareIdentityDirectoryRejectsJunctionParentBeforeCreating(t *testing.
 	}
 }
 
+func TestPrepareIdentityDirectoryPinsParentBeforeMutation(t *testing.T) {
+	parent := filepath.Join(t.TempDir(), "parent")
+	if err := os.Mkdir(parent, 0o700); err != nil {
+		t.Fatalf("Mkdir(parent) error = %v", err)
+	}
+	target := filepath.Join(parent, "agent-state")
+	renamed := parent + "-renamed"
+	stop := errors.New("stop after parent pin")
+	originalHook := identityDirectoryParentPinnedHook
+	identityDirectoryParentPinnedHook = func() error {
+		if err := os.Rename(parent, renamed); err == nil {
+			return errors.New("parent replacement succeeded before identity mutation")
+		}
+		return stop
+	}
+	defer func() { identityDirectoryParentPinnedHook = originalHook }()
+
+	if err := PrepareIdentityDirectory(target); !errors.Is(err, stop) {
+		t.Fatalf("PrepareIdentityDirectory() error = %v, want parent-pinned stop", err)
+	}
+	if _, err := os.Lstat(target); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("identity directory was mutated before pinned-parent hook, Lstat() error = %v", err)
+	}
+	if _, err := os.Lstat(parent); err != nil {
+		t.Fatalf("pinned parent was replaced: %v", err)
+	}
+	if _, err := os.Lstat(renamed); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("renamed parent exists, Lstat() error = %v", err)
+	}
+}
+
 func TestLoadOrCreateIdentityRejectsJunctionAsIdentityFile(t *testing.T) {
 	root := t.TempDir()
 	target := filepath.Join(root, "target")

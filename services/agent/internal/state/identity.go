@@ -40,20 +40,31 @@ func PrepareIdentityDirectory(path string) error {
 	if filepath.Dir(canonicalPath) == canonicalPath {
 		return errors.New("identity directory must not be a filesystem root")
 	}
-	if err := os.Mkdir(canonicalPath, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
-		return fmt.Errorf("create identity directory: %w", err)
-	}
-	if err := validateIdentityPath(filepath.Join(canonicalPath, ".identity-directory-check")); err != nil {
-		return fmt.Errorf("validate identity directory path: %w", err)
-	}
 	if err := prepareIdentityDirectory(canonicalPath); err != nil {
 		return fmt.Errorf("harden identity directory: %w", err)
 	}
-	directory, err := openIdentityDirectory(canonicalPath)
-	if err != nil {
-		return fmt.Errorf("validate prepared identity directory: %w", err)
+	return nil
+}
+
+func isKnownIdentityArtifact(name string) bool {
+	if name == "identity.json" {
+		return true
 	}
-	return directory.Close()
+	if !strings.HasPrefix(name, ".identity-") || !strings.HasSuffix(name, ".tmp") {
+		return false
+	}
+	randomPart := strings.TrimSuffix(strings.TrimPrefix(name, ".identity-"), ".tmp")
+	if len(randomPart) == 0 || len(randomPart) > 64 {
+		return false
+	}
+	for _, character := range randomPart {
+		if character < '0' || character > '9' {
+			if character < 'a' || character > 'z' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // LoadOrCreateIdentity loads an existing identity or atomically creates one.

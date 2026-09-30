@@ -23,6 +23,9 @@ func TestPrepareIdentityDirectoryCreatesMissingDedicatedDirectory(t *testing.T) 
 	if _, err := state.LoadOrCreateIdentity(filepath.Join(dir, "identity.json")); err != nil {
 		t.Fatalf("LoadOrCreateIdentity() after directory creation error = %v", err)
 	}
+	if err := state.PrepareIdentityDirectory(dir); err != nil {
+		t.Fatalf("second PrepareIdentityDirectory() error = %v", err)
+	}
 	assertPreparedDirectorySecurity(t, dir)
 }
 
@@ -50,6 +53,34 @@ func TestPrepareIdentityDirectorySupportsInheritedDirectoryWithoutChangingParent
 	}
 	assertPreparedDirectorySecurity(t, dir)
 	assertParentStillGrantsEveryone(t, parent)
+}
+
+func TestPrepareIdentityDirectoryRejectsNonDedicatedDirectoryWithoutMutation(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "unrelated")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatalf("Mkdir(unrelated) error = %v", err)
+	}
+	setInheritedEveryoneACL(t, dir)
+	contentPath := filepath.Join(dir, "do-not-touch.txt")
+	wantContent := []byte("belongs to another application")
+	if err := os.WriteFile(contentPath, wantContent, 0o644); err != nil {
+		t.Fatalf("WriteFile(unrelated) error = %v", err)
+	}
+	wantSecurity := directorySecurityString(t, dir)
+
+	if err := state.PrepareIdentityDirectory(dir); err == nil {
+		t.Fatal("PrepareIdentityDirectory() error = nil, want non-dedicated directory rejection")
+	}
+	gotContent, err := os.ReadFile(contentPath)
+	if err != nil {
+		t.Fatalf("ReadFile(unrelated) error = %v", err)
+	}
+	if string(gotContent) != string(wantContent) {
+		t.Fatalf("unrelated content = %q, want %q", gotContent, wantContent)
+	}
+	if gotSecurity := directorySecurityString(t, dir); gotSecurity != wantSecurity {
+		t.Fatalf("unrelated directory security changed: got %q, want %q", gotSecurity, wantSecurity)
+	}
 }
 
 func setInheritedEveryoneACL(t *testing.T, path string) {
@@ -113,9 +144,6 @@ func assertPreparedDirectorySecurity(t *testing.T, path string) {
 		t.Fatalf("StringToSid(SYSTEM) error = %v", err)
 	}
 	expected := map[string]uint8{user.User.Sid.String(): 0, system.String(): 0}
-	if dacl.AceCount != 4 {
-		t.Fatalf("prepared DACL ACE count = %d, want 4", dacl.AceCount)
-	}
 	for index := uint32(0); index < uint32(dacl.AceCount); index++ {
 		var ace *windows.ACCESS_ALLOWED_ACE
 		if err := windows.GetAce(dacl, index, &ace); err != nil {
@@ -132,6 +160,8 @@ func assertPreparedDirectorySecurity(t *testing.T, path string) {
 		switch {
 		case ace.Header.AceFlags == 0 && ace.Mask == fullFileAccess:
 			expected[key] |= 1
+		case ace.Header.AceFlags == windows.OBJECT_INHERIT_ACE|windows.CONTAINER_INHERIT_ACE && ace.Mask == fullFileAccess:
+			expected[key] = 3
 		case ace.Header.AceFlags == windows.OBJECT_INHERIT_ACE|windows.CONTAINER_INHERIT_ACE|windows.INHERIT_ONLY_ACE && ace.Mask == windows.GENERIC_ALL:
 			expected[key] |= 2
 		default:
@@ -171,4 +201,14 @@ func assertParentStillGrantsEveryone(t *testing.T, path string) {
 		}
 	}
 	t.Fatal("parent DACL was changed while preparing child directory")
+}
+
+func directorySecurityString(t *testing.T, path string) string {
+	t.Helper()
+	descriptor, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
+		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		t.Fatalf("GetNamedSecurityInfo(%q) error = %v", path, err)
+	}
+	return descriptor.String()
 }

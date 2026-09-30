@@ -21,6 +21,13 @@ const directoryDangerousAccess windows.ACCESS_MASK = windows.GENERIC_ALL | windo
 	windows.DELETE | windows.WRITE_DAC | windows.WRITE_OWNER | windows.FILE_WRITE_DATA |
 	windows.FILE_APPEND_DATA | 0x40 // FILE_DELETE_CHILD
 
+const (
+	fileAddSubdirectory = 0x00000004
+	fileOpened          = 0x00000001
+)
+
+var identityDirectoryParentPinnedHook = func() error { return nil }
+
 type identityDirectory struct {
 	handle windows.Handle
 	path   string
@@ -69,20 +76,209 @@ func (directory *identityDirectory) Close() error {
 	return windows.CloseHandle(directory.handle)
 }
 
+type pinnedIdentityParent struct {
+	handles []windows.Handle
+	leaf    string
+}
+
+func (parent *pinnedIdentityParent) handle() windows.Handle {
+	return parent.handles[len(parent.handles)-1]
+}
+
+func (parent *pinnedIdentityParent) Close() {
+	for index := len(parent.handles) - 1; index >= 0; index-- {
+		windows.CloseHandle(parent.handles[index])
+	}
+}
+
 func prepareIdentityDirectory(path string) error {
-	pointer, err := windows.UTF16PtrFromString(path)
+	parent, err := pinIdentityParent(path)
 	if err != nil {
 		return err
 	}
-	handle, err := windows.CreateFile(pointer,
-		windows.GENERIC_READ|windows.GENERIC_WRITE|windows.READ_CONTROL|windows.WRITE_DAC,
-		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING,
+	defer parent.Close()
+	if err := identityDirectoryParentPinnedHook(); err != nil {
+		return err
+	}
+
+	securityDescriptor, err := newIdentityDirectorySecurityDescriptor()
+	if err != nil {
+		return err
+	}
+	handle, created, err := openOrCreateIdentityDirectoryRelative(parent.handle(), parent.leaf, securityDescriptor)
+	if err != nil {
+		return err
+	}
+	directory := os.NewFile(uintptr(handle), path)
+	if directory == nil {
+		windows.CloseHandle(handle)
+		return errors.New("wrap identity directory handle")
+	}
+	defer directory.Close()
+	if err := validateIdentityDirectoryHandle(handle); err != nil {
+		return err
+	}
+	if err := verifyRelativeDirectoryLeaf(parent.handle(), parent.leaf, handle); err != nil {
+		return err
+	}
+	if !created {
+		descriptor, err := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+		if err != nil {
+			return err
+		}
+		if err := validateDirectoryOwner(descriptor); err != nil {
+			return err
+		}
+		if err := validateDedicatedIdentityDirectoryWindows(directory, handle); err != nil {
+			return err
+		}
+		if err := restrictIdentityDirectoryHandle(handle); err != nil {
+			return err
+		}
+	}
+	descriptor, err := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT,
+		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		return err
+	}
+	return validateDirectorySecurityDescriptor(descriptor)
+}
+
+func pinIdentityParent(path string) (*pinnedIdentityParent, error) {
+	volume := filepath.VolumeName(path)
+	if volume == "" {
+		return nil, errors.New("identity directory has no Windows volume")
+	}
+	parentPath := filepath.Dir(path)
+	components := splitPathComponents(stringsTrimLeadingSeparator(parentPath[len(volume):]))
+	rootAccess := uint32(windows.FILE_GENERIC_READ)
+	if len(components) == 0 {
+		rootAccess |= windows.FILE_LIST_DIRECTORY | windows.READ_CONTROL | fileAddSubdirectory
+	}
+	rootPath := volume + string(os.PathSeparator)
+	pointer, err := windows.UTF16PtrFromString(rootPath)
+	if err != nil {
+		return nil, err
+	}
+	rootShare := uint32(windows.FILE_SHARE_READ | windows.FILE_SHARE_WRITE | windows.FILE_SHARE_DELETE)
+	if len(components) == 0 {
+		rootShare &^= windows.FILE_SHARE_DELETE
+	}
+	root, err := windows.CreateFile(pointer, rootAccess,
+		rootShare, nil, windows.OPEN_EXISTING,
 		windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
 	if err != nil {
+		return nil, fmt.Errorf("pin identity volume root: %w", err)
+	}
+	pinned := &pinnedIdentityParent{handles: []windows.Handle{root}, leaf: filepath.Base(path)}
+	if err := validateIdentityDirectoryHandle(root); err != nil {
+		pinned.Close()
+		return nil, err
+	}
+	current := root
+	for index, component := range components {
+		access := uint32(windows.FILE_GENERIC_READ)
+		if index == len(components)-1 {
+			access |= windows.FILE_LIST_DIRECTORY | windows.READ_CONTROL | fileAddSubdirectory
+		}
+		next, err := openRelativeDirectory(current, component, access)
+		if err != nil {
+			pinned.Close()
+			return nil, fmt.Errorf("pin identity parent component %q: %w", component, err)
+		}
+		pinned.handles = append(pinned.handles, next)
+		current = next
+	}
+	descriptor, err := windows.GetSecurityInfo(current, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+	if err != nil {
+		pinned.Close()
+		return nil, err
+	}
+	if err := validateDirectoryOwner(descriptor); err != nil {
+		pinned.Close()
+		return nil, err
+	}
+	return pinned, nil
+}
+
+func openRelativeDirectory(parent windows.Handle, name string, access uint32) (windows.Handle, error) {
+	objectName, err := windows.NewNTUnicodeString(name)
+	if err != nil {
+		return 0, err
+	}
+	attributes := &windows.OBJECT_ATTRIBUTES{
+		Length:        uint32(unsafe.Sizeof(windows.OBJECT_ATTRIBUTES{})),
+		RootDirectory: parent,
+		ObjectName:    objectName,
+		Attributes:    windows.OBJ_CASE_INSENSITIVE,
+	}
+	var handle windows.Handle
+	var status windows.IO_STATUS_BLOCK
+	share := uint32(windows.FILE_SHARE_READ | windows.FILE_SHARE_WRITE | windows.FILE_SHARE_DELETE)
+	if access&fileAddSubdirectory != 0 {
+		share &^= windows.FILE_SHARE_DELETE
+	}
+	if err := windows.NtCreateFile(&handle, access, attributes, &status, nil, 0,
+		share, windows.FILE_OPEN,
+		windows.FILE_DIRECTORY_FILE|windows.FILE_OPEN_REPARSE_POINT|windows.FILE_SYNCHRONOUS_IO_NONALERT,
+		0, 0); err != nil {
+		return 0, err
+	}
+	if err := validateIdentityDirectoryHandle(handle); err != nil {
+		windows.CloseHandle(handle)
+		return 0, err
+	}
+	return handle, nil
+}
+
+func openOrCreateIdentityDirectoryRelative(parent windows.Handle, name string, descriptor *windows.SECURITY_DESCRIPTOR) (windows.Handle, bool, error) {
+	objectName, err := windows.NewNTUnicodeString(name)
+	if err != nil {
+		return 0, false, err
+	}
+	attributes := &windows.OBJECT_ATTRIBUTES{
+		Length:             uint32(unsafe.Sizeof(windows.OBJECT_ATTRIBUTES{})),
+		RootDirectory:      parent,
+		ObjectName:         objectName,
+		Attributes:         windows.OBJ_CASE_INSENSITIVE,
+		SecurityDescriptor: descriptor,
+	}
+	var handle windows.Handle
+	var status windows.IO_STATUS_BLOCK
+	access := uint32(windows.FILE_GENERIC_READ | windows.FILE_GENERIC_WRITE | windows.READ_CONTROL | windows.WRITE_DAC)
+	if err := windows.NtCreateFile(&handle, access, attributes, &status, nil, windows.FILE_ATTRIBUTE_NORMAL,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, windows.FILE_OPEN_IF,
+		windows.FILE_DIRECTORY_FILE|windows.FILE_OPEN_REPARSE_POINT|windows.FILE_SYNCHRONOUS_IO_NONALERT,
+		0, 0); err != nil {
+		return 0, false, err
+	}
+	runtime.KeepAlive(descriptor)
+	return handle, status.Information != fileOpened, nil
+}
+
+func verifyRelativeDirectoryLeaf(parent windows.Handle, name string, expected windows.Handle) error {
+	verification, err := openRelativeDirectory(parent, name,
+		uint32(windows.FILE_GENERIC_READ))
+	if err != nil {
+		return fmt.Errorf("reopen identity directory relative to pinned parent: %w", err)
+	}
+	defer windows.CloseHandle(verification)
+	var expectedInfo, verificationInfo windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(expected, &expectedInfo); err != nil {
 		return err
 	}
-	defer windows.CloseHandle(handle)
+	if err := windows.GetFileInformationByHandle(verification, &verificationInfo); err != nil {
+		return err
+	}
+	if expectedInfo.VolumeSerialNumber != verificationInfo.VolumeSerialNumber ||
+		expectedInfo.FileIndexHigh != verificationInfo.FileIndexHigh ||
+		expectedInfo.FileIndexLow != verificationInfo.FileIndexLow {
+		return errors.New("identity directory handle does not match pinned parent leaf")
+	}
+	return nil
+}
 
+func validateIdentityDirectoryHandle(handle windows.Handle) error {
 	var info windows.ByHandleFileInformation
 	if err := windows.GetFileInformationByHandle(handle, &info); err != nil {
 		return err
@@ -90,22 +286,78 @@ func prepareIdentityDirectory(path string) error {
 	if info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 || info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY == 0 {
 		return errors.New("identity directory is not a trusted directory")
 	}
-	descriptor, err := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+	return nil
+}
+
+func validateDedicatedIdentityDirectoryWindows(directory *os.File, handle windows.Handle) error {
+	entries, err := directory.ReadDir(-1)
 	if err != nil {
 		return err
 	}
-	if err := validateDirectoryOwner(descriptor); err != nil {
-		return err
+	for _, entry := range entries {
+		if !isKnownIdentityArtifact(entry.Name()) {
+			return fmt.Errorf("identity directory contains unrelated entry %q", entry.Name())
+		}
+		artifact, err := openRelativeIdentityArtifact(handle, entry.Name())
+		if err != nil {
+			return fmt.Errorf("validate identity artifact %q: %w", entry.Name(), err)
+		}
+		err = validateRestrictedIdentityWindowsHandle(artifact)
+		windows.CloseHandle(artifact)
+		if err != nil {
+			return fmt.Errorf("validate identity artifact %q: %w", entry.Name(), err)
+		}
 	}
-	if err := restrictIdentityDirectoryHandle(handle); err != nil {
-		return err
-	}
-	descriptor, err = windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT,
-		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+	return nil
+}
+
+func openRelativeIdentityArtifact(parent windows.Handle, name string) (windows.Handle, error) {
+	objectName, err := windows.NewNTUnicodeString(name)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return validateDirectorySecurityDescriptor(descriptor)
+	attributes := &windows.OBJECT_ATTRIBUTES{
+		Length:        uint32(unsafe.Sizeof(windows.OBJECT_ATTRIBUTES{})),
+		RootDirectory: parent,
+		ObjectName:    objectName,
+		Attributes:    windows.OBJ_CASE_INSENSITIVE,
+	}
+	var handle windows.Handle
+	var status windows.IO_STATUS_BLOCK
+	if err := windows.NtCreateFile(&handle, uint32(windows.FILE_GENERIC_READ|windows.READ_CONTROL), attributes, &status,
+		nil, 0, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, windows.FILE_OPEN,
+		windows.FILE_NON_DIRECTORY_FILE|windows.FILE_OPEN_REPARSE_POINT|windows.FILE_SYNCHRONOUS_IO_NONALERT,
+		0, 0); err != nil {
+		return 0, err
+	}
+	return handle, nil
+}
+
+func newIdentityDirectorySecurityDescriptor() (*windows.SECURITY_DESCRIPTOR, error) {
+	userSID, systemSID, err := identitySIDs()
+	if err != nil {
+		return nil, err
+	}
+	acl, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{
+		allowInheritedFullAccess(userSID, windows.TRUSTEE_IS_USER),
+		allowInheritedFullAccess(systemSID, windows.TRUSTEE_IS_WELL_KNOWN_GROUP),
+	}, nil)
+	if err != nil {
+		return nil, err
+	}
+	descriptor, err := windows.NewSecurityDescriptor()
+	if err != nil {
+		return nil, err
+	}
+	if err := descriptor.SetDACL(acl, true, false); err != nil {
+		return nil, err
+	}
+	if err := descriptor.SetControl(windows.SE_DACL_PROTECTED, windows.SE_DACL_PROTECTED); err != nil {
+		return nil, err
+	}
+	runtime.KeepAlive(userSID)
+	runtime.KeepAlive(systemSID)
+	return descriptor, nil
 }
 
 func restrictIdentityDirectory(path string) error {
