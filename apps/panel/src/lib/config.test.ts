@@ -46,6 +46,26 @@ describe('parsePublicConfig', () => {
 });
 
 describe('createApiClient', () => {
+  it('normalizes Appwrite JWT failures as an expired session without calling the API', async () => {
+    let fetchCalled = false;
+    const request = createApiClient({
+      baseUrl: validConfig.NEXT_PUBLIC_API_BASE_URL,
+      getJwt: async () => { throw new Error('Appwrite session cookie detail'); },
+      fetch: async () => {
+        fetchCalled = true;
+        return new Response('{}');
+      },
+    });
+
+    const error = await request.getMe().catch((reason: unknown) => reason);
+
+    expect(error).toMatchObject({
+      code: 'SESSION_EXPIRED', message: 'Sessao expirada.', status: 401,
+    });
+    expect(String(error)).not.toContain('cookie detail');
+    expect(fetchCalled).toBe(false);
+  });
+
   it('normalizes a valid API error without exposing unrelated response fields', async () => {
     const request = createApiClient({
       baseUrl: validConfig.NEXT_PUBLIC_API_BASE_URL,
@@ -90,5 +110,36 @@ describe('createApiClient', () => {
       code: 'NETWORK_ERROR', message: 'Nao foi possivel conectar ao servico.', status: 0,
     });
     expect(String(error)).not.toContain('private-value');
+  });
+
+  it('rejects an incompatible organizations payload from a successful response', async () => {
+    const request = createApiClient({
+      baseUrl: validConfig.NEXT_PUBLIC_API_BASE_URL,
+      getJwt: async () => 'session-jwt',
+      fetch: async () => new Response(JSON.stringify({ organizations: [
+        { id: 'org-1', name: '', slug: 'valid-slug' },
+      ] }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    });
+
+    await expect(request.getOrganizations()).rejects.toMatchObject({
+      code: 'INVALID_API_RESPONSE', message: 'O servico retornou uma resposta invalida.', status: 502,
+    });
+  });
+
+  it('rejects a device page containing an invalid DeviceView', async () => {
+    const request = createApiClient({
+      baseUrl: validConfig.NEXT_PUBLIC_API_BASE_URL,
+      getJwt: async () => 'session-jwt',
+      fetch: async () => new Response(JSON.stringify({ devices: [{
+        id: 'device-1', organizationId: 'org-1', organizationName: 'Organization',
+        deviceUuid: 'not-a-uuid', displayName: 'Workstation', hostname: 'host-1',
+        operatingSystem: 'Windows', osVersion: '11', rustdeskId: '123456789',
+        agentVersion: null, rustdeskVersion: null, lastSeenAt: null, enabled: true, status: 'ONLINE',
+      }], nextCursor: null }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    });
+
+    await expect(request.getDevices()).rejects.toMatchObject({
+      code: 'INVALID_API_RESPONSE', message: 'O servico retornou uma resposta invalida.', status: 502,
+    });
   });
 });

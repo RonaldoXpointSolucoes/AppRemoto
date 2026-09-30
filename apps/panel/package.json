@@ -2,21 +2,25 @@
   "name": "@appremoto/panel",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/validate-public-config.mjs",
     "build": "next build",
     "start": "next start",
-    "test": "vitest run",
+    "test": "vitest run --exclude \"src/**/*.server.test.ts\" && vitest run --config vitest.server.config.ts",
     "typecheck": "tsc --noEmit --project tsconfig.json"
   },
   "dependencies": {
     "@appremoto/contracts": "workspace:*",
     "@tanstack/react-query": "^5.90.0",
     "appwrite": "^21.0.0",
+    "client-only": "0.0.1",
     "lucide-react": "^0.544.0",
     "next": "^16.0.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

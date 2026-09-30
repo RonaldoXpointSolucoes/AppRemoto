@@ -11,6 +11,12 @@ COPY packages/contracts/package.json packages/contracts/package.json
 RUN pnpm install --frozen-lockfile --filter @appremoto/panel...
 
 FROM base AS builder
+ARG NEXT_PUBLIC_APPWRITE_ENDPOINT
+ARG NEXT_PUBLIC_APPWRITE_PROJECT_ID
+ARG NEXT_PUBLIC_API_BASE_URL
+ENV NEXT_PUBLIC_APPWRITE_ENDPOINT=$NEXT_PUBLIC_APPWRITE_ENDPOINT
+ENV NEXT_PUBLIC_APPWRITE_PROJECT_ID=$NEXT_PUBLIC_APPWRITE_PROJECT_ID
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /app/apps/panel/node_modules ./apps/panel/node_modules
 COPY --from=dependencies /app/packages/contracts/node_modules ./packages/contracts/node_modules

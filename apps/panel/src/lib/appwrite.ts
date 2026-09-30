@@ -1,3 +1,6 @@
+'use client';
+
+import 'client-only';
 import { Account, Client } from 'appwrite';
 
 import { getPublicConfig, type PublicConfig } from './config';

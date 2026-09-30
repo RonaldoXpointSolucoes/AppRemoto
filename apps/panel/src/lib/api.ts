@@ -1,4 +1,5 @@
-import { ApiErrorSchema, type DeviceListQuery, type DeviceView } from '@appremoto/contracts';
+import { ApiErrorSchema, DeviceViewSchema, type DeviceListQuery, type DeviceView } from '@appremoto/contracts';
+import { z, type ZodType } from 'zod';
 
 export interface OrganizationView {
   id: string;
@@ -25,6 +26,36 @@ export interface DevicePage {
   devices: DeviceView[];
   nextCursor: string | null;
 }
+
+const OrganizationViewSchema = z.object({
+  id: z.string().min(1).max(36),
+  name: z.string().min(1).max(128),
+  slug: z.string().min(1).max(128),
+}).strict();
+
+const OrganizationAuthorizationSchema = z.object({
+  organizationId: z.string().min(1).max(36),
+  role: z.string().min(1).max(64),
+  canView: z.boolean(),
+  canConnect: z.boolean(),
+  canManageDevices: z.boolean(),
+}).strict();
+
+const TechnicianViewSchema = z.object({
+  id: z.string().min(1).max(36),
+  displayName: z.string().min(1).max(128),
+  globalRole: z.string().min(1).max(64).nullable(),
+  authorization: z.array(OrganizationAuthorizationSchema),
+}).strict();
+
+const OrganizationsResponseSchema = z.object({
+  organizations: z.array(OrganizationViewSchema),
+}).strict();
+
+const DevicePageSchema = z.object({
+  devices: z.array(DeviceViewSchema),
+  nextCursor: z.string().min(1).max(1024).nullable(),
+}).strict();
 
 interface ApiClientOptions {
   baseUrl: string;
@@ -66,6 +97,14 @@ function normalizedError(body: unknown, status: number): ApiClientError {
   });
 }
 
+function invalidApiResponse(): ApiClientError {
+  return new ApiClientError({
+    code: 'INVALID_API_RESPONSE',
+    message: 'O servico retornou uma resposta invalida.',
+    status: 502,
+  });
+}
+
 async function responseBody(response: Response): Promise<unknown> {
   const contentType = response.headers.get('content-type') ?? '';
   if (!contentType.toLowerCase().includes('application/json')) return undefined;
@@ -77,10 +116,20 @@ async function responseBody(response: Response): Promise<unknown> {
 }
 
 export function createApiClient(options: ApiClientOptions) {
-  const request = async <T>(path: string): Promise<T> => {
+  const request = async <T>(path: string, schema: ZodType<T>): Promise<T> => {
+    let jwt: string;
+    try {
+      jwt = await options.getJwt();
+    } catch {
+      throw new ApiClientError({
+        code: 'SESSION_EXPIRED',
+        message: 'Sessao expirada.',
+        status: 401,
+      });
+    }
+
     let response: Response;
     try {
-      const jwt = await options.getJwt();
       response = await (options.fetch ?? globalThis.fetch)(`${options.baseUrl}${path}`, {
         headers: { authorization: `Bearer ${jwt}`, accept: 'application/json' },
         method: 'GET',
@@ -95,12 +144,14 @@ export function createApiClient(options: ApiClientOptions) {
 
     const body = await responseBody(response);
     if (!response.ok) throw normalizedError(body, response.status);
-    return body as T;
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) throw invalidApiResponse();
+    return parsed.data;
   };
 
   return {
-    getMe: () => request<TechnicianView>('/v1/me'),
-    getOrganizations: async () => (await request<{ organizations: OrganizationView[] }>('/v1/organizations')).organizations,
+    getMe: () => request('/v1/me', TechnicianViewSchema),
+    getOrganizations: async () => (await request('/v1/organizations', OrganizationsResponseSchema)).organizations,
     getDevices: (query: DeviceListQuery = { limit: 50 }) => {
       const params = new URLSearchParams();
       if (query.organizationId) params.set('organizationId', query.organizationId);
@@ -108,7 +159,7 @@ export function createApiClient(options: ApiClientOptions) {
       if (query.search) params.set('search', query.search);
       if (query.cursor) params.set('cursor', query.cursor);
       params.set('limit', String(query.limit));
-      return request<DevicePage>(`/v1/devices?${params.toString()}`);
+      return request(`/v1/devices?${params.toString()}`, DevicePageSchema);
     },
   };
 }
