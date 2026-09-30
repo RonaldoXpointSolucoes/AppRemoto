@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { AppwriteException } from 'appwrite';
 
 import { parsePublicConfig, PublicConfigError } from './config';
 import { ApiClientError, createApiClient } from './api';
@@ -46,11 +47,13 @@ describe('parsePublicConfig', () => {
 });
 
 describe('createApiClient', () => {
-  it('normalizes Appwrite JWT failures as an expired session without calling the API', async () => {
+  it('normalizes an Appwrite 401 while creating a JWT as an expired session', async () => {
     let fetchCalled = false;
     const request = createApiClient({
       baseUrl: validConfig.NEXT_PUBLIC_API_BASE_URL,
-      getJwt: async () => { throw new Error('Appwrite session cookie detail'); },
+      getJwt: async () => {
+        throw new AppwriteException('Appwrite session cookie detail', 401, 'user_unauthorized');
+      },
       fetch: async () => {
         fetchCalled = true;
         return new Response('{}');
@@ -63,6 +66,26 @@ describe('createApiClient', () => {
       code: 'SESSION_EXPIRED', message: 'Sessao expirada.', status: 401,
     });
     expect(String(error)).not.toContain('cookie detail');
+    expect(fetchCalled).toBe(false);
+  });
+
+  it('normalizes a JWT transport failure as a network error without logging out', async () => {
+    let fetchCalled = false;
+    const request = createApiClient({
+      baseUrl: validConfig.NEXT_PUBLIC_API_BASE_URL,
+      getJwt: async () => { throw new TypeError('CORS token=private-value'); },
+      fetch: async () => {
+        fetchCalled = true;
+        return new Response('{}');
+      },
+    });
+
+    const error = await request.getMe().catch((reason: unknown) => reason);
+
+    expect(error).toMatchObject({
+      code: 'NETWORK_ERROR', message: 'Nao foi possivel conectar ao servico.', status: 0,
+    });
+    expect(String(error)).not.toContain('private-value');
     expect(fetchCalled).toBe(false);
   });
 

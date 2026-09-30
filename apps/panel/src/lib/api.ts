@@ -1,4 +1,5 @@
 import { ApiErrorSchema, DeviceViewSchema, type DeviceListQuery, type DeviceView } from '@appremoto/contracts';
+import { AppwriteException } from 'appwrite';
 import { z, type ZodType } from 'zod';
 
 export interface OrganizationView {
@@ -120,11 +121,18 @@ export function createApiClient(options: ApiClientOptions) {
     let jwt: string;
     try {
       jwt = await options.getJwt();
-    } catch {
+    } catch (error) {
+      if (error instanceof AppwriteException && error.code === 401) {
+        throw new ApiClientError({
+          code: 'SESSION_EXPIRED',
+          message: 'Sessao expirada.',
+          status: 401,
+        });
+      }
       throw new ApiClientError({
-        code: 'SESSION_EXPIRED',
-        message: 'Sessao expirada.',
-        status: 401,
+        code: 'NETWORK_ERROR',
+        message: 'Nao foi possivel conectar ao servico.',
+        status: 0,
       });
     }
 
