@@ -55,11 +55,15 @@ test('SDK adapter sends empty permissions, exact enum/index payload and filters 
   await gateway.createCollection('remote_management', { id: 'test', name: 'test', permissions: [], documentSecurity: false, attributes: [], indexes: [] });
   await gateway.createAttribute('remote_management', 'test', { key: 'role', type: 'enum', elements: ['super_admin'], required: true });
   await gateway.createIndex('remote_management', 'test', { id: 'u_role', type: 'unique', attributes: ['role'] });
+  await gateway.createIndex('remote_management', 'test', { id: 'u_role_prefix', type: 'unique',
+    attributes: ['role', 'name'], lengths: [8, 0] });
   assert.equal(await gateway.findUserByEmail('remote.admin@xpointsolucoes.com.br'), null);
   assert.deepEqual(requests[0]?.body, { collectionId: 'test', name: 'test', permissions: [], documentSecurity: false });
   assert.deepEqual(requests[1]?.body, { key: 'role', elements: ['super_admin'], required: true });
   assert.deepEqual(requests[2]?.body, { key: 'u_role', type: 'unique', attributes: ['role'] });
-  assert.ok(decodeURIComponent(requests[3]!.query).includes('remote.admin@xpointsolucoes.com.br'));
+  assert.deepEqual(requests[3]?.body, { key: 'u_role_prefix', type: 'unique',
+    attributes: ['role', 'name'], lengths: [8, 0] });
+  assert.ok(decodeURIComponent(requests[4]!.query).includes('remote.admin@xpointsolucoes.com.br'));
 });
 
 test('SDK failure cannot expose raw response or key in serialized error', async (t) => {

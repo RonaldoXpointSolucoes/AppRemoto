@@ -117,6 +117,57 @@ test('Appwrite 1.7 zero index lengths and empty orders match omitted defaults', 
     ['unchanged', 'unchanged', 'unchanged']);
 });
 
+test('present composite index lengths must have one entry per attribute', () => {
+  const membership = REMOTE_MANAGEMENT_SCHEMA.collections.find((item) => item.id === 'organization_members')!;
+  const index = membership.indexes[0]!;
+  for (const { lengths, outcome } of [
+    { lengths: [0, 0], outcome: 'unchanged' },
+    { lengths: [0], outcome: 'conflict' },
+    { lengths: [], outcome: 'conflict' },
+    { lengths: [0, 0, 0], outcome: 'conflict' },
+    { lengths: [0, 8], outcome: 'conflict' },
+  ]) {
+    const plan = buildProvisionPlan({ database: REMOTE_MANAGEMENT_SCHEMA.database, collections: [{
+      ...membership, indexes: [{ ...index, lengths, orders: [] }],
+    }] });
+    assert.equal(plan.actions.find((action) => action.id === 'organization_members/u_organization_id_user_id')?.outcome,
+      outcome, JSON.stringify(lengths));
+  }
+});
+
+test('explicit desired prefix lengths compare positionally and require full cardinality', () => {
+  const membership = REMOTE_MANAGEMENT_SCHEMA.collections.find((item) => item.id === 'organization_members')!;
+  const index = membership.indexes[0]!;
+  for (const { desiredLengths, actualLengths, outcome } of [
+    { desiredLengths: [8, 0], actualLengths: [8, 0], outcome: 'unchanged' },
+    { desiredLengths: [8, 0], actualLengths: [0, 8], outcome: 'conflict' },
+    { desiredLengths: [8, 0], actualLengths: undefined, outcome: 'conflict' },
+    { desiredLengths: [8], actualLengths: [8, 0], outcome: 'conflict' },
+    { desiredLengths: [8, 0, 0], actualLengths: [8, 0], outcome: 'conflict' },
+  ]) {
+    const desired: RemoteManagementSchema = { ...REMOTE_MANAGEMENT_SCHEMA, collections: [{
+      ...membership, indexes: [{ ...index, lengths: desiredLengths }],
+    }] };
+    const plan = buildProvisionPlan({ database: REMOTE_MANAGEMENT_SCHEMA.database, collections: [{
+      ...membership, indexes: [{ ...index, ...(actualLengths === undefined ? {} : { lengths: actualLengths }) }],
+    }] }, desired);
+    assert.equal(plan.actions.find((action) => action.id === 'organization_members/u_organization_id_user_id')?.outcome,
+      outcome, JSON.stringify({ desiredLengths, actualLengths }));
+  }
+});
+
+test('invalid desired prefix cardinality blocks creation', () => {
+  const membership = REMOTE_MANAGEMENT_SCHEMA.collections.find((item) => item.id === 'organization_members')!;
+  const desired: RemoteManagementSchema = { ...REMOTE_MANAGEMENT_SCHEMA, collections: [{
+    ...membership, indexes: [{ ...membership.indexes[0]!, lengths: [8] }],
+  }] };
+  const plan = buildProvisionPlan({ database: REMOTE_MANAGEMENT_SCHEMA.database, collections: [{
+    ...membership, indexes: [],
+  }] }, desired);
+  assert.deepEqual(plan.actions.find((action) => action.id === 'organization_members/u_organization_id_user_id'),
+    { resource: 'index', id: 'organization_members/u_organization_id_user_id', outcome: 'conflict', reason: 'definition_mismatch' });
+});
+
 test('real index differences still conflict after default normalization', () => {
   const membership = REMOTE_MANAGEMENT_SCHEMA.collections.find((item) => item.id === 'organization_members')!;
   const index = membership.indexes[0]!;

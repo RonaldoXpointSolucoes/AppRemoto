@@ -12,6 +12,7 @@ export type SchemaIndex = {
   readonly id: string;
   readonly type: 'unique' | 'key';
   readonly attributes: readonly string[];
+  readonly lengths?: readonly number[];
 };
 
 export type SchemaCollection = {

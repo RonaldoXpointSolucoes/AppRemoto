@@ -110,7 +110,8 @@ export function createAppwriteGateway(environment: NodeJS.ProcessEnv): Provision
       return attribute.status;
     }),
     createIndex: (database, collection, index) => safe(async () => {
-      await databases.createIndex(database, collection, index.id, index.type === 'unique' ? IndexType.Unique : IndexType.Key, [...index.attributes]);
+      await databases.createIndex(database, collection, index.id, index.type === 'unique' ? IndexType.Unique : IndexType.Key,
+        [...index.attributes], undefined, index.lengths === undefined ? undefined : [...index.lengths]);
     }),
     getIndexStatus: (database, collection, key) => safe(async () => (await databases.getIndex(database, collection, key)).status),
     findUserByEmail: (email) => safe(async () => {

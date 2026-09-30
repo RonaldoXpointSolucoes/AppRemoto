@@ -63,10 +63,25 @@ function sameIndexAttributes(actual: InventoryIndex, desired: SchemaIndex): bool
     actual.attributes.every((item, index) => item === desired.attributes[index]);
 }
 
+function validIndexLengths(lengths: readonly (number | null)[] | undefined, attributeCount: number): boolean {
+  return lengths === undefined || lengths.length === attributeCount;
+}
+
+function effectiveIndexLength(length: number | null | undefined): number | null {
+  return length === 0 || length == null ? null : length;
+}
+
+function sameIndexLengths(actual: InventoryIndex, desired: SchemaIndex): boolean {
+  if (!validIndexLengths(actual.lengths, desired.attributes.length) ||
+      !validIndexLengths(desired.lengths, desired.attributes.length)) return false;
+  return desired.attributes.every((_, index) =>
+    effectiveIndexLength(actual.lengths?.[index]) === effectiveIndexLength(desired.lengths?.[index]));
+}
+
 function sameIndex(actual: InventoryIndex, desired: SchemaIndex): boolean {
   return actual.type === desired.type && sameIndexAttributes(actual, desired) &&
     (actual.orders === undefined || actual.orders.every((order) => order.toUpperCase() === 'ASC')) &&
-    (actual.lengths === undefined || actual.lengths.every((length) => length === null || length === 0));
+    sameIndexLengths(actual, desired);
 }
 
 function action(resource: ProvisionAction['resource'], id: string, outcome: ProvisionAction['outcome'], reason?: ProvisionAction['reason']): ProvisionAction {
@@ -96,12 +111,13 @@ export function buildProvisionPlan(actual: AppwriteInventory, desired: RemoteMan
     }
     for (const index of wanted.indexes) {
       const id = `${wanted.id}/${index.id}`;
+      const validDefinition = validIndexLengths(index.lengths, index.attributes.length);
       const found = existing?.indexes.find((item) => item.id === index.id);
       const duplicate = !found && existing?.indexes.some((item) => sameIndexAttributes(item, index));
       const compatibleIndex = found && sameIndex(found, index);
       actions.push(action('index', id,
-        found ? compatibleIndex ? 'unchanged' : 'conflict' : duplicate ? 'conflict' : 'create',
-        found && !compatibleIndex ? 'definition_mismatch' : duplicate ? 'duplicate_definition' : undefined));
+        !validDefinition ? 'conflict' : found ? compatibleIndex ? 'unchanged' : 'conflict' : duplicate ? 'conflict' : 'create',
+        !validDefinition || found && !compatibleIndex ? 'definition_mismatch' : duplicate ? 'duplicate_definition' : undefined));
     }
   }
   return { actions };
