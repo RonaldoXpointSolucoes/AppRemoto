@@ -1,8 +1,13 @@
+import { isIP } from 'node:net';
+
 export interface ApiConfig {
   appwriteEndpoint: string;
   appwriteProjectId: string;
   appwriteApiKey: string;
   masterEncryptionKey: Buffer;
+  encryptionKeyVersion: number;
+  apiReplicas: 1;
+  trustProxy: false | string[];
   allowedOrigins: string[];
   port: number;
 }
@@ -38,5 +43,23 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     throw new Error('PORT must be an integer between 1 and 65535');
   }
 
-  return { appwriteEndpoint, appwriteProjectId, appwriteApiKey, masterEncryptionKey, allowedOrigins, port };
+  if ((env.API_REPLICAS ?? '1') !== '1' || (env.WEB_CONCURRENCY ?? '1') !== '1' ||
+      (env.NODE_APP_INSTANCE ?? '0') !== '0') {
+    throw new Error('Enrollment requires exactly one API replica and process');
+  }
+  const encryptionKeyVersion = Number(env.MASTER_ENCRYPTION_KEY_VERSION ?? '1');
+  if (!Number.isInteger(encryptionKeyVersion) || encryptionKeyVersion < 1 || encryptionKeyVersion > 65535) {
+    throw new Error('MASTER_ENCRYPTION_KEY_VERSION must be an integer between 1 and 65535');
+  }
+  let trustProxy: false | string[] = false;
+  if (env.TRUST_PROXY && env.TRUST_PROXY !== 'false') {
+    trustProxy = env.TRUST_PROXY.split(',').map((entry) => entry.trim());
+    if (trustProxy.some((entry) => {
+      const parts = entry.split('/'); const family = isIP(parts[0]!);
+      return !family || parts.length > 2 || (parts.length === 2 &&
+        (!/^\d+$/.test(parts[1]!) || Number(parts[1]) < 1 || Number(parts[1]) > (family === 4 ? 32 : 128)));
+    })) throw new Error('TRUST_PROXY must be false or explicit trusted IP addresses/CIDRs');
+  }
+  return { appwriteEndpoint, appwriteProjectId, appwriteApiKey, masterEncryptionKey, encryptionKeyVersion,
+    apiReplicas: 1, trustProxy, allowedOrigins, port };
 }

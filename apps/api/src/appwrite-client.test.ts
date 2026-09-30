@@ -31,7 +31,7 @@ test('JWT verifier uses a per-request Appwrite JWT client and classifies 401 ver
     const config: ApiConfig = {
       appwriteEndpoint: `http://127.0.0.1:${address.port}/v1`,
       appwriteProjectId: 'test-project', appwriteApiKey: 'synthetic-key',
-      masterEncryptionKey: Buffer.alloc(32), allowedOrigins: [], port: 3000,
+      masterEncryptionKey: Buffer.alloc(32), encryptionKeyVersion: 1, apiReplicas: 1, trustProxy: false, allowedOrigins: [], port: 3000,
     };
     const verifier = createAppwriteServices(config).jwtVerifier;
     assert.deepEqual(await verifier.verify('valid.jwt.value'), { userId: 'user-1' });
@@ -57,7 +57,7 @@ test('JWT verifier maps a network failure to generic unavailability', async () =
   const verifier = createAppwriteServices({
     appwriteEndpoint: `http://127.0.0.1:${address.port}/v1`,
     appwriteProjectId: 'test-project', appwriteApiKey: 'synthetic-key',
-    masterEncryptionKey: Buffer.alloc(32), allowedOrigins: [], port: 3000,
+    masterEncryptionKey: Buffer.alloc(32), encryptionKeyVersion: 1, apiReplicas: 1, trustProxy: false, allowedOrigins: [], port: 3000,
   }).jwtVerifier;
   await assert.rejects(verifier.verify('valid.jwt.value'), /^Error: Authentication service unavailable$/);
 });
