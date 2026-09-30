@@ -26,12 +26,16 @@ function storage(omitted = false) {
     [`devices/${deviceId}`, device], [`device_tokens/${deviceId}`, deviceToken],
   ]);
   const submitted: Array<{ kind: string; changes: Record<string, unknown> }> = [];
+  const calls: string[] = [];
   let delayedDevice: (() => void) | null = null;
   let delayedToken: (() => void) | null = null;
   let delayedAudit: (() => void) | null = null;
   let deferDevice = false; let deferToken = false; let failToken = false; let failVerify = false;
   let failFreeze = false; let ignoreClears = false;
   let auditMode: 'normal' | 'late-before' | 'late-after' | 'late-both' | 'definite' = 'normal';
+  let guardCreateMode: 'normal' | 'stored-timeout' | 'lost-timeout' = 'normal';
+  let guardDeleteMode: 'normal' | 'deleted-timeout' | 'retained-timeout' = 'normal';
+  let tamperGuardRead = false;
   let firstAudit = true;
   function apply(kind: string, id: string, changes: Record<string, unknown>) {
     const key = `${kind}/${id}`; const current = rows.get(key);
@@ -49,6 +53,7 @@ function storage(omitted = false) {
       return { total: 1, documents: [{ $id: deviceId, ...structuredClone(rows.get(`device_tokens/${deviceId}`)) }] };
     },
     async getDocument(_database: string, kind: string, id: string) {
+      calls.push(`get:${kind}`);
       if (failVerify && kind === 'devices' && rows.get(`device_tokens/${deviceId}`)?.last_used_at === firstTime) {
         failVerify = false; throw new Error('verification unavailable');
       }
@@ -57,9 +62,11 @@ function storage(omitted = false) {
       }
       const row = rows.get(`${kind}/${id}`);
       if (!row) throw new AppwriteException('missing', 404);
+      if (kind === 'heartbeat_guards' && tamperGuardRead) return { $id: id, ...structuredClone(row), device_token_id: 'other' };
       return { $id: id, ...structuredClone(row) };
     },
     async updateDocument(_database: string, kind: string, id: string, changes: Record<string, unknown>) {
+      calls.push(`update:${kind}`);
       submitted.push({ kind, changes: structuredClone(changes) });
       if (kind === 'devices' && deferDevice && 'last_seen_at' in changes) {
         deferDevice = false;
@@ -80,6 +87,13 @@ function storage(omitted = false) {
       return apply(kind, id, changes);
     },
     async createDocument(_database: string, kind: string, id: string, data: Record<string, unknown>) {
+      calls.push(`create:${kind}`);
+      if (kind === 'heartbeat_guards') {
+        if (rows.has(`${kind}/${id}`)) throw new AppwriteException('duplicate', 409);
+        if (guardCreateMode !== 'lost-timeout') rows.set(`${kind}/${id}`, structuredClone(data));
+        if (guardCreateMode !== 'normal') throw new Error('guard create timed out');
+        return { $id: id, ...data };
+      }
       if (kind !== 'audit_logs') throw new Error('unexpected create');
       if (auditMode === 'definite') throw new AppwriteException('rejected', 400);
       if ((firstAudit || auditMode === 'late-both') && auditMode !== 'normal') {
@@ -94,24 +108,148 @@ function storage(omitted = false) {
       rows.set(`${kind}/${id}`, structuredClone(data)); return { $id: id, ...data };
     },
     async deleteDocument(_database: string, kind: string, id: string) {
+      calls.push(`delete:${kind}`);
+      if (kind === 'heartbeat_guards' && guardDeleteMode === 'retained-timeout') {
+        throw new Error('guard delete timed out');
+      }
       if (!rows.delete(`${kind}/${id}`)) throw new AppwriteException('missing', 404);
+      if (kind === 'heartbeat_guards' && guardDeleteMode === 'deleted-timeout') {
+        throw new Error('guard delete timed out');
+      }
     },
   } as unknown as Databases;
   const repository = createEnrollmentRepository(databases);
   const audit = createAuditRepository(databases);
   const service = (timestamp = firstTime) => createHeartbeatService({ repository, audit, now: () => new Date(timestamp) });
-  return { rows, submitted, repository, audit, service,
+  return { rows, submitted, calls, repository, audit, service,
     deferDevice: () => { deferDevice = true; }, deferToken: () => { deferToken = true; },
     failToken: () => { failToken = true; }, failVerify: () => { failVerify = true; },
     failFreeze: () => { failFreeze = true; },
     ignoreClears: () => { ignoreClears = true; },
     auditMode: (mode: typeof auditMode) => { auditMode = mode; },
+    guardCreateMode: (mode: typeof guardCreateMode) => { guardCreateMode = mode; },
+    guardDeleteMode: (mode: typeof guardDeleteMode) => { guardDeleteMode = mode; },
+    tamperGuardRead: () => { tamperGuardRead = true; },
+    seedGuard: (timestamp = firstTime) => rows.set(`heartbeat_guards/${deviceId}`, {
+      device_id: deviceId, device_token_id: deviceId, started_at: timestamp }),
     releaseDevice: () => { delayedDevice?.(); delayedDevice = null; },
     releaseToken: () => { delayedToken?.(); delayedToken = null; },
     releaseAudit: () => { try { delayedAudit?.(); } catch (error) {
       if (!(error instanceof AppwriteException) || error.code !== 409) throw error;
     } delayedAudit = null; },
   };
+}
+
+async function panelStatus(rows: Map<string, Record<string, unknown>>, time: string) {
+  const row = rows.get(`devices/${deviceId}`)!;
+  const page = await listDevices({ organizations: [{ id: 'org-1', name: 'Org' }],
+    authorization: [{ organizationId: 'org-1', canView: true }] } as any, { limit: 50 },
+  { scan: async () => ({ records: [{ id: deviceId, createdAt: '2026-09-29T00:00:00.000Z',
+    organizationId: 'org-1', deviceUuid: String(row.device_uuid), displayName: String(row.display_name),
+    hostname: String(row.hostname), operatingSystem: String(row.operating_system), osVersion: String(row.os_version),
+    rustdeskId: String(row.rustdesk_id), agentVersion: row.agent_version as string | null,
+    rustdeskVersion: row.rustdesk_version as string | null,
+    lastSeenAt: row.last_seen_at as string | null, enabled: row.enabled as boolean }],
+    hasMore: false }) }, new Date(time), Buffer.alloc(32, 7));
+  return page.devices[0]?.status;
+}
+
+test('guard is created and verified before device snapshots and removed only after success audit', async () => {
+  const f = storage();
+  assert.deepEqual(await f.service()(hash, body, '192.0.2.1'), { deviceId, lastSeenAt: firstTime });
+  assert.equal(f.rows.has(`heartbeat_guards/${deviceId}`), false);
+  const created = f.calls.indexOf('create:heartbeat_guards');
+  const deviceRead = f.calls.indexOf('get:devices');
+  const deviceWrite = f.calls.indexOf('update:devices');
+  const auditWrite = f.calls.indexOf('create:audit_logs');
+  const deleted = f.calls.indexOf('delete:heartbeat_guards');
+  assert.ok(created >= 0 && created < deviceRead && deviceRead < deviceWrite);
+  assert.ok(deviceWrite < auditWrite && auditWrite < deleted);
+});
+
+test('a stale guard blocks a replacement service before device reads or writes', async () => {
+  const f = storage(); f.seedGuard();
+  await assert.rejects(f.service('2026-09-30T12:02:00.000Z')(hash, body, '192.0.2.2'),
+    (error: unknown) => error instanceof HeartbeatError && error.code === 'HEARTBEAT_UNAVAILABLE');
+  assert.equal(f.calls.includes('get:devices'), false);
+  assert.equal(f.calls.some((call) => call.startsWith('update:')), false);
+  assert.equal(f.rows.has(`heartbeat_guards/${deviceId}`), true);
+});
+
+test('guard cleanup refuses a different token or heartbeat timestamp', async () => {
+  const f = storage(); f.seedGuard();
+  assert.equal(await f.repository.endHeartbeatGuard({ deviceId, deviceTokenId: 'other', startedAt: firstTime }), false);
+  assert.equal(await f.repository.endHeartbeatGuard({ deviceId, deviceTokenId: deviceId,
+    startedAt: '2026-09-30T12:01:00.000Z' }), false);
+  assert.equal(f.rows.has(`heartbeat_guards/${deviceId}`), true);
+  assert.equal(f.calls.includes('delete:heartbeat_guards'), false);
+});
+
+test('failed freeze still leaves a durable guard across restart and prevents a late old PATCH from regressing a newer heartbeat', async () => {
+  const f = storage(); f.deferDevice(); f.failFreeze();
+  await assert.rejects(f.service()(hash, body, '192.0.2.1'),
+    (error: unknown) => error instanceof HeartbeatError && error.recoveryRequired);
+  assert.equal(f.rows.has(`heartbeat_guards/${deviceId}`), true);
+  await assert.rejects(f.service('2026-09-30T12:02:00.000Z')(hash, { ...body, agentVersion: '3' }, '192.0.2.2'),
+    (error: unknown) => error instanceof HeartbeatError && error.code === 'HEARTBEAT_UNAVAILABLE');
+  f.releaseDevice();
+  assert.equal(f.rows.get(`devices/${deviceId}`)?.last_seen_at, firstTime);
+  assert.notEqual(f.rows.get(`device_tokens/${deviceId}`)?.last_used_at, '2026-09-30T12:02:00.000Z');
+  assert.equal(f.rows.has(`heartbeat_guards/${deviceId}`), true);
+  assert.equal(await panelStatus(f.rows, '2026-09-30T12:02:00.000Z'), 'OFFLINE');
+});
+
+test('guard creation with a mismatched stored identity blocks all heartbeat mutations', async () => {
+  const f = storage(); f.tamperGuardRead();
+  await assert.rejects(f.service()(hash, body, '192.0.2.1'),
+    (error: unknown) => error instanceof HeartbeatError && error.code === 'HEARTBEAT_UNAVAILABLE');
+  assert.equal(f.rows.has(`heartbeat_guards/${deviceId}`), true);
+  assert.equal(f.calls.includes('get:devices'), false);
+  assert.equal(f.calls.some((call) => call.startsWith('update:')), false);
+});
+
+for (const stage of ['guard', 'device', 'token', 'audit'] as const) {
+  test(`replacement service rejects a crash after ${stage} while guard remains`, async () => {
+    const f = storage(); f.seedGuard();
+    if (stage !== 'guard') f.rows.get(`devices/${deviceId}`)!.last_seen_at = firstTime;
+    if (stage === 'token' || stage === 'audit') f.rows.get(`device_tokens/${deviceId}`)!.last_used_at = firstTime;
+    if (stage === 'audit') f.rows.set('audit_logs/audit-1', { action: 'device.heartbeat', result: 'success' });
+    await assert.rejects(f.service('2026-09-30T12:02:00.000Z')(hash, body, '192.0.2.2'),
+      (error: unknown) => error instanceof HeartbeatError && error.code === 'HEARTBEAT_UNAVAILABLE');
+    assert.equal(f.calls.includes('get:devices'), false);
+    assert.equal(f.calls.some((call) => call.startsWith('update:')), false);
+  });
+}
+
+for (const mode of ['stored-timeout', 'lost-timeout'] as const) {
+  test(`indeterminate guard creation ${mode} never starts heartbeat state writes`, async () => {
+    const f = storage(); f.guardCreateMode(mode);
+    await assert.rejects(f.service()(hash, body, '192.0.2.1'),
+      (error: unknown) => error instanceof HeartbeatError && error.code === 'HEARTBEAT_UNAVAILABLE');
+    assert.equal(f.calls.includes('update:devices'), false);
+    assert.equal(f.calls.includes('update:device_tokens'), false);
+    assert.equal(f.calls.includes('create:audit_logs'), false);
+    assert.equal(f.rows.has(`heartbeat_guards/${deviceId}`), mode === 'stored-timeout');
+    if (mode === 'stored-timeout') {
+      await assert.rejects(f.service('2026-09-30T12:02:00.000Z')(hash, body, '192.0.2.2'),
+        (error: unknown) => error instanceof HeartbeatError && error.code === 'HEARTBEAT_UNAVAILABLE');
+    }
+  });
+}
+
+for (const mode of ['deleted-timeout', 'retained-timeout'] as const) {
+  test(`guard deletion ${mode} uses a fresh read to determine success`, async () => {
+    const f = storage(); f.guardDeleteMode(mode);
+    const request = f.service();
+    if (mode === 'deleted-timeout') {
+      assert.deepEqual(await request(hash, body, '192.0.2.1'), { deviceId, lastSeenAt: firstTime });
+      assert.equal(f.rows.has(`heartbeat_guards/${deviceId}`), false);
+    } else {
+      await assert.rejects(request(hash, body, '192.0.2.1'),
+        (error: unknown) => error instanceof HeartbeatError && error.recoveryRequired);
+      assert.equal(f.rows.has(`heartbeat_guards/${deviceId}`), true);
+    }
+  });
 }
 
 test('indeterminate metadata PATCH durably disables and revokes before a replacement service can admit another heartbeat', async () => {
@@ -175,6 +313,7 @@ test('known token write failure clears every optional heartbeat field that was a
     (error: unknown) => error instanceof HeartbeatError && !error.recoveryRequired);
   assert.equal(sameEnrollmentState('devices', await f.repository.snapshot('devices', deviceId), beforeDevice), true);
   assert.equal(sameEnrollmentState('device_tokens', await f.repository.snapshot('device_tokens', deviceId), beforeToken), true);
+  assert.equal(f.rows.has(`heartbeat_guards/${deviceId}`), false);
   for (const field of ['agent_version', 'rustdesk_version', 'last_seen_at', 'last_ip']) {
     assert.equal(f.rows.get(`devices/${deviceId}`)?.[field], undefined);
   }
@@ -223,6 +362,7 @@ test('definite audit rejection returns unavailable but retains confirmed heartbe
     (error: unknown) => error instanceof HeartbeatError && error.code === 'HEARTBEAT_UNAVAILABLE');
   assert.equal(f.rows.get(`devices/${deviceId}`)?.last_seen_at, firstTime);
   assert.equal(f.rows.get(`device_tokens/${deviceId}`)?.last_used_at, firstTime);
+  assert.equal(f.rows.has(`heartbeat_guards/${deviceId}`), true);
 });
 
 test('an unresolved audit create can arrive after 503 without contradicting retained heartbeat state', async () => {

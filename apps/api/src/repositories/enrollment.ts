@@ -26,6 +26,13 @@ export interface EnrollmentRepository {
 export interface HeartbeatTokenRepository {
   findDeviceToken(hash: string): Promise<(EnrollmentData & { id: string }) | null>;
   freezeHeartbeat(deviceId: string, hash: string, timestamp: string): Promise<boolean>;
+  beginHeartbeatGuard(guard: HeartbeatGuard): Promise<boolean>;
+  endHeartbeatGuard(guard: HeartbeatGuard): Promise<boolean>;
+}
+export interface HeartbeatGuard {
+  deviceId: string;
+  deviceTokenId: string;
+  startedAt: string;
 }
 
 const database = 'remote_management';
@@ -69,6 +76,11 @@ export class RejectedEnrollmentWrite extends Error {
 
 export function createEnrollmentRepository(databases: Databases): EnrollmentRepository & HeartbeatTokenRepository {
   const unavailable = () => new Error('Enrollment storage unavailable');
+  const guardMatches = (document: Record<string, unknown>, guard: HeartbeatGuard) =>
+    document.$id === guard.deviceId && document.device_id === guard.deviceId &&
+    document.device_token_id === guard.deviceTokenId && typeof document.started_at === 'string' &&
+    Number.isFinite(Date.parse(document.started_at)) &&
+    new Date(document.started_at).toISOString() === guard.startedAt;
   const snapshot: EnrollmentRepository['snapshot'] = async (kind, id) => {
     try { return project(kind, await databases.getDocument(database, kind, id)); }
     catch (error) {
@@ -100,6 +112,30 @@ export function createEnrollmentRepository(databases: Databases): EnrollmentRepo
     }
   };
   return {
+    async beginHeartbeatGuard(guard) {
+      try {
+        await databases.getDocument(database, 'heartbeat_guards', guard.deviceId);
+        return false;
+      } catch (error) {
+        if (!(error instanceof AppwriteException) || error.code !== 404) return false;
+      }
+      try {
+        await databases.createDocument(database, 'heartbeat_guards', guard.deviceId, {
+          device_id: guard.deviceId, device_token_id: guard.deviceTokenId, started_at: guard.startedAt,
+        }, []);
+      } catch { return false; }
+      try { return guardMatches(await databases.getDocument(database, 'heartbeat_guards', guard.deviceId), guard); }
+      catch { return false; }
+    },
+    async endHeartbeatGuard(guard) {
+      try {
+        if (!guardMatches(await databases.getDocument(database, 'heartbeat_guards', guard.deviceId), guard)) return false;
+      } catch { return false; }
+      try { await databases.deleteDocument(database, 'heartbeat_guards', guard.deviceId); }
+      catch { /* A fresh read resolves a completed delete even if its response was lost. */ }
+      try { await databases.getDocument(database, 'heartbeat_guards', guard.deviceId); return false; }
+      catch (error) { return error instanceof AppwriteException && error.code === 404; }
+    },
     async freezeHeartbeat(deviceId, hash, timestamp) {
       try {
         const [device, token] = await Promise.all([snapshot('devices', deviceId), snapshot('device_tokens', deviceId)]);

@@ -80,6 +80,9 @@ export const REMOTE_MANAGEMENT_SCHEMA: RemoteManagementSchema = deepFreeze({
       string('device_id', 36), string('token_hash', 64),
       datetime('last_used_at', false), datetime('revoked_at', false),
     ], [unique('token_hash'), key('device_id')]),
+    collection('heartbeat_guards', [
+      string('device_id', 36), string('device_token_id', 36), datetime('started_at'),
+    ], []),
     collection('device_credentials', [
       string('device_id', 36), string('password_ciphertext', 4096),
       string('password_nonce', 128), string('password_tag', 128), integer('key_version'),

@@ -46,16 +46,33 @@ export function createHeartbeatService(dependencies: HeartbeatDependencies): Rec
     const previous = tails.get(deviceId) ?? Promise.resolve();
     const operation = previous.catch(() => undefined).then(async (): Promise<HeartbeatResponse> => {
       if (poisoned.has(deviceId)) throw new HeartbeatError('HEARTBEAT_UNAVAILABLE', true);
-      let device: EnrollmentData | null; let token: EnrollmentData | null;
-      try { [device, token] = await Promise.all([
-        repository.snapshot('devices', deviceId), repository.snapshot('device_tokens', deviceId),
-      ]); } catch { throw new HeartbeatError('HEARTBEAT_UNAVAILABLE'); }
-      if (!device || !token || token.device_id !== deviceId || token.token_hash !== hash ||
-          token.revoked_at !== null || device.enabled !== true || typeof device.organization_id !== 'string' ||
-          !device.organization_id) throw new HeartbeatError('UNAUTHENTICATED');
       let timestamp: string;
       try { timestamp = now().toISOString(); }
       catch { throw new HeartbeatError('HEARTBEAT_UNAVAILABLE'); }
+      const guard = { deviceId, deviceTokenId: projection.id, startedAt: timestamp };
+      let guarded = false;
+      try { guarded = await repository.beginHeartbeatGuard(guard); }
+      catch { /* A failed or uncertain create must never admit heartbeat writes. */ }
+      if (!guarded) throw new HeartbeatError('HEARTBEAT_UNAVAILABLE', true);
+      async function releaseGuard() {
+        let released = false;
+        try { released = await repository.endHeartbeatGuard(guard); }
+        catch { /* A missing confirmation leaves the guard in recovery. */ }
+        if (!released) throw new HeartbeatError('HEARTBEAT_UNAVAILABLE', true);
+      }
+      let device: EnrollmentData | null; let token: EnrollmentData | null;
+      try { [device, token] = await Promise.all([
+        repository.snapshot('devices', deviceId), repository.snapshot('device_tokens', deviceId),
+      ]); } catch {
+        await releaseGuard();
+        throw new HeartbeatError('HEARTBEAT_UNAVAILABLE');
+      }
+      if (!device || !token || token.device_id !== deviceId || token.token_hash !== hash ||
+          token.revoked_at !== null || device.enabled !== true || typeof device.organization_id !== 'string' ||
+          !device.organization_id) {
+        await releaseGuard();
+        throw new HeartbeatError('UNAUTHENTICATED');
+      }
       const updatedDevice = { ...device, operating_system: request.data.operatingSystem,
         os_version: request.data.osVersion, agent_version: request.data.agentVersion,
         rustdesk_id: request.data.rustdeskId, rustdesk_version: request.data.rustdeskVersion,
@@ -93,11 +110,13 @@ export function createHeartbeatService(dependencies: HeartbeatDependencies): Rec
         }
         if (restoreFailed) return freezeAndFail();
         await failureAudit(false);
+        await releaseGuard();
         throw new HeartbeatError('HEARTBEAT_UNAVAILABLE');
       }
       const auditId = enrollmentId('heartbeat', deviceId, timestamp, hash, JSON.stringify(request.data), sourceIp);
       try { await audit.recordHeartbeat(auditId, event); }
       catch { throw new HeartbeatError('HEARTBEAT_UNAVAILABLE', true); }
+      await releaseGuard();
       return { deviceId, lastSeenAt: timestamp };
     });
     tails.set(deviceId, operation);

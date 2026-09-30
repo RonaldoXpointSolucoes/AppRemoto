@@ -110,6 +110,21 @@ empty collection permissions and document security disabled (server-only access)
 | `u_token_hash` | unique | `token_hash` |
 | `q_device_id` | key | `device_id` |
 
+## `heartbeat_guards`
+
+- Name: `heartbeat_guards`
+- Permissions: `[]`
+- Document security: `false`
+
+| Attribute | Type | Size | Required | Enum elements |
+| --- | --- | ---: | :---: | --- |
+| `device_id` | string | 36 | yes | - |
+| `device_token_id` | string | 36 | yes | - |
+| `started_at` | datetime | - | yes | - |
+
+| Index ID | Type | Attributes |
+| --- | --- | --- |
+
 ## `device_credentials`
 
 - Name: `device_credentials`

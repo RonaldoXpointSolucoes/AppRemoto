@@ -28,6 +28,10 @@ const fields: Record<string, readonly (readonly [string, string, number | null, 
     ['device_id', 'string', 36, true, null], ['token_hash', 'string', 64, true, null],
     ['last_used_at', 'datetime', null, false, null], ['revoked_at', 'datetime', null, false, null],
   ],
+  heartbeat_guards: [
+    ['device_id', 'string', 36, true, null], ['device_token_id', 'string', 36, true, null],
+    ['started_at', 'datetime', null, true, null],
+  ],
   device_credentials: [
     ['device_id', 'string', 36, true, null], ['password_ciphertext', 'string', 4096, true, null],
     ['password_nonce', 'string', 128, true, null], ['password_tag', 'string', 128, true, null],
@@ -78,6 +82,7 @@ const indexes: Record<string, readonly (readonly [string, string, readonly strin
     ['q_rustdesk_id', 'key', ['rustdesk_id']],
   ],
   device_tokens: [['u_token_hash', 'unique', ['token_hash']], ['q_device_id', 'key', ['device_id']]],
+  heartbeat_guards: [],
   device_credentials: [['u_device_id', 'unique', ['device_id']]],
   enrollment_tokens: [['u_token_hash', 'unique', ['token_hash']], ['q_organization_id', 'key', ['organization_id']]],
   enrollment_receipts: [
@@ -104,6 +109,19 @@ test('database and collection order are stable and deny access by default', () =
     assert.deepEqual(collection.permissions, []);
     assert.equal(collection.documentSecurity, false);
   }
+});
+
+test('heartbeat guard is a server-only direct-ID collection with three required identity fields', () => {
+  const guard = REMOTE_MANAGEMENT_SCHEMA.collections.find((collection) => collection.id === 'heartbeat_guards');
+  assert.ok(guard);
+  assert.deepEqual(guard.permissions, []);
+  assert.equal(guard.documentSecurity, false);
+  assert.deepEqual(guard.attributes.map((field) => [field.key, field.type, 'size' in field ? field.size : null,
+    field.required]), [
+    ['device_id', 'string', 36, true], ['device_token_id', 'string', 36, true],
+    ['started_at', 'datetime', null, true],
+  ]);
+  assert.deepEqual(guard.indexes, []);
 });
 
 test('every collection has the canonical field type, size, required flag, and enum domain', () => {

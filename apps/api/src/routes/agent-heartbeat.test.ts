@@ -124,6 +124,18 @@ function fixture() {
   let fail = new Set<string>();
   let gate: Promise<void> | null = null;
   const repository = {
+    async beginHeartbeatGuard(guard: { deviceId: string; deviceTokenId: string; startedAt: string }) {
+      const key = `heartbeat_guards/${guard.deviceId}`;
+      if (rows.has(key)) return false;
+      rows.set(key, { device_id: guard.deviceId, device_token_id: guard.deviceTokenId,
+        started_at: guard.startedAt }); return true;
+    },
+    async endHeartbeatGuard(guard: { deviceId: string; deviceTokenId: string; startedAt: string }) {
+      const key = `heartbeat_guards/${guard.deviceId}`; const current = rows.get(key);
+      if (current?.device_id !== guard.deviceId || current.device_token_id !== guard.deviceTokenId ||
+          current.started_at !== guard.startedAt) return false;
+      rows.delete(key); return true;
+    },
     async freezeHeartbeat(id: string, expectedHash: string, timestamp: string) {
       const tokenRow = rows.get(`device_tokens/${id}`); const deviceRow = rows.get(`devices/${id}`);
       if (!tokenRow || !deviceRow || tokenRow.token_hash !== expectedHash) return false;
@@ -203,6 +215,7 @@ test('audit failure retains confirmed heartbeat state and reports recovery requi
     (error: unknown) => error instanceof HeartbeatError && error.code === 'HEARTBEAT_UNAVAILABLE' && error.recoveryRequired);
   assert.equal(f.rows.get('devices/device-1')?.last_seen_at, observed.lastSeenAt);
   assert.equal(f.rows.get('device_tokens/device-1')?.last_used_at, observed.lastSeenAt);
+  assert.equal(f.rows.has('heartbeat_guards/device-1'), true);
 });
 
 test('indeterminate write or failed restore reports recoveryRequired and blocks another heartbeat', async () => {
