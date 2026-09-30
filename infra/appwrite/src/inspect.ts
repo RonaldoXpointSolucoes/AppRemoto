@@ -18,6 +18,7 @@ function normalizeAttributeType(type: string): string {
   switch (type.toLowerCase()) {
     case 'bool': return 'boolean';
     case 'int': return 'integer';
+    case 'double': return 'float';
     case 'datetime': return 'datetime';
     default: return type.toLowerCase();
   }

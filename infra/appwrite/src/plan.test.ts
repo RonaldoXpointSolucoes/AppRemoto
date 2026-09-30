@@ -143,6 +143,34 @@ test('null defaults and bounds, false flags, and intrinsic formats normalize to 
   assert.equal(integer?.outcome, 'unchanged');
 });
 
+test('only exact Appwrite numeric sentinels normalize; real bounds still conflict', async () => {
+  for (const type of ['integer', 'float'] as const) {
+    const desired: RemoteManagementSchema = { database: REMOTE_MANAGEMENT_SCHEMA.database,
+      collections: [{ ...organizations, attributes: [{ key: 'value', type, required: false }], indexes: [] }] };
+    const sentinel = type === 'integer'
+      ? JSON.parse('{"min":-9223372036854775808,"max":9223372036854775807}')
+      : JSON.parse('{"min":-1.7976931348623157e+308,"max":1.7976931348623157e+308}');
+    const cases = [
+      { min: sentinel.min, max: sentinel.max, outcome: 'unchanged' },
+      { min: sentinel.min, max: null, outcome: 'unchanged' },
+      { min: null, max: sentinel.max, outcome: 'unchanged' },
+      { min: 0, max: sentinel.max, outcome: 'conflict' },
+      { min: sentinel.min, max: 100, outcome: 'conflict' },
+      { min: -9007199254740991, max: 9007199254740991, outcome: 'conflict' },
+      { min: -9223372036854774000, max: 9223372036854774000, outcome: 'conflict' },
+      { min: sentinel.max, max: sentinel.max, outcome: 'conflict' },
+      { min: sentinel.min, max: sentinel.min, outcome: 'conflict' },
+    ];
+    for (const { min, max, outcome } of cases) {
+      const action = await inspectSingleAttribute('organizations', { key: 'value', type, required: false, min, max }, desired);
+      assert.equal(action?.outcome, outcome, `${type}: ${min}..${max}`);
+    }
+    const bounded: RemoteManagementSchema = { ...desired, collections: [{ ...desired.collections[0]!,
+      attributes: [{ key: 'value', type, required: false, min: 0, max: 100 }] }] };
+    assert.equal((await inspectSingleAttribute('organizations', { key: 'value', type, required: false, ...sentinel }, bounded))?.outcome, 'conflict');
+  }
+});
+
 test('declared default and float bounds require exact values after normalization', async () => {
   const devices = REMOTE_MANAGEMENT_SCHEMA.collections.find((item) => item.id === 'devices')!;
   const withDefault: RemoteManagementSchema = {

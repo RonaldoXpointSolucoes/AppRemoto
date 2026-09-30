@@ -8,6 +8,7 @@ import { bootstrapAdministrator } from './bootstrap-admin.ts';
 import type { ProtectSecret } from './bootstrap-admin.ts';
 import type { AdministratorGateway, ProvisioningGateway } from './gateway.ts';
 import { inspectSchema } from './inspect.ts';
+import type { AppwriteInventory } from './inspect.ts';
 import { buildProvisionPlan } from './plan.ts';
 import { protectSecret } from './protect-secret.ts';
 import { redactReport } from './redact.ts';
@@ -18,6 +19,17 @@ type Dependencies = {
   protect: ProtectSecret;
   persist: (report: CliReport) => Promise<void>;
 };
+
+function projectInventoryReport(inventory: AppwriteInventory) {
+  return { ...inventory, collections: inventory.collections.map((collection) => ({
+    ...collection,
+    attributes: collection.attributes.map(({ key, default: defaultValue, ...definition }) => ({
+      attributeId: key, ...definition,
+      // Defaults are data, and can contain private values even in schema metadata.
+      ...(defaultValue === undefined ? {} : { default: defaultValue === null ? null : '[REDACTED]' }),
+    })),
+  })) };
+}
 
 async function persistReport(report: CliReport): Promise<void> {
   const directory = fileURLToPath(new URL('../../../.local/remote-platform/', import.meta.url));
@@ -36,7 +48,7 @@ export async function runCli(args: string[], env: NodeJS.ProcessEnv, dependencie
     readAppwriteEnvironment(env);
     const gateway = dependencies.gatewayFactory(env);
     const inventory = await inspectSchema(gateway);
-    if (mode === 'inspect') return redactReport({ mode, status: 'completed', result: inventory });
+    if (mode === 'inspect') return redactReport({ mode, status: 'completed', result: projectInventoryReport(inventory) });
     const plan = buildProvisionPlan(inventory);
     if (mode === 'plan') return redactReport({ mode, status: 'completed', result: plan });
     const applied = await applyProvisionPlan(gateway, plan);

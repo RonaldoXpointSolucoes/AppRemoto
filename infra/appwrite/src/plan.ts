@@ -18,6 +18,17 @@ function sameSet(left: readonly string[], right: readonly string[]): boolean {
   return sortedLeft.every((item, index) => item === sortedRight[index]);
 }
 
+// Appwrite 1.7 substitutes 64-bit PHP integer and double extrema for omitted bounds.
+// Match their SDK/JSON number representation, not a magnitude threshold: JS rounds
+// PHP_INT_MAX to 9223372036854776000, while PHP_FLOAT_MAX is Number.MAX_VALUE.
+const integerExtrema = { min: Number('-9223372036854775808'), max: Number('9223372036854775807') };
+const floatExtrema = { min: -Number.MAX_VALUE, max: Number.MAX_VALUE };
+
+function effectiveBound(type: 'integer' | 'float', side: 'min' | 'max', value: number | null | undefined): number | null {
+  const unbounded = (type === 'integer' ? integerExtrema : floatExtrema)[side];
+  return value == null || value === unbounded ? null : value;
+}
+
 function sameAttribute(actual: InventoryAttribute, desired: SchemaAttribute): boolean {
   if (actual.type !== desired.type || actual.required !== desired.required) return false;
   if ((actual.array ?? false) !== (desired.array ?? false)) return false;
@@ -32,8 +43,8 @@ function sameAttribute(actual: InventoryAttribute, desired: SchemaAttribute): bo
       sameFormat(actual.format, desired.format, desired.type);
   }
   if (desired.type === 'integer' || desired.type === 'float') {
-    return (actual.min ?? null) === (desired.min ?? null) &&
-      (actual.max ?? null) === (desired.max ?? null);
+    return effectiveBound(desired.type, 'min', actual.min) === effectiveBound(desired.type, 'min', desired.min) &&
+      effectiveBound(desired.type, 'max', actual.max) === effectiveBound(desired.type, 'max', desired.max);
   }
   if (desired.type === 'datetime') return sameFormat(actual.format, desired.format, desired.type);
   return true;

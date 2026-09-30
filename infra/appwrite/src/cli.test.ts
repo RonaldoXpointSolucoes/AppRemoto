@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { runCli } from './cli.ts';
 import { FakeGateway } from './testing/fake-gateway.ts';
+import { redactReport } from './redact.ts';
 
 const env = { APPWRITE_ENDPOINT: 'https://example.invalid/v1', APPWRITE_PROJECT_ID: 'default-6abc5640003cb361b809', APPWRITE_API_KEY: 'FAKE_SECRET_FOR_CLI' };
 
@@ -51,4 +52,22 @@ test('apply conflict and attribute failure block administrator and redact failur
     if (state === 'conflict') assert.equal(gateway.writes, 0);
     assert.equal(reports.length, 1);
   }
+});
+
+test('inspect exposes attribute IDs while values and generic credentials stay redacted', async () => {
+  const gateway = new FakeGateway();
+  gateway.database = { $id: 'remote_management', name: 'remote_management' };
+  gateway.collections.set('device_credentials', { id: 'device_credentials', name: 'device_credentials',
+    permissions: [], documentSecurity: false, attributes: [], indexes: [] });
+  gateway.attributes.set('device_credentials', [{ key: 'password_ciphertext', type: 'string', required: false,
+    size: 4096, default: 'SYNTHETIC_PRIVATE_DEFAULT' }, { key: 'key_version', type: 'integer', required: true }]);
+  const report = await runCli(['inspect'], env, { gatewayFactory: () => gateway,
+    protect: async () => { assert.fail('read-only'); }, persist: async () => { assert.fail('read-only'); } });
+  const inventory = report.result as { collections: { attributes: { attributeId: string; default?: unknown }[] }[] };
+  assert.deepEqual(inventory.collections[0]!.attributes.map((attribute) => attribute.attributeId), ['password_ciphertext', 'key_version']);
+  assert.equal(JSON.stringify(report).includes('SYNTHETIC_PRIVATE_DEFAULT'), false);
+  const redacted = redactReport({ key: 'SYNTHETIC_API_KEY', apiKey: 'SYNTHETIC_API_KEY', token: 'SYNTHETIC_TOKEN',
+    password: 'SYNTHETIC_PASSWORD', secret: 'SYNTHETIC_SECRET', hash: 'SYNTHETIC_HASH', ciphertext: 'SYNTHETIC_CIPHERTEXT',
+    nonce: 'SYNTHETIC_NONCE', tag: 'SYNTHETIC_TAG' });
+  assert.equal(JSON.stringify(redacted).includes('SYNTHETIC'), false);
 });

@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Client } from 'node-appwrite';
 import type { Payload } from 'node-appwrite';
+import { readFile } from 'node:fs/promises';
 import { createAppwriteGateway, readAppwriteEnvironment } from './appwrite-adapter.ts';
+import { applyProvisionPlan } from './apply.ts';
+import { inspectSchema } from './inspect.ts';
+import { buildProvisionPlan } from './plan.ts';
+import { FakeGateway } from './testing/fake-gateway.ts';
+import type { AppwriteAttribute } from './gateway.ts';
+import type { RemoteManagementSchema } from './schema.ts';
 
 const environment = { APPWRITE_ENDPOINT: 'https://example.invalid/v1',
   APPWRITE_PROJECT_ID: 'default-6abc5640003cb361b809', APPWRITE_API_KEY: 'fake-key-never-real' };
@@ -60,4 +67,49 @@ test('SDK failure cannot expose raw response or key in serialized error', async 
     assert.equal((String(error) + JSON.stringify(error)).includes(environment.APPWRITE_API_KEY), false);
     return true;
   });
+});
+
+test('apply then inspect Appwrite 1.7 integer response defaults converges without writes', async (t) => {
+  const fixture = JSON.parse(await readFile(new URL('./testing/appwrite-1.7-numeric-attributes.json', import.meta.url), 'utf8'));
+  const created = new FakeGateway();
+  await applyProvisionPlan(created, buildProvisionPlan(await inspectSchema(created)));
+  let postCount = 0;
+  t.mock.method(Client.prototype, 'call', async (method: string, url: URL) => {
+    if (method !== 'get') { postCount++; assert.fail('Converged apply must not write'); }
+    if (url.pathname.endsWith('/databases')) return { total: 1, databases: await created.listDatabases() };
+    if (url.pathname.endsWith('/collections')) return { total: created.collections.size,
+      collections: (await created.listCollections()).map((item) => ({ ...item, $permissions: item.permissions })) };
+    const collection = url.pathname.split('/')[5]!;
+    if (url.pathname.endsWith('/attributes')) {
+      const attributes = (await created.listAttributes('remote_management', collection)).map((attribute) =>
+        attribute.type === 'integer' ? { ...fixture.attributes[0], key: attribute.key } : attribute);
+      return { total: attributes.length, attributes };
+    }
+    if (url.pathname.endsWith('/indexes')) {
+      const indexes = await created.listIndexes('remote_management', collection);
+      return { total: indexes.length, indexes };
+    }
+    return { status: 'available' };
+  });
+  const gateway = createAppwriteGateway(environment);
+  const plan = buildProvisionPlan(await inspectSchema(gateway));
+  assert.equal(plan.actions.length, 90);
+  assert.deepEqual(plan.actions.filter((action) => action.outcome !== 'unchanged'), []);
+  await applyProvisionPlan(gateway, plan);
+  assert.equal(postCount, 0);
+});
+
+test('Appwrite 1.7 float response defaults match unconstrained float schema', async (t) => {
+  const fixture = JSON.parse(await readFile(new URL('./testing/appwrite-1.7-numeric-attributes.json', import.meta.url), 'utf8'));
+  const desired: RemoteManagementSchema = { database: { id: 'remote_management', name: 'remote_management' },
+    collections: [{ id: 'ratios', name: 'ratios', permissions: [], documentSecurity: false,
+      attributes: [{ key: 'ratio', type: 'float', required: false }], indexes: [] }] };
+  t.mock.method(Client.prototype, 'call', async (_method: string, url: URL) => {
+    if (url.pathname.endsWith('/databases')) return { total: 1, databases: [{ $id: 'remote_management', name: 'remote_management' }] };
+    if (url.pathname.endsWith('/collections')) return { total: 1, collections: [{ $id: 'ratios', name: 'ratios', $permissions: [], documentSecurity: false }] };
+    if (url.pathname.endsWith('/attributes')) return { total: 1, attributes: [fixture.attributes[1] as AppwriteAttribute] };
+    return { total: 0, indexes: [] };
+  });
+  const plan = buildProvisionPlan(await inspectSchema(createAppwriteGateway(environment), desired), desired);
+  assert.deepEqual(plan.actions.map((action) => action.outcome), ['unchanged', 'unchanged', 'unchanged']);
 });
