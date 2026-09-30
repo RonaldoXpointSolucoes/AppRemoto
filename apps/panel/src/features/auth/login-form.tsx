@@ -22,6 +22,7 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string>();
   const [pending, setPending] = useState(false);
+  const [step, setStep] = useState<'credentials' | 'profile-retry'>('credentials');
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
@@ -30,9 +31,11 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
     if (pending) return;
 
     const nextErrors: FieldErrors = {};
-    if (!/^\S+@\S+\.\S+$/.test(email.trim())) nextErrors.email = 'Informe um e-mail valido.';
-    if (!password) nextErrors.password = 'Informe sua senha.';
-    setErrors(nextErrors);
+    if (step === 'credentials') {
+      if (!/^\S+@\S+\.\S+$/.test(email.trim())) nextErrors.email = 'Informe um e-mail valido.';
+      if (!password) nextErrors.password = 'Informe sua senha.';
+      setErrors(nextErrors);
+    }
     setFormError(undefined);
     if (nextErrors.email || nextErrors.password) {
       (nextErrors.email ? emailRef : passwordRef).current?.focus();
@@ -40,16 +43,25 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
     }
 
     setPending(true);
+    let sessionEstablished = step === 'profile-retry';
     try {
-      await service.createSession(email.trim(), password);
+      if (!sessionEstablished) {
+        await service.createSession(email.trim(), password);
+        sessionEstablished = true;
+        setStep('profile-retry');
+        setPassword('');
+      }
       await service.verifyProfile();
       onAuthenticated();
     } catch (error) {
-      if (isInvalidCredentials(error)) {
+      if (!sessionEstablished && isInvalidCredentials(error)) {
         setFormError('E-mail ou senha invalidos.');
       } else if (isDisabledProfile(error)) {
         try { await service.removeSession(); } catch { /* Do not expose provider cleanup details. */ }
+        setStep('credentials');
         setFormError('Seu acesso esta desabilitado.');
+      } else if (sessionEstablished) {
+        setFormError('Nao foi possivel verificar seu acesso.');
       } else {
         setFormError('Nao foi possivel entrar agora. Tente novamente.');
       }
@@ -68,7 +80,7 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
           name="email"
           type="email"
           autoComplete="username"
-          disabled={pending}
+          disabled={pending || step === 'profile-retry'}
           value={email}
           aria-invalid={Boolean(errors.email)}
           aria-errormessage={errors.email ? 'email-error' : undefined}
@@ -84,7 +96,7 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
           name="password"
           type="password"
           autoComplete="current-password"
-          disabled={pending}
+          disabled={pending || step === 'profile-retry'}
           value={password}
           aria-invalid={Boolean(errors.password)}
           aria-errormessage={errors.password ? 'password-error' : undefined}
@@ -94,7 +106,8 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
       </div>
       {formError && <p className="form-error" role="alert">{formError}</p>}
       <button className="primary-button" type="submit" disabled={pending}>
-        {pending ? 'Entrando...' : 'Entrar'}
+        {pending ? (step === 'profile-retry' ? 'Verificando...' : 'Entrando...')
+          : (step === 'profile-retry' ? 'Tentar novamente' : 'Entrar')}
       </button>
     </form>
   );

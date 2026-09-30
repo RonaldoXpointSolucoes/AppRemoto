@@ -24,6 +24,10 @@ function isExpiredSession(error: unknown): boolean {
     || (error instanceof ApiClientError && error.status === 401);
 }
 
+function isTerminalSession(error: unknown): boolean {
+  return isExpiredSession(error) || isDisabledProfile(error);
+}
+
 export function isInvalidCredentials(error: unknown): boolean {
   return error instanceof AppwriteException && error.code === 401;
 }
@@ -52,7 +56,7 @@ export async function checkSession(service: LoginService): Promise<SessionState>
     await service.verifyProfile();
     return { status: 'authenticated' };
   } catch (error) {
-    if (!isExpiredSession(error)) {
+    if (!isTerminalSession(error)) {
       return { status: 'recoverable-error', message: 'Nao foi possivel verificar sua sessao.' };
     }
     try { await service.removeSession(); } catch { /* The local session is already unusable. */ }
