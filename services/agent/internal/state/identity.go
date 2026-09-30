@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
@@ -11,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
+	"time"
 )
 
 // Identity is the durable, non-secret identity of an agent installation.
@@ -20,8 +23,20 @@ type Identity struct {
 
 var validUUIDV4 = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
+const (
+	maxIdentityBytes = 1024
+	staleIdentityAge = 24 * time.Hour
+)
+
 // LoadOrCreateIdentity loads an existing identity or atomically creates one.
 func LoadOrCreateIdentity(path string) (Identity, error) {
+	if err := validateIdentityPath(path); err != nil {
+		return Identity{}, err
+	}
+	if err := cleanStaleIdentityFiles(filepath.Dir(path), time.Now()); err != nil {
+		return Identity{}, err
+	}
+
 	identity, err := loadIdentity(path)
 	if err == nil {
 		return identity, nil
@@ -44,22 +59,58 @@ func LoadOrCreateIdentity(path string) (Identity, error) {
 }
 
 func loadIdentity(path string) (Identity, error) {
-	data, err := os.ReadFile(path)
+	file, err := openValidatedIdentity(path)
 	if err != nil {
 		return Identity{}, fmt.Errorf("read identity: %w", err)
 	}
+	defer file.Close()
 
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	var identity Identity
-	if err := decoder.Decode(&identity); err != nil {
+	reader := bufio.NewReader(io.LimitReader(file, maxIdentityBytes+1))
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return Identity{}, fmt.Errorf("read identity: %w", err)
+	}
+	if len(data) > maxIdentityBytes {
+		return Identity{}, errors.New("decode identity: state exceeds size limit")
+	}
+
+	identity, err := decodeIdentity(data)
+	if err != nil {
 		return Identity{}, fmt.Errorf("decode identity: %w", err)
+	}
+	return identity, nil
+}
+
+func decodeIdentity(data []byte) (Identity, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
+		return Identity{}, errors.New("identity must be a JSON object")
+	}
+	keyStart := decoder.InputOffset()
+	key, err := decoder.Token()
+	keyEnd := decoder.InputOffset()
+	keyLiteral := strings.TrimSpace(string(data[keyStart:keyEnd]))
+	if err != nil || key != "device_uuid" || keyLiteral != `"device_uuid"` {
+		return Identity{}, errors.New("identity must contain only device_uuid")
+	}
+	value, err := decoder.Token()
+	deviceUUID, ok := value.(string)
+	if err != nil || !ok {
+		return Identity{}, errors.New("device_uuid must be a string")
+	}
+	closing, err := decoder.Token()
+	if err != nil || closing != json.Delim('}') {
+		return Identity{}, errors.New("identity must contain exactly one field")
 	}
 	if err := ensureJSONEnd(decoder); err != nil {
-		return Identity{}, fmt.Errorf("decode identity: %w", err)
+		return Identity{}, err
 	}
+
+	identity := Identity{DeviceUUID: deviceUUID}
 	if !validUUIDV4.MatchString(identity.DeviceUUID) {
-		return Identity{}, errors.New("decode identity: invalid device UUID")
+		return Identity{}, errors.New("invalid device UUID")
 	}
 	return identity, nil
 }
@@ -111,7 +162,7 @@ func publishIdentity(path string, identity Identity) error {
 	tempPath := temp.Name()
 	defer os.Remove(tempPath)
 
-	if err := temp.Chmod(0o600); err != nil {
+	if err := restrictIdentityFile(tempPath); err != nil {
 		temp.Close()
 		return fmt.Errorf("restrict temporary identity: %w", err)
 	}
@@ -126,9 +177,53 @@ func publishIdentity(path string, identity Identity) error {
 	if err := temp.Close(); err != nil {
 		return fmt.Errorf("close temporary identity: %w", err)
 	}
+	if err := validateRestrictedACL(tempPath); err != nil {
+		return fmt.Errorf("validate temporary identity: %w", err)
+	}
+	if err := validateIdentityPath(path); err != nil {
+		return err
+	}
 
 	if err := os.Link(tempPath, path); err != nil {
 		return fmt.Errorf("publish identity: %w", err)
+	}
+	if err := syncIdentityDirectory(filepath.Dir(path)); err != nil {
+		return fmt.Errorf("sync identity directory: %w", err)
+	}
+	return nil
+}
+
+func cleanStaleIdentityFiles(dir string, now time.Time) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("inspect identity directory: %w", err)
+	}
+	removed := false
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasPrefix(name, ".identity-") || !strings.HasSuffix(name, ".tmp") {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		info, err := lstatRegularIdentityFile(path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("inspect temporary identity: %w", err)
+		}
+		if now.Sub(info.ModTime()) < staleIdentityAge {
+			continue
+		}
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("remove stale temporary identity: %w", err)
+		}
+		removed = true
+	}
+	if removed {
+		if err := syncIdentityDirectory(dir); err != nil {
+			return fmt.Errorf("sync identity directory: %w", err)
+		}
 	}
 	return nil
 }

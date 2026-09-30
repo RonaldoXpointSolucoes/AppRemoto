@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 var uuidV4Pattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
@@ -102,9 +104,7 @@ func TestLoadOrCreateIdentityPublishesOneCompleteIdentityAtomically(t *testing.T
 func TestLoadOrCreateIdentityRejectsAndPreservesMalformedState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "identity.json")
 	original := []byte(`{"device_uuid":"not-a-uuid"}`)
-	if err := os.WriteFile(path, original, 0o600); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	writeIdentityFixture(t, path, original)
 
 	if _, err := LoadOrCreateIdentity(path); err == nil {
 		t.Fatal("LoadOrCreateIdentity() error = nil, want malformed state error")
@@ -115,6 +115,72 @@ func TestLoadOrCreateIdentityRejectsAndPreservesMalformedState(t *testing.T) {
 	}
 	if string(after) != string(original) {
 		t.Fatalf("malformed state was replaced: got %q, want %q", after, original)
+	}
+}
+
+func TestLoadOrCreateIdentityRejectsNonCanonicalState(t *testing.T) {
+	const uuid = "388f7765-7ec2-423f-8fa7-d3135d4d0467"
+	tests := map[string]string{
+		"duplicate key": `{"device_uuid":"` + uuid + `","device_uuid":"` + uuid + `"}`,
+		"case alias":    `{"Device_UUID":"` + uuid + `"}`,
+		"escaped key":   `{"\u0064evice_uuid":"` + uuid + `"}`,
+		"extra key":     `{"device_uuid":"` + uuid + `","extra":true}`,
+		"trailing JSON": `{"device_uuid":"` + uuid + `"}{}`,
+		"non-string":    `{"device_uuid":1}`,
+	}
+
+	for name, content := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, err := decodeIdentity([]byte(content)); err == nil {
+				t.Fatal("decodeIdentity() error = nil, want canonical state error")
+			}
+		})
+	}
+}
+
+func TestLoadOrCreateIdentityRejectsOversizedState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "identity.json")
+	original := []byte(`{"device_uuid":"` + strings.Repeat("a", maxIdentityBytes) + `"}`)
+	writeIdentityFixture(t, path, original)
+
+	if _, err := LoadOrCreateIdentity(path); err == nil {
+		t.Fatal("LoadOrCreateIdentity() error = nil, want oversized state error")
+	}
+}
+
+func TestLoadOrCreateIdentityCleansStaleTemporaryFileAfterRestart(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "identity.json")
+	stalePath := filepath.Join(dir, ".identity-abandoned.tmp")
+	if err := os.WriteFile(stalePath, []byte("partial"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	old := time.Now().Add(-staleIdentityAge - time.Minute)
+	if err := os.Chtimes(stalePath, old, old); err != nil {
+		t.Fatalf("Chtimes() error = %v", err)
+	}
+
+	if _, err := LoadOrCreateIdentity(path); err != nil {
+		t.Fatalf("LoadOrCreateIdentity() error = %v", err)
+	}
+	if _, err := os.Lstat(stalePath); !os.IsNotExist(err) {
+		t.Fatalf("stale temporary file still exists, Lstat() error = %v", err)
+	}
+}
+
+func TestLoadOrCreateIdentityPreservesRecentTemporaryFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "identity.json")
+	recentPath := filepath.Join(dir, ".identity-active.tmp")
+	if err := os.WriteFile(recentPath, []byte("in progress"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	if _, err := LoadOrCreateIdentity(path); err != nil {
+		t.Fatalf("LoadOrCreateIdentity() error = %v", err)
+	}
+	if _, err := os.Lstat(recentPath); err != nil {
+		t.Fatalf("recent temporary file was removed: %v", err)
 	}
 }
 
@@ -142,4 +208,14 @@ func entryNames(entries []os.DirEntry) []string {
 		names[i] = entry.Name()
 	}
 	return names
+}
+
+func writeIdentityFixture(t *testing.T, path string, content []byte) {
+	t.Helper()
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if err := restrictIdentityFile(path); err != nil {
+		t.Fatalf("restrictIdentityFile() error = %v", err)
+	}
 }
