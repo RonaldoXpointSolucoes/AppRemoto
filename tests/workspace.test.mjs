@@ -59,3 +59,12 @@ test('Docker context excludes private files and retains API build inputs', () =>
     assert.equal(isExcluded(file), false, `${file} must be available to Docker`);
   }
 });
+
+test('API production image runs as non-root and exposes a native health check', () => {
+  const dockerfile = readRootFile('apps/api/Dockerfile');
+
+  assert.match(dockerfile, /^ENV NODE_ENV=production$/m);
+  assert.match(dockerfile, /^EXPOSE 3000$/m);
+  assert.match(dockerfile, /^HEALTHCHECK .*process\.env\.PORT.*\/health/m);
+  assert.match(dockerfile, /^USER node\s*\r?\nCMD \["node", "--experimental-strip-types", "apps\/api\/src\/server\.ts"\]$/m);
+});
