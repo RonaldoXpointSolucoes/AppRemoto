@@ -18,5 +18,4 @@ docs
 tests
 infra
 services
-apps/panel
 **/*.test.ts

@@ -54,10 +54,19 @@ test('Docker context excludes private files and retains API build inputs', () =>
   for (const file of [
     'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml',
     'apps/api/Dockerfile', 'apps/api/package.json', 'apps/api/src/app.ts',
+    'apps/panel/Dockerfile', 'apps/panel/package.json', 'apps/panel/src/app/layout.tsx',
     'packages/contracts/package.json', 'packages/contracts/src/index.ts',
   ]) {
     assert.equal(isExcluded(file), false, `${file} must be available to Docker`);
   }
+});
+
+test('panel production image runs its standalone server as non-root', () => {
+  const dockerfile = readRootFile('apps/panel/Dockerfile');
+
+  assert.match(dockerfile, /^ENV NODE_ENV=production$/m);
+  assert.match(dockerfile, /^EXPOSE 3000$/m);
+  assert.match(dockerfile, /^USER node\s*\r?\nCMD \["node", "apps\/panel\/server\.js"\]$/m);
 });
 
 test('API production image runs as non-root and exposes a native health check', () => {
