@@ -1,5 +1,8 @@
 import { isIP } from 'node:net';
 
+const productionAppwriteEndpoint = 'https://appwrite.xpointsolucoes.com.br/v1';
+const productionAppwriteProjectId = '6abc5640003cb361b809';
+
 export interface ApiConfig {
   appwriteEndpoint: string;
   appwriteProjectId: string;
@@ -19,12 +22,14 @@ function required(env: NodeJS.ProcessEnv, name: string): string {
 }
 
 export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
-  const appwriteEndpoint = required(env, 'APPWRITE_ENDPOINT');
-  if (!URL.canParse(appwriteEndpoint) || new URL(appwriteEndpoint).protocol !== 'https:') {
-    throw new Error('APPWRITE_ENDPOINT must be an HTTPS URL');
+  const appwriteEndpoint = env.APPWRITE_ENDPOINT;
+  if (appwriteEndpoint !== productionAppwriteEndpoint) {
+    throw new Error('APPWRITE_ENDPOINT does not match the approved production target');
   }
-
-  const appwriteProjectId = required(env, 'APPWRITE_PROJECT_ID');
+  const appwriteProjectId = env.APPWRITE_PROJECT_ID;
+  if (appwriteProjectId !== productionAppwriteProjectId) {
+    throw new Error('APPWRITE_PROJECT_ID does not match the approved production target');
+  }
   const appwriteApiKey = required(env, 'APPWRITE_API_KEY');
   const encodedKey = required(env, 'MASTER_ENCRYPTION_KEY');
   const masterEncryptionKey = Buffer.from(encodedKey, 'base64');

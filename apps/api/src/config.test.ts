@@ -16,8 +16,8 @@ test('production configuration rejects missing required values without revealing
 
 test('production configuration accepts valid injected values', () => {
   const config = readApiConfig({
-    APPWRITE_ENDPOINT: 'https://appwrite.example.test/v1',
-    APPWRITE_PROJECT_ID: 'test-project',
+    APPWRITE_ENDPOINT: 'https://appwrite.xpointsolucoes.com.br/v1',
+    APPWRITE_PROJECT_ID: '6abc5640003cb361b809',
     APPWRITE_API_KEY: 'synthetic-api-key',
     MASTER_ENCRYPTION_KEY: Buffer.alloc(32).toString('base64'),
     ALLOWED_ORIGINS: 'https://panel.example.test',
@@ -28,7 +28,7 @@ test('production configuration accepts valid injected values', () => {
   assert.deepEqual(config.allowedOrigins, ['https://panel.example.test']);
 });
 
-const environment = { APPWRITE_ENDPOINT: 'https://appwrite.example.test/v1', APPWRITE_PROJECT_ID: 'test',
+const environment = { APPWRITE_ENDPOINT: 'https://appwrite.xpointsolucoes.com.br/v1', APPWRITE_PROJECT_ID: '6abc5640003cb361b809',
   APPWRITE_API_KEY: 'synthetic', MASTER_ENCRYPTION_KEY: Buffer.alloc(32).toString('base64'),
   ALLOWED_ORIGINS: 'https://panel.example.test' };
 
@@ -37,6 +37,27 @@ test('enrollment configuration defaults to one process and untrusted proxy with 
   assert.equal(config.apiReplicas, 1); assert.equal(config.trustProxy, false); assert.equal(config.encryptionKeyVersion, 1);
   const custom = readApiConfig({ ...environment, TRUST_PROXY: '127.0.0.1,10.0.0.0/8', MASTER_ENCRYPTION_KEY_VERSION: '2' });
   assert.deepEqual(custom.trustProxy, ['127.0.0.1', '10.0.0.0/8']); assert.equal(custom.encryptionKeyVersion, 2);
+});
+
+test('rejects every nonliteral Appwrite target before reading the API key', () => {
+  const invalidTargets = [
+    { APPWRITE_ENDPOINT: 'https://APPWRITE.xpointsolucoes.com.br/v1' },
+    { APPWRITE_ENDPOINT: 'https://appwrite.xpointsolucoes.com.br/v1/' },
+    { APPWRITE_ENDPOINT: 'https://appwrite.xpointsolucoes.com.br/v1?key=private' },
+    { APPWRITE_ENDPOINT: 'https://user:pass@appwrite.xpointsolucoes.com.br/v1' },
+    { APPWRITE_PROJECT_ID: 'default-6abc5640003cb361b809' },
+    { APPWRITE_PROJECT_ID: 'another-project' },
+  ];
+  for (const changed of invalidTargets) {
+    let keyRead = false;
+    const values = { ...environment, ...changed };
+    const guarded = new Proxy(values, { get(target, property, receiver) {
+      if (property === 'APPWRITE_API_KEY') keyRead = true;
+      return Reflect.get(target, property, receiver);
+    } });
+    assert.throws(() => readApiConfig(guarded));
+    assert.equal(keyRead, false);
+  }
 });
 
 test('enrollment configuration refuses replica/process scaling, unrestricted proxy trust and invalid key versions', () => {
