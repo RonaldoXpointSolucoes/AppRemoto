@@ -12,10 +12,11 @@ import type { AppwriteAttribute } from './gateway.ts';
 import type { RemoteManagementSchema } from './schema.ts';
 
 const environment = { APPWRITE_ENDPOINT: 'https://example.invalid/v1',
-  APPWRITE_PROJECT_ID: 'default-6abc5640003cb361b809', APPWRITE_API_KEY: 'fake-key-never-real' };
+  APPWRITE_PROJECT_ID: '6abc5640003cb361b809', APPWRITE_API_KEY: 'fake-key-never-real' };
 
 test('environment rejects wrong project, absent key, unsafe endpoint without exposing values', () => {
   for (const env of [{ ...environment, APPWRITE_PROJECT_ID: 'wrong' },
+    { ...environment, APPWRITE_PROJECT_ID: 'default-6abc5640003cb361b809' },
     { ...environment, APPWRITE_API_KEY: '' }, { ...environment, APPWRITE_ENDPOINT: 'http://example.invalid/v1' }]) {
     assert.throws(() => readAppwriteEnvironment(env), (error: Error) => {
       assert.equal(String(error).includes(environment.APPWRITE_API_KEY), false);

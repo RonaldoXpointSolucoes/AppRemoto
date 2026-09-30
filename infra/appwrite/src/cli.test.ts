@@ -4,7 +4,7 @@ import { runCli } from './cli.ts';
 import { FakeGateway } from './testing/fake-gateway.ts';
 import { redactReport } from './redact.ts';
 
-const env = { APPWRITE_ENDPOINT: 'https://example.invalid/v1', APPWRITE_PROJECT_ID: 'default-6abc5640003cb361b809', APPWRITE_API_KEY: 'FAKE_SECRET_FOR_CLI' };
+const env = { APPWRITE_ENDPOINT: 'https://example.invalid/v1', APPWRITE_PROJECT_ID: '6abc5640003cb361b809', APPWRITE_API_KEY: 'FAKE_SECRET_FOR_CLI' };
 
 test('inspect and plan are read-only; CLI apply converges with fake gateway and redacted reports', async () => {
   const gateway = new FakeGateway();
@@ -30,6 +30,7 @@ test('CLI validates project and forbids secret argv before gateway construction'
     protect: async () => '', persist: async () => {} };
   for (const [args, environment] of [
     [['apply'], { ...env, APPWRITE_PROJECT_ID: 'wrong' }],
+    [['apply'], { ...env, APPWRITE_PROJECT_ID: 'default-6abc5640003cb361b809' }],
     [['apply', '--key', 'FAKE_ARGV_SECRET'], env],
   ] as const) {
     const result = await runCli([...args], environment, dependencies);

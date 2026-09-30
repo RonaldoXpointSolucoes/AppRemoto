@@ -4,7 +4,7 @@
 
 **Goal:** Establish the monorepo, shared contracts, idempotent Appwrite schema provisioning, and the encrypted bootstrap administrator artifact.
 
-**Architecture:** A pnpm workspace owns TypeScript contracts and provisioning. Provisioning has inspect, plan, and apply phases behind an Appwrite gateway so reconciliation logic can be tested without production writes. Production apply uses only project `default-6abc5640003cb361b809`.
+**Architecture:** A pnpm workspace owns TypeScript contracts and provisioning. Provisioning has inspect, plan, and apply phases behind an Appwrite gateway so reconciliation logic can be tested without production writes. Production apply uses only project `6abc5640003cb361b809`.
 
 **Tech Stack:** Node.js 24, TypeScript, pnpm, Vitest, Zod, Appwrite Node SDK, PowerShell DPAPI wrapper.
 
@@ -136,7 +136,7 @@
 - Consumes: approved project-specific Appwrite API key.
 - Produces: verified production inventory and encrypted bootstrap login artifact.
 
-- [ ] **Step 1: Run the CLI in `inspect` and `plan` mode** against project `default-6abc5640003cb361b809`; verify no unrelated resource appears in the plan.
+- [ ] **Step 1: Run the CLI in `inspect` and `plan` mode** against project `6abc5640003cb361b809`; verify no unrelated resource appears in the plan.
 - [ ] **Step 2: Review conflicts and stop if any destructive reconciliation would be required.**
 - [ ] **Step 3: Run `apply` once approved at action time, then rerun `plan`.**
 - [ ] **Step 4: Verify the second plan contains only `unchanged` actions and the administrator profile is `super_admin`.**

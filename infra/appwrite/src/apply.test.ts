@@ -30,6 +30,20 @@ test('any conflict or wrong project blocks all writes', async () => {
   assert.equal(wrong.writes, 0);
 });
 
+test('apply accepts the exact production project ID and rejects the route-prefixed or unrelated ID before writes', async () => {
+  const approved = new FakeGateway();
+  Object.defineProperty(approved, 'projectId', { value: '6abc5640003cb361b809' });
+  await applyProvisionPlan(approved, await planFor(approved));
+  assert.equal(approved.writes, desiredResourceCount);
+
+  for (const projectId of ['default-6abc5640003cb361b809', 'another-project']) {
+    const gateway = new FakeGateway();
+    Object.defineProperty(gateway, 'projectId', { value: projectId });
+    await assert.rejects(applyProvisionPlan(gateway, await planFor(gateway)), /project/i);
+    assert.equal(gateway.writes, 0);
+  }
+});
+
 test('fresh inspection catches a conflicting change after planning before any write', async () => {
   const gateway = new FakeGateway();
   const stale = await planFor(gateway);

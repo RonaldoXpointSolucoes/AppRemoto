@@ -2,7 +2,7 @@ import { REMOTE_MANAGEMENT_SCHEMA } from '../schema.ts';
 import type { SchemaAttribute, SchemaCollection, SchemaIndex } from '../schema.ts';
 
 export class FakeGateway {
-  readonly projectId = 'default-6abc5640003cb361b809';
+  readonly projectId = '6abc5640003cb361b809';
   database: { $id: string; name: string } | null = null;
   collections = new Map<string, SchemaCollection>();
   attributes = new Map<string, SchemaAttribute[]>();

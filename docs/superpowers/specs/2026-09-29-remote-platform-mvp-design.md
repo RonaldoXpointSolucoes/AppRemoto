@@ -4,7 +4,7 @@
 
 Build the first operational milestone of the Remote Platform: a technician can authenticate, see organizations and devices, enroll a Windows device through an agent, observe heartbeats in the panel, and use the existing self-hosted RustDesk server for remote access.
 
-This milestone runs against the production Appwrite project `default-6abc5640003cb361b809` and the Coolify project `Remote Platform`, environment `production`. Existing Appwrite, Coolify, and unrelated application resources must remain untouched unless this specification names them explicitly.
+This milestone runs against the production Appwrite project `6abc5640003cb361b809` and the Coolify project `Remote Platform`, environment `production`. Existing Appwrite, Coolify, and unrelated application resources must remain untouched unless this specification names them explicitly.
 
 ## Delivery Strategy
 
@@ -44,7 +44,7 @@ The existing `rustdesk-server-oss` service remains a separate Coolify service. I
 
 ## Appwrite Project And Bootstrap Identity
 
-The production target is Appwrite project `default-6abc5640003cb361b809`. Credentials belonging to other projects, including `chatboot-production`, must not be reused.
+The production target is Appwrite project `6abc5640003cb361b809`. Credentials belonging to other projects, including `chatboot-production`, must not be reused.
 
 The initial technical administrator is `remote.admin@xpointsolucoes.com.br`. Provisioning generates a cryptographically random password. The plaintext password is never committed, posted to the board, or logged. The local bootstrap artifact is encrypted with Windows DPAPI and stored under `.local/remote-platform/`.
 
