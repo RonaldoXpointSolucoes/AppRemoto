@@ -63,6 +63,7 @@ test('Docker context excludes private files and retains API build inputs', () =>
 test('API production image runs as non-root and exposes a native health check', () => {
   const dockerfile = readRootFile('apps/api/Dockerfile');
 
+  assert.match(dockerfile, /^RUN apk add --no-cache curl$/m);
   assert.match(dockerfile, /^ENV NODE_ENV=production$/m);
   assert.match(dockerfile, /^EXPOSE 3000$/m);
   assert.match(dockerfile, /^HEALTHCHECK .*process\.env\.PORT.*\/health/m);
