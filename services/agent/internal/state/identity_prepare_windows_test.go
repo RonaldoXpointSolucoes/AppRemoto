@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"unsafe"
 
@@ -20,6 +21,7 @@ func TestPrepareIdentityDirectoryCreatesMissingDedicatedDirectory(t *testing.T) 
 	if err := state.PrepareIdentityDirectory(dir); err != nil {
 		t.Fatalf("PrepareIdentityDirectory() error = %v", err)
 	}
+	assertPreparedDirectorySecurity(t, dir)
 	if _, err := state.LoadOrCreateIdentity(filepath.Join(dir, "identity.json")); err != nil {
 		t.Fatalf("LoadOrCreateIdentity() after directory creation error = %v", err)
 	}
@@ -68,8 +70,8 @@ func TestPrepareIdentityDirectoryRejectsNonDedicatedDirectoryWithoutMutation(t *
 	}
 	wantSecurity := directorySecurityString(t, dir)
 
-	if err := state.PrepareIdentityDirectory(dir); err == nil {
-		t.Fatal("PrepareIdentityDirectory() error = nil, want non-dedicated directory rejection")
+	if err := state.PrepareIdentityDirectory(dir); err == nil || !strings.Contains(err.Error(), "identity directory contains unrelated entry") {
+		t.Fatalf("PrepareIdentityDirectory() error = %v, want unrelated entry rejection", err)
 	}
 	gotContent, err := os.ReadFile(contentPath)
 	if err != nil {

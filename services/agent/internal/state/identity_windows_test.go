@@ -235,15 +235,28 @@ func TestPrepareIdentityDirectoryRejectsJunctionParentBeforeCreating(t *testing.
 }
 
 func TestPrepareIdentityDirectoryPinsParentBeforeMutation(t *testing.T) {
-	parent := filepath.Join(t.TempDir(), "parent")
-	if err := os.Mkdir(parent, 0o700); err != nil {
-		t.Fatalf("Mkdir(parent) error = %v", err)
-	}
+	parent := traversalOnlyAncestorFixture(t)
 	target := filepath.Join(parent, "agent-state")
 	renamed := parent + "-renamed"
 	stop := errors.New("stop after parent pin")
 	originalHook := identityDirectoryParentPinnedHook
+	called := false
 	identityDirectoryParentPinnedHook = func() error {
+		called = true
+		pointer, err := windows.UTF16PtrFromString(parent)
+		if err != nil {
+			return err
+		}
+		handle, err := windows.CreateFile(pointer, windows.DELETE,
+			windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil,
+			windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
+		if err == nil {
+			windows.CloseHandle(handle)
+			return errors.New("parent permits delete access while pinned")
+		}
+		if !errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
+			return err
+		}
 		if err := os.Rename(parent, renamed); err == nil {
 			return errors.New("parent replacement succeeded before identity mutation")
 		}
@@ -254,6 +267,9 @@ func TestPrepareIdentityDirectoryPinsParentBeforeMutation(t *testing.T) {
 	if err := PrepareIdentityDirectory(target); !errors.Is(err, stop) {
 		t.Fatalf("PrepareIdentityDirectory() error = %v, want parent-pinned stop", err)
 	}
+	if !called {
+		t.Fatal("parent-pinned hook was not reached")
+	}
 	if _, err := os.Lstat(target); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("identity directory was mutated before pinned-parent hook, Lstat() error = %v", err)
 	}
@@ -262,6 +278,136 @@ func TestPrepareIdentityDirectoryPinsParentBeforeMutation(t *testing.T) {
 	}
 	if _, err := os.Lstat(renamed); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("renamed parent exists, Lstat() error = %v", err)
+	}
+	if err := os.Rename(parent, renamed); err != nil {
+		t.Fatalf("Rename() after releasing parent pin: %v", err)
+	}
+}
+
+// Removing LIST_DIRECTORY and READ_EA must not prevent traversal to a child.
+func traversalOnlyAncestorFixture(t *testing.T) string {
+	t.Helper()
+	ancestor := filepath.Join(t.TempDir(), "ancestor with traversal access")
+	parent := filepath.Join(ancestor, "parent")
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	descriptor, err := windows.GetNamedSecurityInfo(ancestor, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, _, err := descriptor.DACL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := windows.SetNamedSecurityInfo(ancestor, windows.SE_FILE_OBJECT,
+			windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+			nil, nil, original, nil); err != nil {
+			t.Errorf("restore ancestor ACL: %v", err)
+		}
+		runtime.KeepAlive(descriptor)
+	})
+	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentACL, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{
+		allowInheritedFullAccess(user.User.Sid, windows.TRUSTEE_IS_USER),
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := windows.SetNamedSecurityInfo(parent, windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+		nil, nil, parentACL, nil); err != nil {
+		t.Fatal(err)
+	}
+	entry := allowFullAccess(user.User.Sid, windows.TRUSTEE_IS_USER)
+	entry.AccessPermissions = windows.FILE_TRAVERSE | windows.FILE_READ_ATTRIBUTES | windows.SYNCHRONIZE | windows.READ_CONTROL | windows.WRITE_DAC | fileAddSubdirectory
+	acl, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{entry}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := windows.SetNamedSecurityInfo(ancestor, windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+		nil, nil, acl, nil); err != nil {
+		t.Fatal(err)
+	}
+	runtime.KeepAlive(user)
+	return parent
+}
+
+func TestPrepareIdentityDirectoryTraversesWithoutListingAncestors(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		t.Run(map[bool]string{false: "missing", true: "existing"}[existing], func(t *testing.T) {
+			parent := traversalOnlyAncestorFixture(t)
+			dir := filepath.Join(parent, "agent-state")
+			var before os.FileInfo
+			if existing {
+				if err := os.Mkdir(dir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				var err error
+				before, err = os.Stat(dir)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := PrepareIdentityDirectory(dir); err != nil {
+				t.Fatalf("PrepareIdentityDirectory() through traversal-only ancestor: %v", err)
+			}
+			if existing {
+				after, err := os.Stat(dir)
+				if err != nil || !os.SameFile(before, after) {
+					t.Fatalf("existing directory was replaced: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestVerifyRelativeDirectoryLeafRejectsDistinctFileID(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "state")
+	parent, err := pinIdentityParent(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer parent.Close()
+	descriptor, err := newIdentityDirectorySecurityDescriptor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, created, err := openOrCreateIdentityDirectoryRelative(parent.handle(), parent.leaf, descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(handle)
+	if !created {
+		t.Fatal("missing leaf was not reported as newly created")
+	}
+	if err := verifyRelativeDirectoryLeaf(parent.handle(), parent.leaf, handle); err != nil {
+		t.Fatalf("matching directory file ID was rejected: %v", err)
+	}
+	other, _, err := openOrCreateIdentityDirectoryRelative(parent.handle(), "other", descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(other)
+	if err := verifyRelativeDirectoryLeaf(parent.handle(), parent.leaf, other); err == nil ||
+		!strings.Contains(err.Error(), "does not match pinned parent leaf") {
+		t.Fatalf("distinct directory file ID error = %v, want mismatch", err)
+	}
+	reopened, created, err := openOrCreateIdentityDirectoryRelative(parent.handle(), parent.leaf, descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(reopened)
+	if created {
+		t.Fatal("existing leaf was reported as newly created")
+	}
+	if err := verifyRelativeDirectoryLeaf(parent.handle(), parent.leaf, reopened); err != nil {
+		t.Fatalf("reopened directory file ID was rejected: %v", err)
 	}
 }
 

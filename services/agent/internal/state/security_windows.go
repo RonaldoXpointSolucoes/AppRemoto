@@ -22,8 +22,9 @@ const directoryDangerousAccess windows.ACCESS_MASK = windows.GENERIC_ALL | windo
 	windows.FILE_APPEND_DATA | 0x40 // FILE_DELETE_CHILD
 
 const (
-	fileAddSubdirectory = 0x00000004
-	fileOpened          = 0x00000001
+	fileAddSubdirectory     = 0x00000004
+	fileOpened              = 0x00000001
+	directoryTraverseAccess = windows.FILE_TRAVERSE | windows.FILE_READ_ATTRIBUTES | windows.SYNCHRONIZE
 )
 
 var identityDirectoryParentPinnedHook = func() error { return nil }
@@ -151,9 +152,9 @@ func pinIdentityParent(path string) (*pinnedIdentityParent, error) {
 	}
 	parentPath := filepath.Dir(path)
 	components := splitPathComponents(stringsTrimLeadingSeparator(parentPath[len(volume):]))
-	rootAccess := uint32(windows.FILE_GENERIC_READ)
+	rootAccess := uint32(directoryTraverseAccess)
 	if len(components) == 0 {
-		rootAccess |= windows.FILE_LIST_DIRECTORY | windows.READ_CONTROL | fileAddSubdirectory
+		rootAccess |= windows.READ_CONTROL | fileAddSubdirectory
 	}
 	rootPath := volume + string(os.PathSeparator)
 	pointer, err := windows.UTF16PtrFromString(rootPath)
@@ -177,9 +178,9 @@ func pinIdentityParent(path string) (*pinnedIdentityParent, error) {
 	}
 	current := root
 	for index, component := range components {
-		access := uint32(windows.FILE_GENERIC_READ)
+		access := uint32(directoryTraverseAccess)
 		if index == len(components)-1 {
-			access |= windows.FILE_LIST_DIRECTORY | windows.READ_CONTROL | fileAddSubdirectory
+			access |= windows.READ_CONTROL | fileAddSubdirectory
 		}
 		next, err := openRelativeDirectory(current, component, access)
 		if err != nil {
@@ -258,7 +259,7 @@ func openOrCreateIdentityDirectoryRelative(parent windows.Handle, name string, d
 
 func verifyRelativeDirectoryLeaf(parent windows.Handle, name string, expected windows.Handle) error {
 	verification, err := openRelativeDirectory(parent, name,
-		uint32(windows.FILE_GENERIC_READ))
+		uint32(directoryTraverseAccess))
 	if err != nil {
 		return fmt.Errorf("reopen identity directory relative to pinned parent: %w", err)
 	}

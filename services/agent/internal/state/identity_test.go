@@ -261,6 +261,9 @@ func writeIdentityFixture(t *testing.T, path string, content []byte) {
 
 func identityTestDir(t *testing.T) string {
 	t.Helper()
+	if runtime.GOOS != "windows" {
+		t.Skip("identity persistence is supported only on Windows; fail-closed behavior is tested separately")
+	}
 	dir := filepath.Join(t.TempDir(), "state")
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		t.Fatalf("Mkdir() error = %v", err)

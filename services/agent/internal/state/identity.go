@@ -31,6 +31,7 @@ const (
 // PrepareIdentityDirectory creates or hardens one dedicated identity directory.
 // It changes only path; callers remain responsible for choosing a dedicated
 // directory and must call this before LoadOrCreateIdentity.
+// Non-Windows runtimes return errors.ErrUnsupported without touching the filesystem.
 func PrepareIdentityDirectory(path string) error {
 	canonicalPath, err := filepath.Abs(path)
 	if err != nil {
@@ -70,6 +71,7 @@ func isKnownIdentityArtifact(name string) bool {
 // LoadOrCreateIdentity loads an existing identity or atomically creates one.
 // On Windows, the parent must be owned by the current user, SYSTEM, or
 // Administrators and must not grant write or delete access to other principals.
+// Non-Windows runtimes return errors.ErrUnsupported without touching the filesystem.
 func LoadOrCreateIdentity(path string) (Identity, error) {
 	canonicalPath, err := filepath.Abs(path)
 	if err != nil {
