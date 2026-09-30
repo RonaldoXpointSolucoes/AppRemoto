@@ -1,3 +1,5 @@
+//go:build windows
+
 package rustdesk
 
 import (
@@ -5,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +18,10 @@ import (
 type runnerFunc func(context.Context, string, ...string) (CommandResult, error)
 
 func (f runnerFunc) Run(ctx context.Context, executable string, args ...string) (CommandResult, error) {
+	return f(ctx, executable, args...)
+}
+
+func (f runnerFunc) RunTrusted(ctx context.Context, executable string, args ...string) (CommandResult, error) {
 	return f(ctx, executable, args...)
 }
 
@@ -96,9 +104,35 @@ func TestDiscoverUsesValidatedExplicitOverride(t *testing.T) {
 }
 
 func TestNewClientRejectsUnsafeExplicitOverride(t *testing.T) {
-	for _, path := range []string{"RustDesk.exe", filepath.Join(t.TempDir(), "other.exe"), filepath.Join(t.TempDir(), "RustDesk.exe") + "\x00suffix"} {
+	for _, path := range []string{
+		"RustDesk.exe",
+		filepath.Join(t.TempDir(), "other.exe"),
+		filepath.Join(t.TempDir(), "RustDesk.exe") + "\x00suffix",
+		`\\server\share\RustDesk.exe`,
+		`\\?\C:\Program Files\RustDesk\RustDesk.exe`,
+		`\\.\C:\Program Files\RustDesk\RustDesk.exe`,
+	} {
 		if _, err := NewClient(runnerFunc(nil), Options{ExecutablePath: path}); err == nil {
 			t.Fatalf("NewClient(%q) succeeded", path)
+		}
+	}
+}
+
+func TestNewClientUsesKnownFoldersInsteadOfEnvironmentRoots(t *testing.T) {
+	t.Setenv("ProgramFiles", `relative\attacker`)
+	t.Setenv("ProgramFiles(x86)", `\\server\share`)
+	client, err := NewClient(runnerFunc(func(context.Context, string, ...string) (CommandResult, error) {
+		return CommandResult{}, nil
+	}), Options{})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	for _, root := range []string{client.programFiles, client.programFilesX86} {
+		if root == "" {
+			continue
+		}
+		if !filepath.IsAbs(root) || strings.HasPrefix(root, `\\`) || strings.Contains(root, "attacker") {
+			t.Fatalf("untrusted default installation root %q", root)
 		}
 	}
 }
@@ -126,6 +160,9 @@ func TestDiscoverParsesOnlyBoundedValidMetadata(t *testing.T) {
 		{"oversized ID", strings.Repeat("1", 4097), "1.4.3", "RustDesk ID output exceeds limit", strings.Repeat("1", 80)},
 		{"malformed version", "123456789", "development-build", "invalid RustDesk version", "development-build"},
 		{"ambiguous version", "123456789", "1.4.3\n1.4.4", "invalid RustDesk version", "1.4.4"},
+		{"version prefix garbage", "123456789", "garbage 1.4.3", "invalid RustDesk version", "garbage"},
+		{"version suffix garbage", "123456789", "1.4.3 garbage", "invalid RustDesk version", "garbage"},
+		{"version partial token", "123456789", "v1.4.3beta", "invalid RustDesk version", "beta"},
 		{"oversized version", "123456789", strings.Repeat("2", 4097), "RustDesk version output exceeds limit", strings.Repeat("2", 80)},
 	}
 	for _, tt := range tests {
@@ -265,6 +302,20 @@ func TestSetUnattendedPasswordUsesArgvAndRedactsAllFailures(t *testing.T) {
 	}
 }
 
+func TestSetUnattendedPasswordRejectsUserWritableLocalAppDataExecutable(t *testing.T) {
+	localAppData := t.TempDir()
+	path := filepath.Join(localAppData, "Programs", "RustDesk", "RustDesk.exe")
+	writeFakeExecutable(t, path)
+	client, err := NewClient(NewExecRunner(64), Options{LocalAppData: localAppData})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	err = client.SetUnattendedPassword(context.Background(), "Valid-Password-4821!")
+	if err == nil || !strings.Contains(err.Error(), "trusted RustDesk installation") {
+		t.Fatalf("SetUnattendedPassword() error = %v, want trusted installation refusal", err)
+	}
+}
+
 func allZero(value []byte) bool {
 	for _, element := range value {
 		if element != 0 {
@@ -316,6 +367,24 @@ func TestExecRunnerHonorsContextTimeout(t *testing.T) {
 	}
 }
 
+func TestExecRunnerKillsDescendantHoldingPipesOnCancellation(t *testing.T) {
+	pidFile := filepath.Join(t.TempDir(), "child.pid")
+	t.Setenv("GO_WANT_RUSTDESK_HELPER_PROCESS", "1")
+	t.Setenv("RUSTDESK_HELPER_MODE", "spawn-child")
+	t.Setenv("RUSTDESK_CHILD_PID_FILE", pidFile)
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	_, err := NewExecRunner(64).Run(ctx, os.Args[0], "-test.run=TestRustDeskHelperProcess")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Run() error = %v, want deadline exceeded", err)
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("Run() returned after %s, want hard bound below 2s", elapsed)
+	}
+	assertProcessExited(t, pidFile)
+}
+
 func TestRustDeskHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_RUSTDESK_HELPER_PROCESS") != "1" {
 		return
@@ -331,6 +400,31 @@ func TestRustDeskHelperProcess(t *testing.T) {
 		_, _ = os.Stderr.WriteString(strings.Repeat("y", 128))
 	case "sleep":
 		time.Sleep(5 * time.Second)
+	case "spawn-child":
+		cmd := exec.Command(os.Args[0], "-test.run=TestRustDeskHelperProcess")
+		cmd.Env = replaceEnvironment(os.Environ(), "RUSTDESK_HELPER_MODE", "grandchild")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Start(); err != nil {
+			os.Exit(91)
+		}
+		if err := os.WriteFile(os.Getenv("RUSTDESK_CHILD_PID_FILE"), []byte(strconv.Itoa(cmd.Process.Pid)), 0o600); err != nil {
+			os.Exit(92)
+		}
+		time.Sleep(30 * time.Second)
+	case "grandchild":
+		time.Sleep(30 * time.Second)
 	}
 	os.Exit(0)
+}
+
+func replaceEnvironment(environment []string, key, value string) []string {
+	prefix := key + "="
+	result := make([]string, 0, len(environment)+1)
+	for _, entry := range environment {
+		if !strings.HasPrefix(entry, prefix) {
+			result = append(result, entry)
+		}
+	}
+	return append(result, prefix+value)
 }

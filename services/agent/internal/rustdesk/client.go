@@ -22,7 +22,7 @@ const (
 
 var (
 	errRustDeskMissing = errors.New("RustDesk executable not found; install RustDesk in a supported location or configure an explicit executable path")
-	versionPattern     = regexp.MustCompile(`[0-9]+\.[0-9]+(?:\.[0-9]+)?(?:[-+][0-9A-Za-z.-]+)?`)
+	versionPattern     = regexp.MustCompile(`(?i)^(?:rustdesk(?:\.exe)?[ ]+)?([0-9]+\.[0-9]+(?:\.[0-9]+)?(?:[-+][0-9A-Za-z.-]+)?)$`)
 )
 
 type Info struct {
@@ -49,12 +49,26 @@ type Client struct {
 }
 
 func NewClient(runner CommandRunner, options Options) (*Client, error) {
+	return newClient(platformSupported(), runner, options)
+}
+
+func newClient(supported bool, runner CommandRunner, options Options) (*Client, error) {
+	if !supported {
+		return nil, errors.ErrUnsupported
+	}
 	if options.CommandTimeout < 0 {
 		return nil, errors.New("RustDesk command timeout must not be negative")
 	}
 	if options.ExecutablePath != "" {
 		if err := validateExplicitPath(options.ExecutablePath); err != nil {
 			return nil, err
+		}
+	}
+	for _, root := range []string{options.ProgramFiles, options.ProgramFilesX86, options.LocalAppData} {
+		if root != "" {
+			if err := validateLocalAbsolutePath(root); err != nil || validatePlatformLocalPath(root) != nil {
+				return nil, errors.New("RustDesk installation root must be an absolute canonical local path")
+			}
 		}
 	}
 	if runner == nil {
@@ -69,9 +83,11 @@ func NewClient(runner CommandRunner, options Options) (*Client, error) {
 	programFilesX86 := options.ProgramFilesX86
 	localAppData := options.LocalAppData
 	if programFiles == "" && programFilesX86 == "" && localAppData == "" {
-		programFiles = os.Getenv("ProgramFiles")
-		programFilesX86 = os.Getenv("ProgramFiles(x86)")
-		localAppData = os.Getenv("LOCALAPPDATA")
+		var err error
+		programFiles, programFilesX86, localAppData, err = knownInstallRoots()
+		if err != nil {
+			return nil, errors.New("resolve trusted Windows installation roots")
+		}
 	}
 
 	return &Client{
@@ -126,7 +142,11 @@ func (c *Client) SetUnattendedPassword(ctx context.Context, password string) err
 			args[i] = ""
 		}
 	}()
-	result, err := c.run(ctx, "configure RustDesk unattended password", executable, args...)
+	trustedRunner, ok := c.runner.(trustedCommandRunner)
+	if !ok {
+		return errors.New("configure RustDesk unattended password: trusted command execution unavailable")
+	}
+	result, err := c.runWith(ctx, trustedRunner.RunTrusted, "configure RustDesk unattended password", executable, args...)
 	confirmed := bytes.Equal(bytes.TrimSpace(result.Stdout), []byte("Done!")) && len(bytes.TrimSpace(result.Stderr)) == 0
 	clear(result.Stdout)
 	clear(result.Stderr)
@@ -140,10 +160,14 @@ func (c *Client) SetUnattendedPassword(ctx context.Context, password string) err
 }
 
 func (c *Client) run(ctx context.Context, operation, executable string, args ...string) (CommandResult, error) {
+	return c.runWith(ctx, c.runner.Run, operation, executable, args...)
+}
+
+func (c *Client) runWith(ctx context.Context, execute func(context.Context, string, ...string) (CommandResult, error), operation, executable string, args ...string) (CommandResult, error) {
 	commandCtx, cancel := context.WithTimeout(ctx, c.commandTimeout)
 	defer cancel()
 
-	result, err := c.runner.Run(commandCtx, executable, args...)
+	result, err := execute(commandCtx, executable, args...)
 	if contextErr := commandCtx.Err(); contextErr != nil {
 		clear(result.Stdout)
 		clear(result.Stderr)
@@ -152,6 +176,12 @@ func (c *Client) run(ctx context.Context, operation, executable string, args ...
 	if err != nil || result.ExitCode != 0 {
 		clear(result.Stdout)
 		clear(result.Stderr)
+		if errors.Is(err, ErrUntrustedExecutable) {
+			return CommandResult{}, fmt.Errorf("%s: %w", operation, ErrUntrustedExecutable)
+		}
+		if errors.Is(err, errors.ErrUnsupported) {
+			return CommandResult{}, fmt.Errorf("%s: %w", operation, errors.ErrUnsupported)
+		}
 		return CommandResult{}, fmt.Errorf("%s command failed", operation)
 	}
 	return result, nil
@@ -192,12 +222,28 @@ func isRegularFile(path string) bool {
 }
 
 func validateExplicitPath(path string) error {
-	if !filepath.IsAbs(path) || filepath.Clean(path) != path || !strings.EqualFold(filepath.Base(path), "RustDesk.exe") {
+	if validateLocalAbsolutePath(path) != nil || validatePlatformLocalPath(path) != nil || !strings.EqualFold(filepath.Base(path), "RustDesk.exe") {
 		return errors.New("explicit RustDesk executable path must be an absolute clean path ending in RustDesk.exe")
 	}
 	for _, character := range path {
 		if unicode.IsControl(character) {
 			return errors.New("explicit RustDesk executable path contains control characters")
+		}
+	}
+	return nil
+}
+
+func validateLocalAbsolutePath(path string) error {
+	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path || strings.HasPrefix(path, `\\`) {
+		return errors.New("path is not an absolute canonical local path")
+	}
+	volume := filepath.VolumeName(path)
+	if len(volume) != 2 || volume[1] != ':' || !((volume[0] >= 'A' && volume[0] <= 'Z') || (volume[0] >= 'a' && volume[0] <= 'z')) {
+		return errors.New("path is not on a local drive")
+	}
+	for _, character := range path {
+		if unicode.IsControl(character) {
+			return errors.New("path contains control characters")
 		}
 	}
 	return nil
@@ -244,11 +290,11 @@ func parseVersion(output []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	matches := versionPattern.FindAllString(line, 2)
-	if len(matches) != 1 || len(matches[0]) > 64 {
+	matches := versionPattern.FindStringSubmatch(line)
+	if len(matches) != 2 || len(matches[1]) > 64 {
 		return "", errors.New("invalid RustDesk version output")
 	}
-	return matches[0], nil
+	return matches[1], nil
 }
 
 func singleBoundedLine(output []byte, field string) (string, error) {
