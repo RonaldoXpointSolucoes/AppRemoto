@@ -39,12 +39,88 @@ function fixture(attribute: AppwriteAttribute | null = legacy) {
 test('legacy enum updates once, verifies desired state, and second run makes zero writes', async () => {
   const state = fixture();
   assert.deepEqual(await migrateGlobalRole(state.gateway), { outcome: 'updated' });
-  assert.deepEqual(state.events, ['databases', 'collections', 'attributes', 'update', 'status',
+  assert.deepEqual(state.events, ['databases', 'collections', 'attributes', 'status', 'update', 'status',
     'databases', 'collections', 'attributes']);
   assert.equal(state.writes, 1);
   assert.deepEqual(await migrateGlobalRole(state.gateway), { outcome: 'unchanged' });
   assert.equal(state.writes, 1);
-  assert.deepEqual(state.events.slice(-3), ['databases', 'collections', 'attributes']);
+  assert.deepEqual(state.events.slice(-4), ['databases', 'collections', 'attributes', 'status']);
+});
+
+test('desired enum is unchanged only after an available status read', async () => {
+  const state = fixture({ ...legacy, required: false });
+  assert.deepEqual(await migrateGlobalRole(state.gateway), { outcome: 'unchanged' });
+  assert.deepEqual(state.events, ['databases', 'collections', 'attributes', 'status']);
+  assert.equal(state.writes, 0);
+});
+
+test('desired enum waits through processing and reinspects before unchanged', async () => {
+  const state = fixture({ ...legacy, required: false });
+  let reads = 0;
+  state.gateway.getAttributeStatus = async () => { state.events.push('status');
+    return ++reads === 1 ? 'processing' : 'available'; };
+  assert.deepEqual(await migrateGlobalRole(state.gateway, { attempts: 2, delayMs: 0 }), { outcome: 'unchanged' });
+  assert.equal(reads, 2);
+  assert.equal(state.events.filter((event) => event === 'attributes').length, 2);
+  assert.equal(state.writes, 0);
+});
+
+test('processing state that changes shape fails on reinspection with zero writes', async () => {
+  const state = fixture({ ...legacy, required: false });
+  let reads = 0;
+  state.gateway.getAttributeStatus = async () => { state.events.push('status');
+    if (++reads === 1) return 'processing';
+    state.current = { ...legacy, required: false, default: 'super_admin' };
+    return 'available';
+  };
+  await assert.rejects(migrateGlobalRole(state.gateway, { attempts: 2, delayMs: 0 }),
+    /Global role migration failed/);
+  assert.equal(state.events.filter((event) => event === 'attributes').length, 2);
+  assert.equal(state.writes, 0);
+});
+
+test('legacy processing state reinspects before its single update', async () => {
+  const state = fixture();
+  let reads = 0;
+  state.gateway.getAttributeStatus = async () => { state.events.push('status');
+    return ++reads === 1 ? 'processing' : 'available'; };
+  assert.deepEqual(await migrateGlobalRole(state.gateway, { attempts: 2, delayMs: 0 }), { outcome: 'updated' });
+  assert.equal(state.events.filter((event) => event === 'attributes').length, 3);
+  assert.equal(reads, 3);
+  assert.equal(state.writes, 1);
+});
+
+test('desired enum with failed status rejects without writes', async () => {
+  const state = fixture({ ...legacy, required: false });
+  state.status = 'failed';
+  await assert.rejects(migrateGlobalRole(state.gateway), /Global role migration failed/);
+  assert.equal(state.events.filter((event) => event === 'status').length, 1);
+  assert.equal(state.writes, 0);
+});
+
+test('desired enum times out on processing with bounded reads and zero writes', async () => {
+  const state = fixture({ ...legacy, required: false });
+  state.status = 'processing';
+  await assert.rejects(migrateGlobalRole(state.gateway, { attempts: 2, delayMs: 0 }),
+    /Global role migration failed/);
+  assert.equal(state.events.filter((event) => event === 'status').length, 2);
+  assert.equal(state.writes, 0);
+});
+
+test('legacy enum with terminal or stuck status rejects before writing', async () => {
+  for (const status of ['failed', 'deleting', 'stuck']) {
+    const state = fixture();
+    state.status = status;
+    await assert.rejects(migrateGlobalRole(state.gateway), /Global role migration failed/, status);
+    assert.equal(state.events.filter((event) => event === 'status').length, 1, status);
+    assert.equal(state.writes, 0, status);
+  }
+  const pending = fixture();
+  pending.status = 'processing';
+  await assert.rejects(migrateGlobalRole(pending.gateway, { attempts: 2, delayMs: 0 }),
+    /Global role migration failed/);
+  assert.equal(pending.events.filter((event) => event === 'status').length, 2);
+  assert.equal(pending.writes, 0);
 });
 
 test('only the exact database, collection, and target enum states are accepted', async () => {
@@ -106,7 +182,9 @@ test('update failure, timeout, and post-update mismatch return only a generic er
   const failure = fixture();
   failure.gateway.updateGlobalRoleEnum = async () => { throw new Error(privatePayload); };
   const timeout = fixture();
-  timeout.status = 'processing';
+  let timeoutReads = 0;
+  timeout.gateway.getAttributeStatus = async () => { timeout.events.push('status');
+    return ++timeoutReads === 1 ? 'available' : 'processing'; };
   const mismatch = fixture();
   mismatch.gateway.updateGlobalRoleEnum = async () => { mismatch.current = { ...legacy, required: false, elements: ['wrong'] }; };
   for (const state of [failure, timeout, mismatch]) {
@@ -117,7 +195,7 @@ test('update failure, timeout, and post-update mismatch return only a generic er
     });
   }
   assert.equal(timeout.writes, 1);
-  assert.deepEqual(timeout.events.filter((event) => event === 'status'), ['status', 'status']);
+  assert.deepEqual(timeout.events.filter((event) => event === 'status'), ['status', 'status', 'status']);
 });
 
 test('CLI rejects argv and unsafe environment and persists only safe results', async () => {

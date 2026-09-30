@@ -50,11 +50,13 @@ function validWaitOptions(options: WaitOptions): ValidWaitOptions {
   return { attempts, delayMs };
 }
 
-async function waitForAvailability(gateway: GlobalRoleMigrationGateway, options: ValidWaitOptions): Promise<void> {
+async function waitForAvailability(gateway: GlobalRoleMigrationGateway, options: ValidWaitOptions): Promise<boolean> {
+  let sawProcessing = false;
   for (let attempt = 0; attempt < options.attempts; attempt++) {
     const status = await gateway.getAttributeStatus(database, collection, key);
-    if (status === 'available') return;
+    if (status === 'available') return sawProcessing;
     if (status !== 'processing') break;
+    sawProcessing = true;
     if (attempt + 1 < options.attempts) await setTimeout(options.delayMs);
   }
   throw new Error();
@@ -64,7 +66,9 @@ export async function migrateGlobalRole(gateway: GlobalRoleMigrationGateway, opt
   try {
     requireTargetProject(gateway.projectId);
     const waitOptions = validWaitOptions(options);
-    const before = await readTarget(gateway);
+    let before = await readTarget(gateway);
+    const wasProcessing = await waitForAvailability(gateway, waitOptions);
+    if (wasProcessing) before = await readTarget(gateway);
     if (!before.required) return { outcome: 'unchanged' };
     await gateway.updateGlobalRoleEnum();
     await waitForAvailability(gateway, waitOptions);
