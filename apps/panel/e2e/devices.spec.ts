@@ -38,8 +38,11 @@ test('desktop device table composes filters and keyset pagination without sensit
   await expect(page.getByRole('article', { name: device.displayName })).toBeHidden();
   await expect(page.getByRole('table', { name: 'Dispositivos remotos' }).getByText('ONLINE')).toBeVisible();
   await expect(page.locator('body')).not.toContainText(/token|password|192\.168\./i);
-  await page.getByRole('button', { name: 'Carregar mais' }).click();
+  await page.getByRole('button', { name: 'Proxima pagina' }).click();
   await expect.poll(() => queries.some((url) => url.searchParams.get('cursor') === 'cursor-page-2')).toBe(true);
+  await page.getByRole('button', { name: 'Pagina anterior' }).click();
+  await expect.poll(() => queries.filter((url) => !url.searchParams.has('cursor')).length).toBeGreaterThanOrEqual(2);
+  await page.getByRole('button', { name: 'Proxima pagina' }).click();
   await page.getByLabel('Organizacao').selectOption('org-b');
   await page.getByLabel('Status').selectOption('OFFLINE');
   await page.getByLabel('Buscar dispositivos').fill('caixa 02');
@@ -47,6 +50,27 @@ test('desktop device table composes filters and keyset pagination without sensit
   await expect.poll(() => queries.some((url) => url.searchParams.get('organizationId') === 'org-b'
     && url.searchParams.get('status') === 'OFFLINE' && url.searchParams.get('search') === 'caixa 02'
     && !url.searchParams.has('cursor'))).toBe(true);
+  await expect(page.getByRole('button', { name: 'Pagina anterior' })).toBeHidden();
+});
+
+test('failed refresh keeps filters visible and masks the cached online state', async ({ page }) => {
+  await mockAuthenticatedDevices(page);
+  let failRefresh = false;
+  await page.route('**/v1/devices?**', (route) => failRefresh
+    ? route.fulfill({ contentType: 'application/json', status: 503,
+      body: JSON.stringify({ error: { code: 'DEVICES_UNAVAILABLE', message: 'private refresh detail' } }) })
+    : route.fulfill({ contentType: 'application/json', status: 200,
+      body: JSON.stringify({ devices: [device], nextCursor: null }) }));
+  await page.goto('/devices');
+  await expect(page.getByRole('table', { name: 'Dispositivos remotos' }).getByText('ONLINE')).toBeVisible();
+  await page.getByLabel('Status').selectOption('ONLINE');
+  await expect(page.getByRole('table', { name: 'Dispositivos remotos' }).getByText('ONLINE')).toBeVisible();
+  failRefresh = true;
+  await page.getByRole('button', { name: 'Atualizar dispositivos' }).click();
+  await expect(page.getByText('Nao foi possivel atualizar os dispositivos. Os status estao indisponiveis.', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Status')).toHaveValue('ONLINE');
+  await expect(page.getByRole('table', { name: 'Dispositivos remotos' }).getByText('Indisponivel')).toBeVisible();
+  await expect(page.locator('body')).not.toContainText('private refresh detail');
 });
 
 test('mobile records preserve hierarchy and contain long values inside the viewport', async ({ page }) => {

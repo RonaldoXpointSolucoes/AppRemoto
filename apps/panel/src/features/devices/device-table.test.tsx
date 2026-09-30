@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { DeviceView } from '@appremoto/contracts';
 import { describe, expect, it, vi } from 'vitest';
@@ -120,26 +120,61 @@ describe('DeviceDirectory', () => {
     expect(await screen.findAllByText('Recepcao 01')).not.toHaveLength(0);
   });
 
-  it('does not represent cached online state as current while refresh is pending', async () => {
-    let completeRefresh: ((value: { devices: DeviceView[]; nextCursor: null }) => void) | undefined;
+  it('does not represent cached online state as current while refresh is pending or after it fails', async () => {
+    let failRefresh: ((reason: Error) => void) | undefined;
     const getDevices = vi.fn().mockResolvedValueOnce({ devices: [device()], nextCursor: null })
-      .mockImplementationOnce(() => new Promise((resolve) => { completeRefresh = resolve; }));
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { failRefresh = reject; }));
     renderDirectory(service({ getDevices }));
     await screen.findAllByText('ONLINE');
     await userEvent.click(screen.getByRole('button', { name: 'Atualizar dispositivos' }));
     expect(screen.getByRole('button', { name: 'Atualizando dispositivos' })).toBeDisabled();
     expect(screen.queryByText('ONLINE')).not.toBeInTheDocument();
     expect(screen.getAllByText('Atualizando')).not.toHaveLength(0);
-    completeRefresh?.({ devices: [device({ status: 'OFFLINE' })], nextCursor: null });
-    expect(await screen.findAllByText('OFFLINE')).not.toHaveLength(0);
+    await act(async () => failRefresh?.(new Error('private refresh detail')));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Nao foi possivel atualizar os dispositivos.');
+    expect(screen.getByLabelText('Organizacao')).toHaveValue('');
+    expect(screen.getByLabelText('Status')).toHaveValue('');
+    expect(screen.getByLabelText('Buscar dispositivos')).toHaveValue('');
+    expect(screen.queryByText('ONLINE')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Indisponivel')).not.toHaveLength(0);
+    expect(document.body).not.toHaveTextContent('private refresh detail');
   });
 
-  it('composes filters and search, resets the keyset cursor, and retains controls on refresh', async () => {
-    const getDevices = vi.fn().mockResolvedValueOnce({ devices: [device()], nextCursor: 'cursor-page-2' })
-      .mockResolvedValue({ devices: [device({ id: 'device-2' })], nextCursor: null });
+  it('shows one keyset page at a time and returns to a known previous cursor', async () => {
+    const first = device({ id: 'device-page-1', displayName: 'Pagina um' });
+    const second = device({ id: 'device-page-2', displayName: 'Pagina dois' });
+    const getDevices = vi.fn().mockImplementation(async (query) => query.cursor
+      ? { devices: [second], nextCursor: null }
+      : { devices: [first], nextCursor: 'cursor-page-2' });
     renderDirectory(service({ getDevices }));
-    await screen.findAllByText('Recepcao 01');
-    await userEvent.click(screen.getByRole('button', { name: 'Carregar mais' }));
+    await screen.findAllByText('Pagina um');
+    await userEvent.click(screen.getByRole('button', { name: 'Proxima pagina' }));
+    await waitFor(() => expect(getDevices).toHaveBeenCalledWith(expect.objectContaining({ cursor: 'cursor-page-2' })));
+    expect(await screen.findAllByText('Pagina dois')).not.toHaveLength(0);
+    expect(screen.queryByText('Pagina um')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Pagina anterior' }));
+    expect(await screen.findAllByText('Pagina um')).not.toHaveLength(0);
+    expect(screen.queryByText('Pagina dois')).not.toBeInTheDocument();
+    expect(getDevices).toHaveBeenLastCalledWith({ limit: 25 });
+  });
+
+  it('resets pagination when filters compose and ignores an older page response', async () => {
+    let resolveOldPage: ((value: { devices: DeviceView[]; nextCursor: null }) => void) | undefined;
+    let resolveFiltered: ((value: { devices: DeviceView[]; nextCursor: null }) => void) | undefined;
+    const pageOne = device({ id: 'device-page-1', displayName: 'Pagina antiga um' });
+    const pageTwo = device({ id: 'device-page-2', displayName: 'Pagina antiga dois' });
+    const filtered = device({ id: 'device-filtered', organizationId: 'org-b', organizationName: 'Operacao Sul', displayName: 'Caixa filtrado', status: 'OFFLINE' });
+    const getDevices = vi.fn().mockImplementation((query) => {
+      if (query.cursor) return new Promise((resolve) => { resolveOldPage = resolve; });
+      if (query.organizationId === 'org-b' && query.status === 'OFFLINE' && query.search === 'caixa 02') {
+        return new Promise((resolve) => { resolveFiltered = resolve; });
+      }
+      if (query.organizationId === 'org-b') return Promise.resolve({ devices: [], nextCursor: null });
+      return Promise.resolve({ devices: [pageOne], nextCursor: 'cursor-page-2' });
+    });
+    renderDirectory(service({ getDevices }));
+    await screen.findAllByText('Pagina antiga um');
+    await userEvent.click(screen.getByRole('button', { name: 'Proxima pagina' }));
     await waitFor(() => expect(getDevices).toHaveBeenCalledWith(expect.objectContaining({ cursor: 'cursor-page-2' })));
     await userEvent.selectOptions(screen.getByLabelText('Organizacao'), 'org-b');
     await userEvent.selectOptions(screen.getByLabelText('Status'), 'OFFLINE');
@@ -148,15 +183,16 @@ describe('DeviceDirectory', () => {
     await waitFor(() => expect(getDevices).toHaveBeenLastCalledWith({
       organizationId: 'org-b', status: 'OFFLINE', search: 'caixa 02', limit: 25,
     }));
+    expect(screen.queryByText('Pagina antiga um')).not.toBeInTheDocument();
+    expect(screen.queryByText('Pagina antiga dois')).not.toBeInTheDocument();
+    await act(async () => resolveFiltered?.({ devices: [filtered], nextCursor: null }));
+    expect(await screen.findAllByText('Caixa filtrado')).not.toHaveLength(0);
+    await act(async () => resolveOldPage?.({ devices: [pageTwo], nextCursor: null }));
+    expect(screen.getAllByText('Caixa filtrado')).not.toHaveLength(0);
+    expect(screen.queryByText('Pagina antiga dois')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Organizacao')).toHaveValue('org-b');
     expect(screen.getByLabelText('Status')).toHaveValue('OFFLINE');
     expect(screen.getByLabelText('Buscar dispositivos')).toHaveValue('caixa 02');
-    await userEvent.click(screen.getByRole('button', { name: 'Atualizar dispositivos' }));
-    await waitFor(() => expect(getDevices).toHaveBeenLastCalledWith({
-      organizationId: 'org-b', status: 'OFFLINE', search: 'caixa 02', limit: 25,
-    }));
-    expect(screen.getByLabelText('Organizacao')).toHaveValue('org-b');
-    expect(screen.getByLabelText('Status')).toHaveValue('OFFLINE');
-    expect(screen.getByLabelText('Buscar dispositivos')).toHaveValue('caixa 02');
+    expect(screen.queryByRole('button', { name: 'Pagina anterior' })).not.toBeInTheDocument();
   });
 });

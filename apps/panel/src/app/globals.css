@@ -148,11 +148,12 @@ button, a, input, select { outline-offset: 3px; }
 .device-value { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
 .device-status { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 800; }
 .device-status::before { width: 8px; height: 8px; border-radius: 50%; background: currentColor; content: ''; }
-.status-online { color: var(--success); }.status-offline { color: var(--text-muted); }.status-refreshing { color: var(--warning); }
+.status-online { color: var(--success); }.status-offline { color: var(--text-muted); }.status-refreshing { color: var(--warning); }.status-unavailable { color: var(--danger); }
 .device-records { display: none; }
 .device-state { display: grid; min-height: 180px; place-content: center; justify-items: center; gap: 14px; padding: 24px; color: var(--text-muted); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; text-align: center; }
 .device-state p { margin: 0; }.error-state { color: var(--danger); }
-.pagination { display: flex; justify-content: center; padding: 16px 0; }
+.refresh-error { margin: 0 0 12px; padding: 9px 11px; color: var(--danger); background: #fff5f4; border: 1px solid #f0b9b4; border-radius: 6px; }
+.pagination { display: flex; justify-content: center; gap: 10px; padding: 16px 0; }
 
 @media (max-width: 760px) {
   .devices-shell { padding: 16px; }
