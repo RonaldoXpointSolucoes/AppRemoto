@@ -105,6 +105,36 @@ test('legacy index on the same ordered attributes conflicts even with different 
     { resource: 'index', id: 'organizations/u_slug', outcome: 'conflict', reason: 'duplicate_definition' });
 });
 
+test('Appwrite 1.7 zero index lengths and empty orders match omitted defaults', () => {
+  const membership = REMOTE_MANAGEMENT_SCHEMA.collections.find((item) => item.id === 'organization_members')!;
+  const plan = buildProvisionPlan({ database: { id: 'remote_management', name: 'remote_management' }, collections: [{
+    ...membership, indexes: membership.indexes.map((index) => ({
+      ...index, orders: [], lengths: index.attributes.map(() => 0),
+    })),
+  }] });
+  assert.deepEqual(plan.actions.filter((action) => action.resource === 'index' &&
+    action.id.startsWith('organization_members/')).map((action) => action.outcome),
+    ['unchanged', 'unchanged', 'unchanged']);
+});
+
+test('real index differences still conflict after default normalization', () => {
+  const membership = REMOTE_MANAGEMENT_SCHEMA.collections.find((item) => item.id === 'organization_members')!;
+  const index = membership.indexes[0]!;
+  const variants = [
+    { ...index, lengths: [8, 0], orders: [] },
+    { ...index, lengths: [0, 0], orders: ['DESC', 'ASC'] },
+    { ...index, type: 'key', lengths: [0, 0], orders: [] },
+    { ...index, attributes: ['user_id', 'organization_id'], lengths: [0, 0], orders: [] },
+  ];
+  for (const variant of variants) {
+    const plan = buildProvisionPlan({ database: { id: 'remote_management', name: 'remote_management' }, collections: [{
+      ...membership, indexes: [variant],
+    }] });
+    assert.deepEqual(plan.actions.find((action) => action.id === 'organization_members/u_organization_id_user_id'),
+      { resource: 'index', id: 'organization_members/u_organization_id_user_id', outcome: 'conflict', reason: 'definition_mismatch' });
+  }
+});
+
 test('optional string with an existing default conflicts with the declared absence of a default', async () => {
   const action = await inspectSingleAttribute('devices', {
     key: 'agent_version', type: 'string', size: 64, required: false,

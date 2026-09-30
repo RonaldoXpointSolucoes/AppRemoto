@@ -66,7 +66,7 @@ function sameIndexAttributes(actual: InventoryIndex, desired: SchemaIndex): bool
 function sameIndex(actual: InventoryIndex, desired: SchemaIndex): boolean {
   return actual.type === desired.type && sameIndexAttributes(actual, desired) &&
     (actual.orders === undefined || actual.orders.every((order) => order.toUpperCase() === 'ASC')) &&
-    (actual.lengths === undefined || actual.lengths.every((length) => length === null));
+    (actual.lengths === undefined || actual.lengths.every((length) => length === null || length === 0));
 }
 
 function action(resource: ProvisionAction['resource'], id: string, outcome: ProvisionAction['outcome'], reason?: ProvisionAction['reason']): ProvisionAction {

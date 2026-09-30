@@ -70,8 +70,9 @@ test('SDK failure cannot expose raw response or key in serialized error', async 
   });
 });
 
-test('apply then inspect Appwrite 1.7 integer response defaults converges without writes', async (t) => {
+test('full Appwrite 1.7 post-apply inventory plans 90 unchanged resources and zero writes', async (t) => {
   const fixture = JSON.parse(await readFile(new URL('./testing/appwrite-1.7-numeric-attributes.json', import.meta.url), 'utf8'));
+  const indexFixture = JSON.parse(await readFile(new URL('./testing/appwrite-1.7-indexes.json', import.meta.url), 'utf8'));
   const created = new FakeGateway();
   await applyProvisionPlan(created, buildProvisionPlan(await inspectSchema(created)));
   let postCount = 0;
@@ -88,13 +89,17 @@ test('apply then inspect Appwrite 1.7 integer response defaults converges withou
     }
     if (url.pathname.endsWith('/indexes')) {
       const indexes = await created.listIndexes('remote_management', collection);
-      return { total: indexes.length, indexes };
+      return { total: indexes.length, indexes: indexes.map((index) => ({
+        ...indexFixture.indexes[index.attributes.length === 1 ? 0 : 1],
+        key: index.key, type: index.type, attributes: index.attributes,
+      })) };
     }
     return { status: 'available' };
   });
   const gateway = createAppwriteGateway(environment);
   const plan = buildProvisionPlan(await inspectSchema(gateway));
   assert.equal(plan.actions.length, 90);
+  assert.equal(plan.actions.filter((action) => action.resource === 'index').length, 23);
   assert.deepEqual(plan.actions.filter((action) => action.outcome !== 'unchanged'), []);
   await applyProvisionPlan(gateway, plan);
   assert.equal(postCount, 0);
