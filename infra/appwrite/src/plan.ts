@@ -19,10 +19,32 @@ function sameSet(left: readonly string[], right: readonly string[]): boolean {
 }
 
 function sameAttribute(actual: InventoryAttribute, desired: SchemaAttribute): boolean {
-  if (actual.type !== desired.type || actual.required !== desired.required || actual.array === true) return false;
-  if (desired.type === 'string') return actual.size === desired.size;
-  if (desired.type === 'enum') return actual.elements !== undefined && sameSet(actual.elements, desired.elements);
+  if (actual.type !== desired.type || actual.required !== desired.required) return false;
+  if ((actual.array ?? false) !== (desired.array ?? false)) return false;
+  if ((actual.default ?? null) !== (desired.default ?? null)) return false;
+  if (desired.type === 'string') {
+    return actual.size === desired.size &&
+      (actual.encrypt ?? false) === (desired.encrypt ?? false) &&
+      sameFormat(actual.format, desired.format, desired.type);
+  }
+  if (desired.type === 'enum') {
+    return actual.elements !== undefined && sameSet(actual.elements, desired.elements) &&
+      sameFormat(actual.format, desired.format, desired.type);
+  }
+  if (desired.type === 'integer' || desired.type === 'float') {
+    return (actual.min ?? null) === (desired.min ?? null) &&
+      (actual.max ?? null) === (desired.max ?? null);
+  }
+  if (desired.type === 'datetime') return sameFormat(actual.format, desired.format, desired.type);
   return true;
+}
+
+function sameFormat(actual: string | null | undefined, desired: string | null | undefined, type: string): boolean {
+  const normalize = (format: string | null | undefined) => {
+    const value = format?.toLowerCase() ?? '';
+    return value === type || value === '' ? null : value;
+  };
+  return normalize(actual) === normalize(desired);
 }
 
 function sameIndexAttributes(actual: InventoryIndex, desired: SchemaIndex): boolean {

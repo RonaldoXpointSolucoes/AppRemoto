@@ -1,7 +1,12 @@
-export type SchemaAttribute =
-  | { readonly key: string; readonly type: 'string'; readonly size: number; readonly required: boolean }
-  | { readonly key: string; readonly type: 'enum'; readonly elements: readonly string[]; readonly required: boolean }
-  | { readonly key: string; readonly type: 'integer' | 'boolean' | 'datetime'; readonly required: boolean };
+type AttributeBase = { readonly key: string; readonly required: boolean; readonly array?: boolean };
+
+export type SchemaAttribute = AttributeBase & (
+  | { readonly type: 'string'; readonly size: number; readonly default?: string | null; readonly encrypt?: boolean; readonly format?: string | null }
+  | { readonly type: 'enum'; readonly elements: readonly string[]; readonly default?: string | null; readonly format?: string | null }
+  | { readonly type: 'integer' | 'float'; readonly min?: number | null; readonly max?: number | null; readonly default?: number | null }
+  | { readonly type: 'boolean'; readonly default?: boolean | null }
+  | { readonly type: 'datetime'; readonly default?: string | null; readonly format?: string | null }
+);
 
 export type SchemaIndex = {
   readonly id: string;

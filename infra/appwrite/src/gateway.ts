@@ -12,6 +12,11 @@ export type AppwriteAttribute = {
   readonly size?: number;
   readonly elements?: readonly string[];
   readonly array?: boolean;
+  readonly default?: string | number | boolean | null;
+  readonly min?: number | null;
+  readonly max?: number | null;
+  readonly encrypt?: boolean;
+  readonly format?: string | null;
 };
 export type AppwriteIndex = {
   readonly key: string;

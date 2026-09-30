@@ -4,9 +4,21 @@ import { REMOTE_MANAGEMENT_SCHEMA } from './schema.ts';
 import { inspectSchema } from './inspect.ts';
 import { buildProvisionPlan } from './plan.ts';
 import { redactReport } from './redact.ts';
-import type { AppwriteGateway } from './gateway.ts';
+import type { AppwriteAttribute, AppwriteGateway } from './gateway.ts';
+import type { RemoteManagementSchema } from './schema.ts';
 
 const organizations = REMOTE_MANAGEMENT_SCHEMA.collections[0]!;
+
+async function inspectSingleAttribute(collectionId: string, attribute: AppwriteAttribute, desired: RemoteManagementSchema = REMOTE_MANAGEMENT_SCHEMA) {
+  const gateway: AppwriteGateway = {
+    async listDatabases() { return [{ $id: desired.database.id, name: desired.database.name }]; },
+    async listCollections() { return [{ $id: collectionId, name: collectionId, permissions: [], documentSecurity: false }]; },
+    async listAttributes() { return [attribute]; },
+    async listIndexes() { return []; },
+  };
+  return buildProvisionPlan(await inspectSchema(gateway, desired), desired).actions.find(
+    (action) => action.id === `${collectionId}/${attribute.key}`);
+}
 
 test('empty project plans each desired resource for creation in dependency order', () => {
   const plan = buildProvisionPlan({ database: null, collections: [] });
@@ -91,6 +103,76 @@ test('legacy index on the same ordered attributes conflicts even with different 
   });
   assert.deepEqual(plan.actions.find((action) => action.id === 'organizations/u_slug'),
     { resource: 'index', id: 'organizations/u_slug', outcome: 'conflict', reason: 'duplicate_definition' });
+});
+
+test('optional string with an existing default conflicts with the declared absence of a default', async () => {
+  const action = await inspectSingleAttribute('devices', {
+    key: 'agent_version', type: 'string', size: 64, required: false,
+    array: false, default: 'legacy',
+  });
+  assert.deepEqual(action, {
+    resource: 'attribute', id: 'devices/agent_version', outcome: 'conflict', reason: 'definition_mismatch',
+  });
+});
+
+test('numeric bounds and string restrictions conflict when undeclared in the schema', async () => {
+  const integer = await inspectSingleAttribute('device_credentials', {
+    key: 'key_version', type: 'integer', required: true, min: 0, max: 10,
+  });
+  const encrypted = await inspectSingleAttribute('devices', {
+    key: 'agent_version', type: 'string', size: 64, required: false, encrypt: true,
+  });
+  const formatted = await inspectSingleAttribute('devices', {
+    key: 'agent_version', type: 'string', size: 64, required: false, format: 'email',
+  });
+  for (const action of [integer, encrypted, formatted]) {
+    assert.equal(action?.outcome, 'conflict');
+    assert.equal(action?.reason, 'definition_mismatch');
+  }
+});
+
+test('null defaults and bounds, false flags, and intrinsic formats normalize to unchanged', async () => {
+  const optional = await inspectSingleAttribute('devices', {
+    key: 'agent_version', type: 'string', size: 64, required: false,
+    default: null, array: false, encrypt: false, format: 'string',
+  });
+  const integer = await inspectSingleAttribute('device_credentials', {
+    key: 'key_version', type: 'int', required: true, default: null, min: null, max: null, array: false,
+  });
+  assert.equal(optional?.outcome, 'unchanged');
+  assert.equal(integer?.outcome, 'unchanged');
+});
+
+test('declared default and float bounds require exact values after normalization', async () => {
+  const devices = REMOTE_MANAGEMENT_SCHEMA.collections.find((item) => item.id === 'devices')!;
+  const withDefault: RemoteManagementSchema = {
+    ...REMOTE_MANAGEMENT_SCHEMA,
+    collections: [{ ...devices, attributes: [
+      { key: 'agent_version', type: 'string', size: 64, required: false, default: 'v1' },
+    ], indexes: [] }],
+  };
+  const matchedDefault = await inspectSingleAttribute('devices', {
+    key: 'agent_version', type: 'string', size: 64, required: false, default: 'v1',
+  }, withDefault);
+  const changedDefault = await inspectSingleAttribute('devices', {
+    key: 'agent_version', type: 'string', size: 64, required: false, default: 'v2',
+  }, withDefault);
+  const withFloat: RemoteManagementSchema = {
+    ...REMOTE_MANAGEMENT_SCHEMA,
+    collections: [{ ...organizations, attributes: [
+      { key: 'ratio', type: 'float', required: false, min: 0.5, max: 2.5, default: 1 },
+    ], indexes: [] }],
+  };
+  const matchedFloat = await inspectSingleAttribute('organizations', {
+    key: 'ratio', type: 'float', required: false, min: 0.5, max: 2.5, default: 1,
+  }, withFloat);
+  const changedFloat = await inspectSingleAttribute('organizations', {
+    key: 'ratio', type: 'float', required: false, min: 0, max: 2.5, default: 1,
+  }, withFloat);
+  assert.equal(matchedDefault?.outcome, 'unchanged');
+  assert.equal(changedDefault?.outcome, 'conflict');
+  assert.equal(matchedFloat?.outcome, 'unchanged');
+  assert.equal(changedFloat?.outcome, 'conflict');
 });
 
 test('inspect normalizes SDK aliases and unordered permissions and enum values', async () => {

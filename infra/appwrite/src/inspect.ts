@@ -1,8 +1,8 @@
-import type { AppwriteGateway } from './gateway.ts';
+import type { AppwriteAttribute, AppwriteGateway } from './gateway.ts';
 import { REMOTE_MANAGEMENT_SCHEMA } from './schema.ts';
 import type { RemoteManagementSchema } from './schema.ts';
 
-export type InventoryAttribute = { readonly key: string; readonly type: string; readonly required: boolean; readonly size?: number; readonly elements?: readonly string[]; readonly array?: boolean };
+export type InventoryAttribute = AppwriteAttribute;
 export type InventoryIndex = { readonly id: string; readonly type: string; readonly attributes: readonly string[]; readonly orders?: readonly string[]; readonly lengths?: readonly (number | null)[] };
 export type InventoryCollection = {
   readonly id: string; readonly name: string; readonly permissions: readonly string[];
@@ -44,6 +44,11 @@ export async function inspectSchema(gateway: AppwriteGateway, desired: RemoteMan
         ...(attribute.size === undefined ? {} : { size: attribute.size }),
         ...(attribute.elements === undefined ? {} : { elements: [...attribute.elements] }),
         ...(attribute.array === undefined ? {} : { array: attribute.array }),
+        ...(attribute.default === undefined ? {} : { default: attribute.default }),
+        ...(attribute.min === undefined ? {} : { min: attribute.min }),
+        ...(attribute.max === undefined ? {} : { max: attribute.max }),
+        ...(attribute.encrypt === undefined ? {} : { encrypt: attribute.encrypt }),
+        ...(attribute.format === undefined ? {} : { format: attribute.format }),
       })),
       indexes: indexes.map((index) => ({
         id: index.key, type: index.type.toLowerCase(), attributes: [...index.attributes],
