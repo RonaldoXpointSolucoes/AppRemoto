@@ -1,0 +1,124 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { REMOTE_MANAGEMENT_SCHEMA } from './schema.ts';
+import { inspectSchema } from './inspect.ts';
+import { buildProvisionPlan } from './plan.ts';
+import { redactReport } from './redact.ts';
+import type { AppwriteGateway } from './gateway.ts';
+
+const organizations = REMOTE_MANAGEMENT_SCHEMA.collections[0]!;
+
+test('empty project plans each desired resource for creation in dependency order', () => {
+  const plan = buildProvisionPlan({ database: null, collections: [] });
+  assert.deepEqual(plan.actions.slice(0, 6).map(({ resource, id, outcome }) => [resource, id, outcome]), [
+    ['database', 'remote_management', 'create'],
+    ['collection', 'organizations', 'create'],
+    ['attribute', 'organizations/name', 'create'],
+    ['attribute', 'organizations/slug', 'create'],
+    ['attribute', 'organizations/active', 'create'],
+    ['index', 'organizations/u_slug', 'create'],
+  ]);
+  assert.equal(plan.actions.every((action) => action.outcome === 'create'), true);
+});
+
+test('enum element order is immaterial but index attribute order is significant', () => {
+  const sessions = REMOTE_MANAGEMENT_SCHEMA.collections.find((item) => item.id === 'connection_sessions')!;
+  const members = REMOTE_MANAGEMENT_SCHEMA.collections.find((item) => item.id === 'organization_members')!;
+  const plan = buildProvisionPlan({
+    database: { id: 'remote_management', name: 'remote_management' },
+    collections: [{ ...sessions, attributes: sessions.attributes.map((attribute) =>
+      attribute.key === 'status' && attribute.type === 'enum'
+        ? { ...attribute, elements: [...attribute.elements].reverse() } : attribute),
+    }, { ...members, indexes: members.indexes.map((index) => index.id === 'u_organization_id_user_id'
+      ? { ...index, attributes: [...index.attributes].reverse() } : index) }],
+  }, REMOTE_MANAGEMENT_SCHEMA);
+  assert.equal(plan.actions.find((action) => action.id === 'connection_sessions/status')?.outcome, 'unchanged');
+  assert.deepEqual(plan.actions.find((action) => action.id === 'organization_members/u_organization_id_user_id'),
+    { resource: 'index', id: 'organization_members/u_organization_id_user_id', outcome: 'conflict', reason: 'definition_mismatch' });
+});
+
+test('compatible partial inventory is unchanged where present and ignores unrelated resources', () => {
+  const plan = buildProvisionPlan({
+    database: { id: 'remote_management', name: 'remote_management' },
+    collections: [{
+      id: 'organizations', name: 'organizations', permissions: [], documentSecurity: false,
+      attributes: [{ key: 'name', type: 'string', size: 128, required: true }], indexes: [],
+    }, {
+      id: 'unrelated', name: 'unrelated', permissions: [], documentSecurity: false,
+      attributes: [], indexes: [],
+    }],
+  }, REMOTE_MANAGEMENT_SCHEMA);
+  assert.deepEqual(plan.actions.slice(0, 6).map(({ outcome }) => outcome),
+    ['unchanged', 'unchanged', 'unchanged', 'create', 'create', 'create']);
+  assert.equal(plan.actions.some((action) => action.id.includes('unrelated')), false);
+});
+
+test('incompatible attribute produces a conflict without a replacement action', () => {
+  const plan = buildProvisionPlan({
+    database: { id: 'remote_management', name: 'remote_management' },
+    collections: [{ ...organizations, attributes: [
+      { key: 'name', type: 'string', size: 64, required: true },
+      ...organizations.attributes.slice(1),
+    ] }],
+  }, REMOTE_MANAGEMENT_SCHEMA);
+  assert.deepEqual(plan.actions.filter((action) => action.id === 'organizations/name'), [
+    { resource: 'attribute', id: 'organizations/name', outcome: 'conflict', reason: 'definition_mismatch' },
+  ]);
+});
+
+test('duplicate index signature under another ID conflicts; ordered index keys matter', () => {
+  const membership = REMOTE_MANAGEMENT_SCHEMA.collections.find((item) => item.id === 'organization_members')!;
+  const plan = buildProvisionPlan({
+    database: { id: 'remote_management', name: 'remote_management' },
+    collections: [{ ...membership, indexes: [
+      { id: 'other_unique', type: 'unique', attributes: ['organization_id', 'user_id'] },
+      { id: 'q_organization_id', type: 'key', attributes: ['user_id'] },
+    ] }],
+  }, REMOTE_MANAGEMENT_SCHEMA);
+  assert.deepEqual(plan.actions.filter((action) => action.id.startsWith('organization_members/') && action.resource === 'index'), [
+    { resource: 'index', id: 'organization_members/u_organization_id_user_id', outcome: 'conflict', reason: 'duplicate_definition' },
+    { resource: 'index', id: 'organization_members/q_organization_id', outcome: 'conflict', reason: 'definition_mismatch' },
+    { resource: 'index', id: 'organization_members/q_user_id', outcome: 'conflict', reason: 'duplicate_definition' },
+  ]);
+});
+
+test('legacy index on the same ordered attributes conflicts even with different options', () => {
+  const plan = buildProvisionPlan({
+    database: { id: 'remote_management', name: 'remote_management' },
+    collections: [{ ...organizations, indexes: [
+      { id: 'legacy_slug', type: 'key', attributes: ['slug'], orders: ['DESC'] },
+    ] }],
+  });
+  assert.deepEqual(plan.actions.find((action) => action.id === 'organizations/u_slug'),
+    { resource: 'index', id: 'organizations/u_slug', outcome: 'conflict', reason: 'duplicate_definition' });
+});
+
+test('inspect normalizes SDK aliases and unordered permissions and enum values', async () => {
+  const gateway: AppwriteGateway = {
+    async listDatabases() { return [{ $id: 'remote_management', name: 'remote_management' }]; },
+    async listCollections() { return [{ $id: 'organizations', name: 'organizations', permissions: [], documentSecurity: false }]; },
+    async listAttributes() { return [
+      { key: 'name', type: 'string', size: 128, required: true },
+      { key: 'slug', type: 'string', size: 64, required: true },
+      { key: 'active', type: 'bool', required: true },
+    ]; },
+    async listIndexes() { return [{ key: 'u_slug', type: 'unique', attributes: ['slug'] }]; },
+  };
+  const actual = await inspectSchema(gateway, REMOTE_MANAGEMENT_SCHEMA);
+  const plan = buildProvisionPlan(actual, REMOTE_MANAGEMENT_SCHEMA);
+  assert.deepEqual(plan.actions.slice(0, 6).map(({ outcome }) => outcome),
+    ['unchanged', 'unchanged', 'unchanged', 'unchanged', 'unchanged', 'unchanged']);
+});
+
+test('redacted report removes nested sensitive values while retaining resource IDs and outcomes', () => {
+  const report = redactReport({
+    resourceId: 'device_tokens/token_hash', outcome: 'conflict', stage: 'testing',
+    key: 'raw-key', token: 'raw-token', nested: [{ password_ciphertext: 'cipher', nonce: 'n', tag: 't',
+      credentialHash: 'digest', appwriteSecret: 'secret' }],
+  });
+  assert.deepEqual(report, {
+    resourceId: 'device_tokens/token_hash', outcome: 'conflict', stage: 'testing',
+    key: '[REDACTED]', token: '[REDACTED]', nested: [{ password_ciphertext: '[REDACTED]',
+      nonce: '[REDACTED]', tag: '[REDACTED]', credentialHash: '[REDACTED]', appwriteSecret: '[REDACTED]' }],
+  });
+});

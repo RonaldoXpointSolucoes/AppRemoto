@@ -7,7 +7,7 @@
     ".": "./src/schema.ts"
   },
   "scripts": {
-    "test": "node --experimental-strip-types --test src/schema.test.ts",
+    "test": "node --experimental-strip-types --test src/schema.test.ts src/plan.test.ts",
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "schema:check": "node --experimental-strip-types src/generate-schema.ts --check",
     "schema:write": "node --experimental-strip-types src/generate-schema.ts --write"
