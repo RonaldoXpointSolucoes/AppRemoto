@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { Writable } from 'node:stream';
 
 import { buildApp } from '../app.ts';
 import type { TechnicianServices } from '../plugins/technician-auth.ts';
@@ -27,6 +28,17 @@ async function request(path: string, dependencies: TechnicianServices, headers: 
   const app = buildApp({ logger: false }, dependencies);
   try { return await app.inject({ method: 'GET', url: path, headers }); }
   finally { await app.close(); }
+}
+
+async function requestWithAudit(path: string, dependencies: TechnicianServices,
+  headers: Record<string, string | string[]> = {}) {
+  const lines: string[] = [];
+  const stream = new Writable({ write(chunk, _encoding, callback) { lines.push(chunk.toString()); callback(); } });
+  const app = buildApp({ logger: { level: 'warn', stream } }, dependencies);
+  try {
+    const response = await app.inject({ method: 'GET', url: path, headers });
+    return { response, logs: lines.map((line) => JSON.parse(line)) as Record<string, unknown>[] };
+  } finally { await app.close(); }
 }
 
 test('super admin sees only active organizations with safe projections', async () => {
@@ -147,6 +159,36 @@ test('verifier outage returns a generic recoverable error', async () => {
   assert.equal(response.statusCode, 503);
   assert.deepEqual(response.json(), { error: { code: 'AUTHORIZATION_UNAVAILABLE', message: 'Access unavailable' } });
   assert.ok(!response.body.includes('upstream timeout details'));
+});
+
+test('technician auth failures emit fixed redacted audit reasons without inventing organization context', async () => {
+  const cases: Array<{ expected: string; dependencies: TechnicianServices;
+    headers: Record<string, string | string[]> }> = [
+    { expected: 'credential_missing_or_malformed', dependencies: services(), headers: {} },
+    { expected: 'jwt_rejected', dependencies: services(), headers: { authorization: 'Bearer expired.jwt.value' } },
+    { expected: 'jwt_verifier_unavailable', dependencies: services({
+      jwtVerifier: { verify: async () => { throw new Error('secret upstream detail'); } },
+    }), headers: { authorization: 'Bearer valid.jwt.value' } },
+    { expected: 'profile_disabled_or_missing', dependencies: services({ technicians: {
+      findByUserId: async () => null, listMemberships: async () => [],
+    } }), headers: { authorization: 'Bearer valid.jwt.value' } },
+    { expected: 'authorization_store_unavailable', dependencies: services({ technicians: {
+      findByUserId: async () => { throw new Error('secret database detail'); }, listMemberships: async () => [],
+    } }), headers: { authorization: 'Bearer valid.jwt.value' } },
+  ];
+  for (const item of cases) {
+    const { logs } = await requestWithAudit('/v1/me', item.dependencies, item.headers);
+    const audit = logs.find((line) => line.authAudit) as { authAudit: Record<string, unknown> } | undefined;
+    assert.deepEqual(audit?.authAudit, {
+      action: 'technician.authenticate', result: 'failure', reason: item.expected, scope: 'unscoped',
+    });
+    const serialized = JSON.stringify(logs);
+    assert.ok(!serialized.includes('valid.jwt.value'));
+    assert.ok(!serialized.includes('expired.jwt.value'));
+    assert.ok(!serialized.includes('secret upstream detail'));
+    assert.ok(!serialized.includes('secret database detail'));
+    assert.ok(!serialized.includes('organizationId'));
+  }
 });
 
 test('technician routes reject unknown query fields', async () => {

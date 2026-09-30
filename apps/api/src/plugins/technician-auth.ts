@@ -48,6 +48,15 @@ const unauthenticated = { error: { code: 'UNAUTHENTICATED', message: 'Authentica
 const disabled = { error: { code: 'TECHNICIAN_DISABLED', message: 'Access denied' } };
 const unavailable = { error: { code: 'AUTHORIZATION_UNAVAILABLE', message: 'Access unavailable' } };
 
+type TechnicianAuthFailure = 'credential_missing_or_malformed' | 'jwt_rejected' |
+  'jwt_verifier_unavailable' | 'profile_disabled_or_missing' | 'authorization_store_unavailable';
+
+function auditFailure(request: FastifyRequest, reason: TechnicianAuthFailure): void {
+  request.log.warn({ authAudit: {
+    action: 'technician.authenticate', result: 'failure', reason, scope: 'unscoped',
+  } }, 'Technician authentication failed');
+}
+
 function jwtFromRequest(request: FastifyRequest, projectId: string): string | null {
   const authorizationValues: string[] = [];
   const cookieName = `a_session_${projectId}`;
@@ -77,16 +86,28 @@ export function registerTechnicianAuth(app: FastifyInstance, services: Technicia
   app.decorateRequest('technician', null);
   return async (request: FastifyRequest, reply: FastifyReply) => {
     const jwt = jwtFromRequest(request, services.projectId);
-    if (!jwt) return reply.code(401).send(unauthenticated);
+    if (!jwt) {
+      auditFailure(request, 'credential_missing_or_malformed');
+      return reply.code(401).send(unauthenticated);
+    }
 
     let identity: { userId: string } | null;
     try { identity = await services.jwtVerifier.verify(jwt); }
-    catch { return reply.code(503).send(unavailable); }
-    if (!identity?.userId) return reply.code(401).send(unauthenticated);
+    catch {
+      auditFailure(request, 'jwt_verifier_unavailable');
+      return reply.code(503).send(unavailable);
+    }
+    if (!identity?.userId) {
+      auditFailure(request, 'jwt_rejected');
+      return reply.code(401).send(unauthenticated);
+    }
 
     try {
       const profile = await services.technicians.findByUserId(identity.userId);
-      if (!profile?.active || profile.userId !== identity.userId) return reply.code(403).send(disabled);
+      if (!profile?.active || profile.userId !== identity.userId) {
+        auditFailure(request, 'profile_disabled_or_missing');
+        return reply.code(403).send(disabled);
+      }
 
       const activeOrganizations = (await services.organizations.listActive()).filter((organization) => organization.active);
       const memberships = profile.globalRole === 'super_admin' ? [] : await services.technicians.listMemberships(identity.userId);
@@ -107,6 +128,7 @@ export function registerTechnicianAuth(app: FastifyInstance, services: Technicia
       request.technician = { userId: identity.userId, displayName: profile.displayName,
         globalRole: profile.globalRole ?? null, authorization, organizations };
     } catch {
+      auditFailure(request, 'authorization_store_unavailable');
       return reply.code(503).send(unavailable);
     }
   };
