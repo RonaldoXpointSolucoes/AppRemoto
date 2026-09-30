@@ -11,7 +11,7 @@ import { FakeGateway } from './testing/fake-gateway.ts';
 import type { AppwriteAttribute } from './gateway.ts';
 import type { RemoteManagementSchema } from './schema.ts';
 
-const environment = { APPWRITE_ENDPOINT: 'https://example.invalid/v1',
+const environment = { APPWRITE_ENDPOINT: 'https://appwrite.xpointsolucoes.com.br/v1',
   APPWRITE_PROJECT_ID: '6abc5640003cb361b809', APPWRITE_API_KEY: 'fake-key-never-real' };
 
 test('environment rejects wrong project, absent key, unsafe endpoint without exposing values', () => {
@@ -22,6 +22,34 @@ test('environment rejects wrong project, absent key, unsafe endpoint without exp
       assert.equal(String(error).includes(environment.APPWRITE_API_KEY), false);
       return true;
     });
+  }
+});
+
+test('endpoint guard rejects non-target URLs before configuring the SDK client', (t) => {
+  t.mock.method(Client.prototype, 'setEndpoint', () => { assert.fail('SDK client must not be configured'); });
+  const endpoints = [
+    'https://unrelated.example/v1',
+    'https://appwrite.xpointsolucoes.com.br/other/v1',
+    'http://appwrite.xpointsolucoes.com.br/v1',
+    'https://user:password@appwrite.xpointsolucoes.com.br/v1',
+    'https://@appwrite.xpointsolucoes.com.br/v1',
+    'https://appwrite.xpointsolucoes.com.br/v1?token=private',
+    'https://appwrite.xpointsolucoes.com.br/v1?',
+    'https://appwrite.xpointsolucoes.com.br/v1#private',
+    'https://appwrite.xpointsolucoes.com.br/v1#',
+    'https://appwrite.xpointsolucoes.com.br:8443/v1',
+  ];
+  for (const endpoint of endpoints) {
+    assert.throws(() => createAppwriteGateway({ ...environment, APPWRITE_ENDPOINT: endpoint }),
+      /APPWRITE_ENDPOINT/);
+  }
+});
+
+test('endpoint guard accepts target path with trailing slash and default HTTPS port', () => {
+  for (const endpoint of [environment.APPWRITE_ENDPOINT,
+    'https://appwrite.xpointsolucoes.com.br/v1/',
+    'https://appwrite.xpointsolucoes.com.br:443/v1']) {
+    assert.equal(readAppwriteEnvironment({ ...environment, APPWRITE_ENDPOINT: endpoint }).endpoint, endpoint);
   }
 });
 

@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { runCli } from './cli.ts';
 import { FakeGateway } from './testing/fake-gateway.ts';
 import { redactReport } from './redact.ts';
 
-const env = { APPWRITE_ENDPOINT: 'https://example.invalid/v1', APPWRITE_PROJECT_ID: '6abc5640003cb361b809', APPWRITE_API_KEY: 'FAKE_SECRET_FOR_CLI' };
+const env = { APPWRITE_ENDPOINT: 'https://appwrite.xpointsolucoes.com.br/v1', APPWRITE_PROJECT_ID: '6abc5640003cb361b809', APPWRITE_API_KEY: 'FAKE_SECRET_FOR_CLI' };
 
 test('inspect and plan are read-only; CLI apply converges with fake gateway and redacted reports', async () => {
   const gateway = new FakeGateway();
@@ -53,6 +57,42 @@ test('apply conflict and attribute failure block administrator and redact failur
     if (state === 'conflict') assert.equal(gateway.writes, 0);
     assert.equal(reports.length, 1);
   }
+});
+
+test('apply reports only planner conflict fields in return value and persisted report', async () => {
+  const gateway = new FakeGateway();
+  gateway.database = { $id: 'remote_management', name: 'SYNTHETIC_PRIVATE_ACTUAL' };
+  const reportPath = join(tmpdir(), `appremoto-conflict-${randomUUID()}.json`);
+  try {
+    const result = await runCli(['apply'], env, { gatewayFactory: () => gateway,
+      protect: async () => { assert.fail('no admin on conflict'); },
+      persist: async (report: unknown) => { await writeFile(reportPath, JSON.stringify(report)); } });
+    const persisted = JSON.parse(await readFile(reportPath, 'utf8'));
+    const expected = { mode: 'apply', status: 'failed',
+      error: 'Provisioning command failed; verify configuration and inspect the target before retrying',
+      result: { conflicts: [{ resource: 'database', id: 'remote_management', outcome: 'conflict', reason: 'definition_mismatch' }] } };
+    assert.deepEqual(result, expected);
+    assert.deepEqual(persisted, expected);
+    assert.equal(gateway.writes, 0);
+    assert.doesNotMatch(JSON.stringify({ result, persisted }), /SYNTHETIC_PRIVATE_ACTUAL|FAKE_SECRET_FOR_CLI|actual|desired|headers|stack/);
+  } finally { await unlink(reportPath); }
+});
+
+test('raw gateway failure remains generic in return value and persisted report', async () => {
+  const gateway = new FakeGateway();
+  gateway.failure = Object.assign(new Error('SYNTHETIC_PRIVATE_RUNTIME'), {
+    headers: { authorization: 'SYNTHETIC_PRIVATE_HEADER' },
+    actual: 'SYNTHETIC_PRIVATE_ACTUAL', desired: 'SYNTHETIC_PRIVATE_DESIRED',
+  });
+  const persisted: unknown[] = [];
+  const result = await runCli(['apply'], env, { gatewayFactory: () => gateway,
+    protect: async () => { assert.fail('no admin on gateway failure'); },
+    persist: async (report: unknown) => { persisted.push(report); } });
+  const expected = { mode: 'apply', status: 'failed',
+    error: 'Provisioning command failed; verify configuration and inspect the target before retrying' };
+  assert.deepEqual(result, expected);
+  assert.deepEqual(persisted, [expected]);
+  assert.doesNotMatch(JSON.stringify({ result, persisted }), /SYNTHETIC_PRIVATE|FAKE_SECRET_FOR_CLI|actual|desired|headers|stack/);
 });
 
 test('inspect exposes attribute IDs while values and generic credentials stay redacted', async () => {

@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createAppwriteGateway, readAppwriteEnvironment } from './appwrite-adapter.ts';
-import { applyProvisionPlan } from './apply.ts';
+import { applyProvisionPlan, ProvisionPlanConflictError } from './apply.ts';
 import { bootstrapAdministrator } from './bootstrap-admin.ts';
 import type { ProtectSecret } from './bootstrap-admin.ts';
 import type { AdministratorGateway, ProvisioningGateway } from './gateway.ts';
@@ -54,8 +54,9 @@ export async function runCli(args: string[], env: NodeJS.ProcessEnv, dependencie
     const applied = await applyProvisionPlan(gateway, plan);
     const administrator = await bootstrapAdministrator(gateway, dependencies.protect);
     report = { mode, status: 'completed', result: { plan: applied, administrator } };
-  } catch {
-    report = { mode, status: 'failed', error: 'Provisioning command failed; verify configuration and inspect the target before retrying' };
+  } catch (error) {
+    report = { mode, status: 'failed', error: 'Provisioning command failed; verify configuration and inspect the target before retrying',
+      ...(error instanceof ProvisionPlanConflictError ? { result: { conflicts: error.conflicts } } : {}) };
   }
   const redacted = redactReport(report);
   if (mode === 'apply') {

@@ -1,4 +1,4 @@
-import type { ProvisionPlan } from './plan.ts';
+import type { ProvisionAction, ProvisionPlan } from './plan.ts';
 import { buildProvisionPlan } from './plan.ts';
 import type { ProvisioningGateway } from './gateway.ts';
 import { inspectSchema } from './inspect.ts';
@@ -7,6 +7,18 @@ import { requireTargetProject } from './safety.ts';
 import { setTimeout } from 'node:timers/promises';
 
 export type WaitOptions = { readonly attempts?: number; readonly delayMs?: number };
+
+type SafeConflict = Pick<ProvisionAction, 'resource' | 'id' | 'outcome' | 'reason'>;
+
+export class ProvisionPlanConflictError extends Error {
+  readonly conflicts: readonly SafeConflict[];
+
+  constructor(plan: ProvisionPlan) {
+    super('Provision plan has conflicts');
+    this.conflicts = plan.actions.filter((action) => action.outcome === 'conflict').map(
+      ({ resource, id, outcome, reason }) => ({ resource, id, outcome, ...(reason ? { reason } : {}) }));
+  }
+}
 
 async function waitUntilAvailable(read: () => Promise<string>, options: WaitOptions): Promise<void> {
   const attempts = options.attempts ?? 120;
@@ -25,14 +37,14 @@ async function waitUntilAvailable(read: () => Promise<string>, options: WaitOpti
 
 export async function applyProvisionPlan(gateway: ProvisioningGateway, plan: ProvisionPlan, options: WaitOptions = {}): Promise<ProvisionPlan> {
   requireTargetProject(gateway.projectId);
-  if (plan.actions.some((action) => action.outcome === 'conflict')) throw new Error('Provision plan has conflicts');
+  if (plan.actions.some((action) => action.outcome === 'conflict')) throw new ProvisionPlanConflictError(plan);
   let current: ProvisionPlan;
   try {
     current = buildProvisionPlan(await inspectSchema(gateway));
   } catch {
     throw new Error('Provision inspection failed');
   }
-  if (current.actions.some((action) => action.outcome === 'conflict')) throw new Error('Provision plan has conflicts');
+  if (current.actions.some((action) => action.outcome === 'conflict')) throw new ProvisionPlanConflictError(current);
   const creates = new Set(current.actions.filter((action) => action.outcome === 'create').map((action) => `${action.resource}:${action.id}`));
   const schema = REMOTE_MANAGEMENT_SCHEMA;
   const db = schema.database.id;

@@ -4,7 +4,7 @@ import { FakeGateway, desiredResourceCount } from './fake-gateway.ts';
 
 const gateway = new FakeGateway();
 const reports: unknown[] = [];
-const environment = { APPWRITE_ENDPOINT: 'https://example.invalid/v1',
+const environment = { APPWRITE_ENDPOINT: 'https://appwrite.xpointsolucoes.com.br/v1',
   APPWRITE_PROJECT_ID: '6abc5640003cb361b809', APPWRITE_API_KEY: 'synthetic-offline-only' };
 const dependencies = { gatewayFactory: () => gateway, protect: async () => '.local/remote-platform/fake-only.dpapi',
   persist: async (report: unknown) => { reports.push(report); } };
