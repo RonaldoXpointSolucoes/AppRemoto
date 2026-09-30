@@ -73,8 +73,8 @@ test('failed refresh keeps filters visible and masks the cached online state', a
   await expect(page.locator('body')).not.toContainText('private refresh detail');
 });
 
-test('mobile records preserve hierarchy and contain long values inside the viewport', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+test('mobile records preserve hierarchy and contain long values inside supported viewports', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 360, height: 800 });
   await mockAuthenticatedDevices(page);
   await page.route('**/v1/devices?**', (route) => route.fulfill({ contentType: 'application/json', status: 200,
     body: JSON.stringify({ devices: [device], nextCursor: null }) }));
@@ -87,4 +87,39 @@ test('mobile records preserve hierarchy and contain long values inside the viewp
   }
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+  const recordBox = await record.boundingBox();
+  expect(recordBox?.x).toBeGreaterThanOrEqual(0);
+  expect(recordBox?.width).toBeLessThanOrEqual(328);
+  await page.screenshot({ path: testInfo.outputPath('devices-mobile-360.png'), fullPage: true });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(record).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  await page.screenshot({ path: testInfo.outputPath('devices-mobile-390.png'), fullPage: true });
+});
+
+test('refresh keeps filters and desktop results at stable dimensions', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockAuthenticatedDevices(page);
+  let requests = 0;
+  let finishRefresh: (() => void) | undefined;
+  await page.route('**/v1/devices?**', async (route) => {
+    requests += 1;
+    if (requests > 1) await new Promise<void>((resolve) => { finishRefresh = resolve; });
+    await route.fulfill({ contentType: 'application/json', status: 200,
+      body: JSON.stringify({ devices: [device], nextCursor: null }) });
+  });
+  await page.goto('/devices');
+  const filters = page.locator('.device-filters');
+  const table = page.getByRole('table', { name: 'Dispositivos remotos' });
+  const before = { filters: await filters.boundingBox(), table: await table.boundingBox() };
+
+  await page.getByRole('button', { name: 'Atualizar dispositivos' }).click();
+  await expect(page.getByRole('button', { name: 'Atualizando dispositivos' })).toBeDisabled();
+  const during = { filters: await filters.boundingBox(), table: await table.boundingBox() };
+  expect(during.filters).toEqual(before.filters);
+  expect(during.table?.width).toBe(before.table?.width);
+  expect(during.table?.height).toBe(before.table?.height);
+  finishRefresh?.();
+  await expect(page.getByRole('button', { name: 'Atualizar dispositivos' })).toBeEnabled();
 });
