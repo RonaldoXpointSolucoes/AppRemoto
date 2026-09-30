@@ -10,7 +10,7 @@ const defaultOutputLimit = 16 * 1024
 
 var ErrOutputLimit = errors.New("command output exceeds limit")
 
-var ErrUntrustedExecutable = errors.New("trusted RustDesk installation required")
+var ErrUntrustedExecutable = errors.New("trusted RustDesk installation required; install RustDesk under administrator-managed permissions")
 
 type CommandResult struct {
 	Stdout   []byte

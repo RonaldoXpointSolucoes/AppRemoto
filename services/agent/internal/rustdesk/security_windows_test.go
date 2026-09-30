@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -32,13 +33,52 @@ func TestOpenPinnedExecutableRejectsAncestorJunction(t *testing.T) {
 }
 
 func TestOpenPinnedExecutableAcceptsSystemOwnedReadOnlyBinary(t *testing.T) {
-	path := filepath.Join(os.Getenv("SystemRoot"), "System32", "where.exe")
+	systemDirectory, err := windows.GetSystemDirectory()
+	if err != nil {
+		t.Fatalf("GetSystemDirectory() error = %v", err)
+	}
+	path := filepath.Join(systemDirectory, "where.exe")
+	if runtime.GOARCH == "386" {
+		windowsDirectory, err := windows.GetWindowsDirectory()
+		if err != nil {
+			t.Fatalf("GetWindowsDirectory() error = %v", err)
+		}
+		physicalWOW64Path := filepath.Join(windowsDirectory, "SysWOW64", "where.exe")
+		if _, err := os.Stat(physicalWOW64Path); err == nil {
+			path = physicalWOW64Path
+		}
+	}
 	pinned, err := openPinnedExecutable(path, true)
 	if err != nil {
 		t.Fatalf("openPinnedExecutable(%q) error = %v", path, err)
 	}
 	if err := pinned.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
+	}
+}
+
+func TestDiscoverNeverCreatesProcessForUserWritableExecutable(t *testing.T) {
+	localAppData := t.TempDir()
+	executable := filepath.Join(localAppData, "Programs", "RustDesk", "RustDesk.exe")
+	if err := os.MkdirAll(filepath.Dir(executable), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyRustDeskTestFile(os.Args[0], executable); err != nil {
+		t.Fatal(err)
+	}
+	created := false
+	processCreatedHook = func() { created = true }
+	t.Cleanup(func() { processCreatedHook = nil })
+	client, err := NewClient(NewExecRunner(64), Options{LocalAppData: localAppData})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	_, err = client.Discover(context.Background())
+	if !errors.Is(err, ErrUntrustedExecutable) {
+		t.Fatalf("Discover() error = %v, want untrusted executable", err)
+	}
+	if created {
+		t.Fatal("Discover() created an untrusted RustDesk process")
 	}
 }
 
@@ -58,7 +98,7 @@ func TestExecRunnerPinsExecutableAgainstReplacement(t *testing.T) {
 	t.Cleanup(func() { executablePinnedHook = nil })
 	t.Setenv("GO_WANT_RUSTDESK_HELPER_PROCESS", "1")
 	t.Setenv("RUSTDESK_HELPER_MODE", "normal")
-	_, err := NewExecRunner(64).Run(context.Background(), executable, "-test.run=TestRustDeskHelperProcess")
+	_, err := newUntrustedTestExecRunner(64).Run(context.Background(), executable, "-test.run=TestRustDeskHelperProcess")
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}

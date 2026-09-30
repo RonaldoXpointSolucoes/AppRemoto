@@ -17,7 +17,10 @@ const dangerousExecutableAccess = windows.GENERIC_WRITE | windows.GENERIC_ALL |
 	windows.DELETE | windows.WRITE_DAC | windows.WRITE_OWNER |
 	windows.FILE_WRITE_DATA | windows.FILE_APPEND_DATA
 
-var executablePinnedHook func(string)
+var (
+	executablePinnedHook func(string)
+	processCreatedHook   func()
+)
 
 type pinnedExecutable struct {
 	handle windows.Handle
@@ -26,10 +29,14 @@ type pinnedExecutable struct {
 
 func platformSupported() bool { return true }
 
-func knownInstallRoots() (string, string, string, error) {
+func knownInstallRoots() (string, string, string, string, error) {
 	programFiles, err := windows.KnownFolderPath(windows.FOLDERID_ProgramFiles, 0)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", "", err
+	}
+	programFilesX64, err := windows.KnownFolderPath(windows.FOLDERID_ProgramFilesX64, 0)
+	if err != nil {
+		programFilesX64 = ""
 	}
 	programFilesX86, err := windows.KnownFolderPath(windows.FOLDERID_ProgramFilesX86, 0)
 	if err != nil {
@@ -37,9 +44,17 @@ func knownInstallRoots() (string, string, string, error) {
 	}
 	localAppData, err := windows.KnownFolderPath(windows.FOLDERID_LocalAppData, 0)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", "", err
 	}
-	return filepath.Clean(programFiles), filepath.Clean(programFilesX86), filepath.Clean(localAppData), nil
+	return cleanOptionalPath(programFiles), cleanOptionalPath(programFilesX64),
+		cleanOptionalPath(programFilesX86), cleanOptionalPath(localAppData), nil
+}
+
+func cleanOptionalPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	return filepath.Clean(path)
 }
 
 func validatePlatformLocalPath(path string) error {

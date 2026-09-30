@@ -63,7 +63,8 @@ func TestDiscoverSupportedInstallPaths(t *testing.T) {
 		path string
 		opts Options
 	}{
-		{"Program Files x64", filepath.Join(root, "Program Files", "RustDesk", "RustDesk.exe"), Options{ProgramFiles: filepath.Join(root, "Program Files")}},
+		{"Program Files generic", filepath.Join(root, "Program Files", "RustDesk", "RustDesk.exe"), Options{ProgramFiles: filepath.Join(root, "Program Files")}},
+		{"Program Files x64", filepath.Join(root, "Program Files x64", "RustDesk", "RustDesk.exe"), Options{ProgramFilesX64: filepath.Join(root, "Program Files x64")}},
 		{"Program Files x86", filepath.Join(root, "Program Files (x86)", "RustDesk", "RustDesk.exe"), Options{ProgramFilesX86: filepath.Join(root, "Program Files (x86)")}},
 		{"LocalAppData Programs", filepath.Join(root, "LocalAppData", "Programs", "RustDesk", "RustDesk.exe"), Options{LocalAppData: filepath.Join(root, "LocalAppData")}},
 		{"LocalAppData direct", filepath.Join(root, "LocalAppDataDirect", "RustDesk", "RustDesk.exe"), Options{LocalAppData: filepath.Join(root, "LocalAppDataDirect")}},
@@ -127,12 +128,27 @@ func TestNewClientUsesKnownFoldersInsteadOfEnvironmentRoots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient() error = %v", err)
 	}
-	for _, root := range []string{client.programFiles, client.programFilesX86} {
+	for _, root := range []string{client.programFiles, client.programFilesX64, client.programFilesX86} {
 		if root == "" {
 			continue
 		}
 		if !filepath.IsAbs(root) || strings.HasPrefix(root, `\\`) || strings.Contains(root, "attacker") {
 			t.Fatalf("untrusted default installation root %q", root)
+		}
+	}
+	candidates := client.candidatePaths()
+	seen := make(map[string]bool, len(candidates))
+	for _, candidate := range candidates {
+		key := strings.ToLower(filepath.Clean(candidate))
+		if seen[key] {
+			t.Fatalf("duplicate candidate path %q", candidate)
+		}
+		seen[key] = true
+	}
+	if client.programFilesX64 != "" {
+		x64Candidate := strings.ToLower(filepath.Join(client.programFilesX64, "RustDesk", "RustDesk.exe"))
+		if !seen[x64Candidate] {
+			t.Fatalf("x64 Program Files candidate %q is missing from %#v", x64Candidate, candidates)
 		}
 	}
 }
@@ -328,7 +344,7 @@ func allZero(value []byte) bool {
 func TestExecRunnerCapturesBoundedOutputAndExitCode(t *testing.T) {
 	t.Setenv("GO_WANT_RUSTDESK_HELPER_PROCESS", "1")
 	t.Setenv("RUSTDESK_HELPER_MODE", "normal")
-	result, err := NewExecRunner(64).Run(context.Background(), os.Args[0], "-test.run=TestRustDeskHelperProcess")
+	result, err := newUntrustedTestExecRunner(64).Run(context.Background(), os.Args[0], "-test.run=TestRustDeskHelperProcess")
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -342,7 +358,7 @@ func TestExecRunnerLimitsStdoutAndStderr(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("GO_WANT_RUSTDESK_HELPER_PROCESS", "1")
 			t.Setenv("RUSTDESK_HELPER_MODE", mode)
-			result, err := NewExecRunner(32).Run(context.Background(), os.Args[0], "-test.run=TestRustDeskHelperProcess")
+			result, err := newUntrustedTestExecRunner(32).Run(context.Background(), os.Args[0], "-test.run=TestRustDeskHelperProcess")
 			if !errors.Is(err, ErrOutputLimit) {
 				t.Fatalf("Run() = %#v, error = %v, want ErrOutputLimit", result, err)
 			}
@@ -358,7 +374,7 @@ func TestExecRunnerHonorsContextTimeout(t *testing.T) {
 	t.Setenv("RUSTDESK_HELPER_MODE", "sleep")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
-	result, err := NewExecRunner(64).Run(ctx, os.Args[0], "-test.run=TestRustDeskHelperProcess")
+	result, err := newUntrustedTestExecRunner(64).Run(ctx, os.Args[0], "-test.run=TestRustDeskHelperProcess")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Run() error = %v, want deadline exceeded", err)
 	}
@@ -375,7 +391,7 @@ func TestExecRunnerKillsDescendantHoldingPipesOnCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
 	defer cancel()
 	started := time.Now()
-	_, err := NewExecRunner(64).Run(ctx, os.Args[0], "-test.run=TestRustDeskHelperProcess")
+	_, err := newUntrustedTestExecRunner(64).Run(ctx, os.Args[0], "-test.run=TestRustDeskHelperProcess")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Run() error = %v, want deadline exceeded", err)
 	}

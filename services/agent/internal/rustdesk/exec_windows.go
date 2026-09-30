@@ -34,7 +34,7 @@ func newPlatformExecRunner(maxOutputBytes int) CommandRunner {
 }
 
 func (r *windowsExecRunner) Run(ctx context.Context, executable string, args ...string) (CommandResult, error) {
-	return r.run(ctx, executable, false, args...)
+	return r.run(ctx, executable, true, args...)
 }
 
 func (r *windowsExecRunner) RunTrusted(ctx context.Context, executable string, args ...string) (CommandResult, error) {
@@ -133,6 +133,9 @@ func (r *windowsExecRunner) run(ctx context.Context, executable string, requireT
 	if err := windows.CreateProcess(application, &commandLine[0], nil, nil, true,
 		windows.CREATE_SUSPENDED, nil, nil, &startup, &process); err != nil {
 		return CommandResult{}, errors.New("start command failed")
+	}
+	if processCreatedHook != nil {
+		processCreatedHook()
 	}
 	defer windows.CloseHandle(process.Process)
 	defer windows.CloseHandle(process.Thread)

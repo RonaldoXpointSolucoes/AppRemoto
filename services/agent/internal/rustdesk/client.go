@@ -34,6 +34,7 @@ type Info struct {
 type Options struct {
 	ExecutablePath  string
 	ProgramFiles    string
+	ProgramFilesX64 string
 	ProgramFilesX86 string
 	LocalAppData    string
 	CommandTimeout  time.Duration
@@ -43,6 +44,7 @@ type Client struct {
 	runner          CommandRunner
 	executablePath  string
 	programFiles    string
+	programFilesX64 string
 	programFilesX86 string
 	localAppData    string
 	commandTimeout  time.Duration
@@ -64,7 +66,7 @@ func newClient(supported bool, runner CommandRunner, options Options) (*Client, 
 			return nil, err
 		}
 	}
-	for _, root := range []string{options.ProgramFiles, options.ProgramFilesX86, options.LocalAppData} {
+	for _, root := range []string{options.ProgramFiles, options.ProgramFilesX64, options.ProgramFilesX86, options.LocalAppData} {
 		if root != "" {
 			if err := validateLocalAbsolutePath(root); err != nil || validatePlatformLocalPath(root) != nil {
 				return nil, errors.New("RustDesk installation root must be an absolute canonical local path")
@@ -80,11 +82,12 @@ func newClient(supported bool, runner CommandRunner, options Options) (*Client, 
 	}
 
 	programFiles := options.ProgramFiles
+	programFilesX64 := options.ProgramFilesX64
 	programFilesX86 := options.ProgramFilesX86
 	localAppData := options.LocalAppData
-	if programFiles == "" && programFilesX86 == "" && localAppData == "" {
+	if programFiles == "" && programFilesX64 == "" && programFilesX86 == "" && localAppData == "" {
 		var err error
-		programFiles, programFilesX86, localAppData, err = knownInstallRoots()
+		programFiles, programFilesX64, programFilesX86, localAppData, err = knownInstallRoots()
 		if err != nil {
 			return nil, errors.New("resolve trusted Windows installation roots")
 		}
@@ -94,6 +97,7 @@ func newClient(supported bool, runner CommandRunner, options Options) (*Client, 
 		runner:          runner,
 		executablePath:  options.ExecutablePath,
 		programFiles:    programFiles,
+		programFilesX64: programFilesX64,
 		programFilesX86: programFilesX86,
 		localAppData:    localAppData,
 		commandTimeout:  commandTimeout,
@@ -106,7 +110,7 @@ func (c *Client) Discover(ctx context.Context) (Info, error) {
 		return Info{}, err
 	}
 
-	idResult, err := c.run(ctx, "read RustDesk ID", executable, "--get-id")
+	idResult, err := c.runTrusted(ctx, "read RustDesk ID", executable, "--get-id")
 	if err != nil {
 		return Info{}, err
 	}
@@ -115,7 +119,7 @@ func (c *Client) Discover(ctx context.Context) (Info, error) {
 		return Info{}, err
 	}
 
-	versionResult, err := c.run(ctx, "read RustDesk version", executable, "--version")
+	versionResult, err := c.runTrusted(ctx, "read RustDesk version", executable, "--version")
 	if err != nil {
 		return Info{}, err
 	}
@@ -142,11 +146,7 @@ func (c *Client) SetUnattendedPassword(ctx context.Context, password string) err
 			args[i] = ""
 		}
 	}()
-	trustedRunner, ok := c.runner.(trustedCommandRunner)
-	if !ok {
-		return errors.New("configure RustDesk unattended password: trusted command execution unavailable")
-	}
-	result, err := c.runWith(ctx, trustedRunner.RunTrusted, "configure RustDesk unattended password", executable, args...)
+	result, err := c.runTrusted(ctx, "configure RustDesk unattended password", executable, args...)
 	confirmed := bytes.Equal(bytes.TrimSpace(result.Stdout), []byte("Done!")) && len(bytes.TrimSpace(result.Stderr)) == 0
 	clear(result.Stdout)
 	clear(result.Stderr)
@@ -159,8 +159,12 @@ func (c *Client) SetUnattendedPassword(ctx context.Context, password string) err
 	return nil
 }
 
-func (c *Client) run(ctx context.Context, operation, executable string, args ...string) (CommandResult, error) {
-	return c.runWith(ctx, c.runner.Run, operation, executable, args...)
+func (c *Client) runTrusted(ctx context.Context, operation, executable string, args ...string) (CommandResult, error) {
+	trustedRunner, ok := c.runner.(trustedCommandRunner)
+	if !ok {
+		return CommandResult{}, fmt.Errorf("%s: trusted command execution unavailable", operation)
+	}
+	return c.runWith(ctx, trustedRunner.RunTrusted, operation, executable, args...)
 }
 
 func (c *Client) runWith(ctx context.Context, execute func(context.Context, string, ...string) (CommandResult, error), operation, executable string, args ...string) (CommandResult, error) {
@@ -195,9 +199,21 @@ func (c *Client) findExecutable() (string, error) {
 		return "", errRustDeskMissing
 	}
 
-	candidates := make([]string, 0, 4)
+	for _, candidate := range c.candidatePaths() {
+		if isRegularFile(candidate) {
+			return candidate, nil
+		}
+	}
+	return "", errRustDeskMissing
+}
+
+func (c *Client) candidatePaths() []string {
+	candidates := make([]string, 0, 5)
 	if c.programFiles != "" {
 		candidates = append(candidates, filepath.Join(c.programFiles, "RustDesk", "RustDesk.exe"))
+	}
+	if c.programFilesX64 != "" {
+		candidates = append(candidates, filepath.Join(c.programFilesX64, "RustDesk", "RustDesk.exe"))
 	}
 	if c.programFilesX86 != "" {
 		candidates = append(candidates, filepath.Join(c.programFilesX86, "RustDesk", "RustDesk.exe"))
@@ -208,12 +224,16 @@ func (c *Client) findExecutable() (string, error) {
 			filepath.Join(c.localAppData, "RustDesk", "RustDesk.exe"),
 		)
 	}
+	unique := candidates[:0]
+	seen := make(map[string]bool, len(candidates))
 	for _, candidate := range candidates {
-		if isRegularFile(candidate) {
-			return candidate, nil
+		key := strings.ToLower(filepath.Clean(candidate))
+		if !seen[key] {
+			seen[key] = true
+			unique = append(unique, candidate)
 		}
 	}
-	return "", errRustDeskMissing
+	return unique
 }
 
 func isRegularFile(path string) bool {
