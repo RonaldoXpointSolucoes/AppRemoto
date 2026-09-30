@@ -15,9 +15,31 @@ export interface AuditRepository {
   record(id: string, event: EnrollmentAudit): Promise<void>;
   remove(id: string): Promise<void>;
 }
+export interface HeartbeatAuditRepository {
+  recordHeartbeat(id: string, event: HeartbeatAudit): Promise<void>;
+  remove(id: string): Promise<void>;
+}
 
-export function createAuditRepository(databases: Databases): AuditRepository {
+export interface HeartbeatAudit {
+  organizationId: string;
+  deviceId: string;
+  sourceIp: string;
+  result: 'success' | 'failure';
+  recoveryRequired: boolean;
+}
+
+export function createAuditRepository(databases: Databases): AuditRepository & HeartbeatAuditRepository {
   return {
+    async recordHeartbeat(id, event) {
+      try {
+        await databases.createDocument('remote_management', 'audit_logs', id, {
+          organization_id: event.organizationId, actor_type: 'device', actor_id: event.deviceId,
+          device_id: event.deviceId, action: 'device.heartbeat', result: event.result,
+          source_ip: event.sourceIp,
+          metadata_json: JSON.stringify({ recoveryRequired: event.recoveryRequired }),
+        }, []);
+      } catch { throw new Error('Heartbeat audit unavailable'); }
+    },
     async record(id, event) {
       try {
         await databases.createDocument('remote_management', 'audit_logs', id, {

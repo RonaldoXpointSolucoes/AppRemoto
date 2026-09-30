@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 export { DeviceListQuerySchema, DeviceViewSchema } from './devices.ts';
 export type { DeviceListQuery, DeviceView } from './devices.ts';
-export { EnrollRequestSchema, EnrollResponseSchema, HeartbeatRequestSchema } from './agent.ts';
-export type { EnrollRequest, EnrollResponse, HeartbeatRequest } from './agent.ts';
+export { EnrollRequestSchema, EnrollResponseSchema, HeartbeatRequestSchema, HeartbeatResponseSchema } from './agent.ts';
+export type { EnrollRequest, EnrollResponse, HeartbeatRequest, HeartbeatResponse } from './agent.ts';
 
 export const ApiErrorSchema = z.object({
   code: z.string().regex(/^[A-Z][A-Z0-9_]{2,63}$/),

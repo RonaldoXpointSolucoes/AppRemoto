@@ -29,6 +29,12 @@ export const HeartbeatRequestSchema = z.object({
   osVersion: z.string().min(1).max(128),
 }).strict();
 
+export const HeartbeatResponseSchema = z.object({
+  deviceId: z.string().min(1).max(36),
+  lastSeenAt: z.iso.datetime({ offset: true }),
+}).strict();
+
 export type EnrollRequest = z.infer<typeof EnrollRequestSchema>;
 export type EnrollResponse = z.infer<typeof EnrollResponseSchema>;
 export type HeartbeatRequest = z.infer<typeof HeartbeatRequestSchema>;
+export type HeartbeatResponse = z.infer<typeof HeartbeatResponseSchema>;

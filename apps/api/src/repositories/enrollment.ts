@@ -23,6 +23,9 @@ export interface EnrollmentRepository {
   write(kind: EnrollmentKind, id: string, data: EnrollmentData, previous: EnrollmentData | null): Promise<void>;
   restore(kind: EnrollmentKind, id: string, previous: EnrollmentData | null, expected: EnrollmentData): Promise<void>;
 }
+export interface HeartbeatTokenRepository {
+  findDeviceToken(hash: string): Promise<(EnrollmentData & { id: string }) | null>;
+}
 
 const database = 'remote_management';
 const fields: Record<EnrollmentKind, string[]> = {
@@ -40,7 +43,8 @@ export function enrollmentId(...parts: string[]): string {
 }
 
 function project(kind: EnrollmentKind, document: object): EnrollmentData {
-  const record = (kind === 'enrollment_tokens' ? { revoked_at: null, ...document } : document) as EnrollmentData;
+  const record = (kind === 'enrollment_tokens' || kind === 'device_tokens' ?
+    { revoked_at: null, ...document } : document) as EnrollmentData;
   return Object.fromEntries(fields[kind].filter((field) => record[field] !== undefined).map((field) => {
     const value = record[field]!;
     return [field, ['expires_at', 'last_seen_at', 'last_used_at', 'revoked_at'].includes(field) &&
@@ -60,7 +64,7 @@ export class RejectedEnrollmentWrite extends Error {
   constructor() { super('Enrollment storage unavailable'); }
 }
 
-export function createEnrollmentRepository(databases: Databases): EnrollmentRepository {
+export function createEnrollmentRepository(databases: Databases): EnrollmentRepository & HeartbeatTokenRepository {
   const unavailable = () => new Error('Enrollment storage unavailable');
   const snapshot: EnrollmentRepository['snapshot'] = async (kind, id) => {
     try { return project(kind, await databases.getDocument(database, kind, id)); }
@@ -74,7 +78,7 @@ export function createEnrollmentRepository(databases: Databases): EnrollmentRepo
       if (previous) {
         const desired = project(kind, data); const old = project(kind, previous);
         const changes = Object.fromEntries(Object.entries(desired).filter(([key, value]) =>
-          !(kind === 'enrollment_tokens' && key === 'revoked_at') && !isDeepStrictEqual(value, old[key])));
+          !(['enrollment_tokens', 'device_tokens'].includes(kind) && key === 'revoked_at') && !isDeepStrictEqual(value, old[key])));
         if (Object.keys(changes).length) await databases.updateDocument(database, kind, id, changes);
       }
       else await databases.createDocument(database, kind, id, project(kind, data), []);
@@ -93,6 +97,18 @@ export function createEnrollmentRepository(databases: Databases): EnrollmentRepo
     }
   };
   return {
+    async findDeviceToken(hash) {
+      try {
+        const page = await databases.listDocuments(database, 'device_tokens', [
+          Query.equal('token_hash', hash), Query.limit(2), Query.select(['$id', ...fields.device_tokens]),
+        ]);
+        if (page.total > 1 || page.documents.length > 1) throw unavailable();
+        const doc = page.documents[0];
+        if (!doc) return null;
+        if (doc.token_hash !== hash) throw unavailable();
+        return { id: doc.$id, ...project('device_tokens', doc) };
+      } catch { throw unavailable(); }
+    },
     async findToken(hash) {
       try {
         const page = await databases.listDocuments(database, 'enrollment_tokens', [

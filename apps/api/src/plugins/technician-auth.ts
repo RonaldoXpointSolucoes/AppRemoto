@@ -4,6 +4,7 @@ import type { Organization, OrganizationRepository } from '../repositories/organ
 import type { TechnicianRepository } from '../repositories/technicians.ts';
 import type { DeviceRepository } from '../repositories/devices.ts';
 import type { EnrollDevice } from '../services/enroll-device.ts';
+import type { RecordHeartbeat } from '../services/record-heartbeat.ts';
 
 export interface JwtVerifier {
   verify(jwt: string): Promise<{ userId: string } | null>;
@@ -18,6 +19,7 @@ export interface TechnicianServices {
   cursorSecret?: Buffer;
   now?: () => Date;
   enrollDevice?: EnrollDevice;
+  recordHeartbeat?: RecordHeartbeat;
 }
 
 export interface OrganizationAuthorization {

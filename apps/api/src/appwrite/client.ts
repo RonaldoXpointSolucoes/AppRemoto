@@ -9,12 +9,15 @@ import { createDeviceRepository } from '../repositories/devices.ts';
 import { createEnrollmentRepository } from '../repositories/enrollment.ts';
 import { createAuditRepository } from '../repositories/audit.ts';
 import { createEnrollmentService } from '../services/enroll-device.ts';
+import { createHeartbeatService } from '../services/record-heartbeat.ts';
 
 export function createAppwriteServices(config: ApiConfig): TechnicianServices {
   const dataClient = new Client().setEndpoint(config.appwriteEndpoint)
     .setProject(config.appwriteProjectId).setKey(config.appwriteApiKey);
   const databases = new Databases(dataClient);
 
+  const enrollmentRepository = createEnrollmentRepository(databases);
+  const auditRepository = createAuditRepository(databases);
   return {
     projectId: config.appwriteProjectId,
     jwtVerifier: {
@@ -33,8 +36,9 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
     technicians: createTechnicianRepository(databases),
     organizations: createOrganizationRepository(databases),
     devices: createDeviceRepository(databases),
-    enrollDevice: createEnrollmentService({ repository: createEnrollmentRepository(databases),
-      audit: createAuditRepository(databases), encryptionKey: config.masterEncryptionKey, keyVersion: config.encryptionKeyVersion }),
+    enrollDevice: createEnrollmentService({ repository: enrollmentRepository,
+      audit: auditRepository, encryptionKey: config.masterEncryptionKey, keyVersion: config.encryptionKeyVersion }),
+    recordHeartbeat: createHeartbeatService({ repository: enrollmentRepository, audit: auditRepository }),
     cursorSecret: Buffer.from(hkdfSync('sha256', config.masterEncryptionKey, Buffer.alloc(0),
       'appremoto-device-list-cursor-v1', 32)),
   };
