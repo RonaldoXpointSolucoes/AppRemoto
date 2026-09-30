@@ -8,6 +8,8 @@ export interface EnrollmentAudit {
   result: 'success' | 'failure';
   retry: boolean;
   recoveryRequired: boolean;
+  reason?: 'token_inactive' | 'token_expired' | 'token_invalid' | 'organization_inactive' | 'token_exhausted' |
+    'identity_mismatch' | 'pending_recovery' | 'storage_failure';
 }
 export interface AuditRepository {
   record(id: string, event: EnrollmentAudit): Promise<void>;
@@ -21,7 +23,8 @@ export function createAuditRepository(databases: Databases): AuditRepository {
         await databases.createDocument('remote_management', 'audit_logs', id, {
           organization_id: event.organizationId, actor_type: 'system', actor_id: 'enrollment',
           device_id: event.deviceId, action: 'device.enroll', result: event.result, source_ip: event.sourceIp,
-          metadata_json: JSON.stringify(redactLogData({ retry: event.retry, recoveryRequired: event.recoveryRequired })),
+          metadata_json: JSON.stringify(redactLogData({ retry: event.retry, recoveryRequired: event.recoveryRequired,
+            ...(event.reason ? { reason: event.reason } : {}) })),
         }, []);
       } catch { throw new Error('Enrollment audit unavailable'); }
     },

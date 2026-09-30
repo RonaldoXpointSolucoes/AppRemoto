@@ -81,3 +81,32 @@ test('application registers enrollment independently of technician authenticatio
     assert.equal(response.statusCode, 200); assert.deepEqual(response.json(), result);
   } finally { await app.close(); }
 });
+
+test('global request logging never leaks query secrets on POST, OPTIONS, GET, not-found and errors', async () => {
+  const logs: string[] = []; const secret = 'QUERY-SECRET-SENTINEL';
+  const app = buildApp({ logger: { stream: { write: (line: string) => logs.push(line) } } },
+    { enrollDevice: async () => result } as unknown as TechnicianServices, ['https://panel.example.test']);
+  app.get('/synthetic-error', async () => { throw new Error(secret); });
+  try {
+    for (const method of ['POST', 'OPTIONS', 'GET'] as const) {
+      await app.inject({ method, url: `/v1/agent/enroll?token=${secret}`, ...(method === 'POST' ? { payload } : {}),
+        headers: { origin: 'https://panel.example.test', 'access-control-request-method': 'POST' } });
+    }
+    await app.inject({ url: `/missing?token=${secret}` }); await app.inject({ url: `/synthetic-error?token=${secret}` });
+    assert.ok(!logs.join('').includes(secret));
+  } finally { await app.close(); }
+});
+
+test('source-IP admission prevents rotating tokens from consuming unrelated client capacity', async () => {
+  let time = 0; let calls = 0; const app = Fastify();
+  registerAgentEnrollRoute(app, async () => { calls++; return result; }, { limit: 2, maxEntries: 3, now: () => time, windowMs: 1000 });
+  const send = (ip: string, token: string) => app.inject({ method: 'POST', url: '/v1/agent/enroll',
+    remoteAddress: ip, payload: { ...payload, enrollmentToken: token.repeat(32) } });
+  try {
+    assert.equal((await send('127.0.0.1', 'a')).statusCode, 200);
+    assert.equal((await send('::ffff:127.0.0.1', 'b')).statusCode, 200);
+    assert.equal((await send('127.0.0.1', 'c')).statusCode, 429);
+    assert.equal((await send('192.0.2.1', 'd')).statusCode, 200); assert.equal(calls, 3);
+    time = 1000; assert.equal((await send('127.0.0.1', 'e')).statusCode, 200);
+  } finally { await app.close(); }
+});

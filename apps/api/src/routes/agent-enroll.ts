@@ -21,7 +21,7 @@ function canonicalIp(value: string): string | null {
 export function registerAgentEnrollRoute(app: FastifyInstance, enroll: EnrollDevice, options: RateOptions = {}): void {
   const limit = options.limit ?? 10; const windowMs = options.windowMs ?? 60_000;
   const maxEntries = options.maxEntries ?? 10_000; const now = options.now ?? Date.now;
-  const buckets = new Map<string, { count: number; expires: number }>();
+  const sources = new Map<string, { count: number; expires: number; tokens: Map<string, number> }>();
   const errorBody = (code: string, message: string) => ({ error: { code, message } });
   app.post('/v1/agent/enroll', {
     bodyLimit: 8192,
@@ -40,17 +40,21 @@ export function registerAgentEnrollRoute(app: FastifyInstance, enroll: EnrollDev
       return reply.code(400).send(errorBody('INVALID_ENROLLMENT', 'Invalid enrollment'));
     }
     const time = now();
-    for (const [key, bucket] of buckets) if (bucket.expires <= time) buckets.delete(key);
-    const key = `${sourceIp}:${hashToken(body.data.enrollmentToken)}`;
-    let bucket = buckets.get(key);
-    if ((!bucket && buckets.size >= maxEntries) || (bucket && bucket.count >= limit)) {
+    for (const [key, bucket] of sources) if (bucket.expires <= time) sources.delete(key);
+    let bucket = sources.get(sourceIp);
+    if ((!bucket && sources.size >= maxEntries) || (bucket && bucket.count >= limit)) {
       return reply.code(429).send(errorBody('ENROLLMENT_RATE_LIMITED', 'Enrollment rate limited'));
     }
-    if (!bucket) { bucket = { count: 0, expires: time + windowMs }; buckets.set(key, bucket); }
+    if (!bucket) { bucket = { count: 0, expires: time + windowMs, tokens: new Map() }; sources.set(sourceIp, bucket); }
     bucket.count++;
+    const tokenHash = hashToken(body.data.enrollmentToken);
+    const tokenCount = bucket.tokens.get(tokenHash) ?? 0;
+    if (tokenCount >= limit) return reply.code(429).send(errorBody('ENROLLMENT_RATE_LIMITED', 'Enrollment rate limited'));
+    bucket.tokens.set(tokenHash, tokenCount + 1);
     try { return EnrollResponseSchema.parse(await enroll(body.data, sourceIp)); }
     catch (error) {
       if (error instanceof EnrollmentError && error.code === 'ENROLLMENT_DENIED') {
+        request.log.warn({ code: 'ENROLLMENT_DENIED' }, 'Enrollment denied');
         return reply.code(403).send(errorBody(error.code, 'Enrollment denied'));
       }
       request.log.warn({ code: 'ENROLLMENT_UNAVAILABLE' }, 'Enrollment unavailable');

@@ -8,7 +8,22 @@ import { registerAgentEnrollRoute } from './routes/agent-enroll.ts';
 
 export function buildApp(options: FastifyServerOptions = {}, services?: TechnicianServices,
   allowedOrigins?: string[]): FastifyInstance {
-  const app = Fastify({ ajv: { customOptions: { removeAdditional: false } }, ...options });
+  const app = Fastify({ ajv: { customOptions: { removeAdditional: false } }, ...options,
+    childLoggerFactory: (logger, bindings, childOptions) => logger.child(bindings, {
+      ...childOptions, serializers: {
+        req: (request: { method: string }) => ({ method: request.method }),
+        err: () => ({ code: 'REQUEST_FAILED' }),
+        res: (reply: { statusCode: number }) => ({ statusCode: reply.statusCode }),
+      },
+    }),
+  });
+  app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Route not found' } }));
+  app.setErrorHandler((error, request, reply) => {
+    request.log.warn({ code: 'REQUEST_FAILED' }, 'Request failed');
+    const status = error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number' &&
+      error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500;
+    return reply.code(status).send({ error: { code: 'REQUEST_FAILED', message: 'Request failed' } });
+  });
 
   if (allowedOrigins) app.register(cors, {
     origin: (origin, callback) => callback(null, Boolean(origin && allowedOrigins.includes(origin))),

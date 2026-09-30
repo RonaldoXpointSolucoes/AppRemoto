@@ -1,6 +1,7 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { EnrollRequestSchema, EnrollResponseSchema, type EnrollRequest, type EnrollResponse } from '@appremoto/contracts';
-import { enrollmentId, type EnrollmentRepository, type EnrollmentKind, type EnrollmentData } from '../repositories/enrollment.ts';
+import { enrollmentId, IndeterminateEnrollmentWrite, sameEnrollmentState,
+  type EnrollmentRepository, type EnrollmentKind, type EnrollmentData } from '../repositories/enrollment.ts';
 import type { AuditRepository, EnrollmentAudit } from '../repositories/audit.ts';
 import { encryptPassword } from '../security/credentials.ts';
 import { hashToken, issueToken } from '../security/tokens.ts';
@@ -51,16 +52,34 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
   const tokenQueue = serialQueue(); const deviceQueue = serialQueue();
   const flights = new Map<string, Promise<EnrollResponse>>();
   const poisonedTokens = new Set<string>();
+  const uncertainWrites = new Map<string, { kind: EnrollmentKind; id: string; expected: EnrollmentData }>();
 
   async function execute(request: EnrollRequest, sourceIp: string, tokenHash: string): Promise<EnrollResponse> {
     const token = await repo.findToken(tokenHash);
-    const denied = () => new EnrollmentError('ENROLLMENT_DENIED');
-    if (!token || token.token_hash !== tokenHash || !token.active || !token.organization_id ||
-        !Number.isFinite(Date.parse(token.expires_at)) || Date.parse(token.expires_at) <= now().getTime() ||
-        !Number.isSafeInteger(token.use_count) || token.use_count < 0 ||
-        !Number.isSafeInteger(token.max_uses) || token.max_uses < 1 || token.use_count > token.max_uses ||
-        !await repo.organizationActive(token.organization_id)) throw denied();
+    if (!token || token.token_hash !== tokenHash || !token.organization_id) throw new EnrollmentError('ENROLLMENT_DENIED');
     const deviceId = enrollmentId('device', token.organization_id, request.deviceUuid);
+    const event: EnrollmentAudit = { organizationId: token.organization_id, deviceId, sourceIp,
+      retry: false, result: 'success', recoveryRequired: false };
+    async function deny(reason: EnrollmentAudit['reason']): Promise<never> {
+      try { await audit.record(randomUUID(), { ...event, result: 'failure', reason }); } catch { /* Denial must remain stable. */ }
+      throw new EnrollmentError('ENROLLMENT_DENIED');
+    }
+    if (!Number.isFinite(Date.parse(token.expires_at)) || Date.parse(token.expires_at) <= now().getTime()) return deny('token_expired');
+    if (!Number.isSafeInteger(token.use_count) || token.use_count < 0 || !Number.isSafeInteger(token.max_uses) ||
+        token.max_uses < 1 || token.use_count > token.max_uses) return deny('token_invalid');
+    if (!await repo.organizationActive(token.organization_id)) return deny('organization_inactive');
+    const unresolved = await repo.pendingReceipts(token.id);
+    if (unresolved.some((receipt) => receipt.device_uuid !== request.deviceUuid || receipt.organization_id !== token.organization_id)) {
+      return deny('pending_recovery');
+    }
+    async function freezeToken(): Promise<boolean> {
+      try {
+        const current = await repo.snapshot('enrollment_tokens', token!.id);
+        if (!current || current.token_hash !== tokenHash) return false;
+        if (current.active !== false) await repo.write('enrollment_tokens', token!.id, { ...current, active: false }, current);
+        return (await repo.snapshot('enrollment_tokens', token!.id))?.active === false;
+      } catch { return false; }
+    }
     return deviceQueue(deviceId, async () => {
       const receiptId = enrollmentId('receipt', token.id, request.deviceUuid);
       const [receipt, device, deviceToken, credential] = await Promise.all([
@@ -69,31 +88,49 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
       ]);
       const linked = receipt && receipt.organization_id === token.organization_id && receipt.enrollment_token_id === token.id &&
         receipt.device_id === deviceId && receipt.device_uuid === request.deviceUuid;
+      const uncertain = uncertainWrites.get(tokenHash);
+      const recovering = Boolean(linked && (receipt.status === 'pending' || uncertain));
       const retry = Boolean(linked && receipt.status === 'committed' && receipt.token_use_consumed === true);
-      if (retry) {
+      event.retry = retry || recovering;
+      const expectedCount = receipt?.expected_use_count;
+      if (receipt && (!linked || !Number.isSafeInteger(expectedCount) || (expectedCount as number) < 1 ||
+          (expectedCount as number) > token.max_uses)) return deny('identity_mismatch');
+      if (recovering) {
+        if (token.use_count !== expectedCount || (!uncertain && receipt!.token_use_consumed !== false)) return deny('pending_recovery');
+        if (uncertain && uncertain.kind !== 'enrollment_tokens' &&
+            !sameEnrollmentState(uncertain.kind, await repo.snapshot(uncertain.kind, uncertain.id), uncertain.expected)) {
+          return deny('pending_recovery');
+        }
+      } else if (!token.active) return deny('token_inactive');
+      if (retry || recovering) {
         if (!device || device.organization_id !== token.organization_id || device.device_uuid !== request.deviceUuid ||
             device.enabled !== true || !deviceToken || deviceToken.device_id !== deviceId || !credential ||
-            credential.device_id !== deviceId || token.use_count < 1) throw denied();
+            credential.device_id !== deviceId || token.use_count < (expectedCount as number)) return deny('identity_mismatch');
       } else {
-        // Only this exact phase proves no prior credentials or token use survived.
-        const untouched = linked && receipt.status === 'pending' && receipt.token_use_consumed === false && token.use_count === 0;
-        if ((receipt && !untouched) || device || deviceToken || credential || token.use_count >= token.max_uses) throw denied();
+        if (receipt || device || deviceToken || credential) return deny('identity_mismatch');
+        if (token.use_count >= token.max_uses) return deny('token_exhausted');
       }
+      if (recovering && !await freezeToken()) throw new EnrollmentError();
 
       const journal: Array<() => Promise<void>> = [];
-      const event: EnrollmentAudit = { organizationId: token.organization_id, deviceId, sourceIp, retry,
-        result: 'success', recoveryRequired: false };
+      let indeterminate = false;
       async function write(kind: EnrollmentKind, id: string, data: EnrollmentData, previous: EnrollmentData | null) {
-        // Register before sending: an upstream timeout may occur after persistence.
         journal.push(() => repo.restore(kind, id, previous, data));
-        await repo.write(kind, id, data, previous);
+        try { await repo.write(kind, id, data, previous); }
+        catch (error) {
+          if (error instanceof IndeterminateEnrollmentWrite) {
+            indeterminate = true; uncertainWrites.set(tokenHash, { kind, id, expected: data });
+          }
+          throw error;
+        }
       }
       try {
         const deviceTokenPlaintext = issueToken(); const rustdeskPassword = strongPassword();
         const envelope = encryptPassword(rustdeskPassword, encryptionKey, keyVersion);
         const response = EnrollResponseSchema.parse({ deviceId, deviceToken: deviceTokenPlaintext, rustdeskPassword, heartbeatIntervalSeconds: 30 });
         const pending: EnrollmentData = { organization_id: token.organization_id, enrollment_token_id: token.id,
-          device_id: deviceId, device_uuid: request.deviceUuid, status: 'pending', token_use_consumed: retry };
+          device_id: deviceId, device_uuid: request.deviceUuid, status: 'pending', token_use_consumed: retry || recovering,
+          expected_use_count: receipt ? expectedCount as number : token.use_count + 1 };
         await write('enrollment_receipts', receiptId, pending, receipt);
         await write('devices', deviceId, { organization_id: token.organization_id, device_uuid: request.deviceUuid,
           display_name: request.displayName, hostname: request.hostname, operating_system: request.operatingSystem,
@@ -103,22 +140,36 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
           last_used_at: null, revoked_at: null }, deviceToken);
         await write('device_credentials', deviceId, { device_id: deviceId, password_ciphertext: envelope.passwordCiphertext,
           password_nonce: envelope.passwordNonce, password_tag: envelope.passwordTag, key_version: envelope.keyVersion }, credential);
-        if (!retry) {
+        if (!retry && !recovering) {
           const previous = await repo.snapshot('enrollment_tokens', token.id);
-          if (!previous || previous.use_count !== token.use_count || previous.token_hash !== tokenHash) throw denied();
-          await write('enrollment_tokens', token.id, { ...previous, use_count: token.use_count + 1 }, previous);
+          if (!previous || previous.use_count !== token.use_count || previous.token_hash !== tokenHash || previous.active !== true) {
+            throw new EnrollmentError();
+          }
+          await write('enrollment_tokens', token.id, { ...previous, use_count: pending.expected_use_count! }, previous);
         }
         await write('enrollment_receipts', receiptId, { ...pending, status: 'committed', token_use_consumed: true }, pending);
         const auditId = randomUUID(); journal.push(() => audit.remove(auditId));
         await audit.record(auditId, event);
+        uncertainWrites.delete(tokenHash);
         return response;
       } catch {
-        let recoveryRequired = false;
-        for (const undo of journal.reverse()) {
-          try { await undo(); } catch { recoveryRequired = true; }
+        let recoveryRequired = indeterminate;
+        if (indeterminate) {
+          // Retain the receipt and credential artifacts: the server may still commit.
+          await freezeToken();
+        } else {
+          for (const undo of journal.reverse()) {
+            try { await undo(); } catch (error) {
+              recoveryRequired = true;
+              if (error instanceof IndeterminateEnrollmentWrite) {
+                await freezeToken();
+                break;
+              }
+            }
+          }
+          if (recoveryRequired) poisonedTokens.add(tokenHash);
         }
-        if (recoveryRequired) poisonedTokens.add(tokenHash);
-        try { await audit.record(randomUUID(), { ...event, result: 'failure', recoveryRequired }); } catch { /* Best effort only. */ }
+        try { await audit.record(randomUUID(), { ...event, result: 'failure', recoveryRequired, reason: 'storage_failure' }); } catch { /* Best effort only. */ }
         throw new EnrollmentError();
       }
     });
@@ -131,7 +182,10 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
     const tokenHash = hashToken(request.enrollmentToken);
     const flightKey = enrollmentId(tokenHash, JSON.stringify(request));
     const existing = flights.get(flightKey); if (existing) return existing;
-    if (flights.size >= 1000 || poisonedTokens.size >= 1000 || poisonedTokens.has(tokenHash)) return Promise.reject(new EnrollmentError());
+    if (flights.size >= 1000 || poisonedTokens.size >= 1000 ||
+        (uncertainWrites.size >= 1000 && !uncertainWrites.has(tokenHash)) || poisonedTokens.has(tokenHash)) {
+      return Promise.reject(new EnrollmentError());
+    }
     const result = tokenQueue(tokenHash, async () => {
       if (poisonedTokens.has(tokenHash)) throw new EnrollmentError();
       try { return await execute(request, sourceIp, tokenHash); }

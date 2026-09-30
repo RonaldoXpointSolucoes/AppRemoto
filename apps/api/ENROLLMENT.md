@@ -21,7 +21,9 @@ required before adding replicas or writers.
 `TRUST_PROXY` defaults to `false`. To use a reverse proxy, supply its exact trusted
 IP addresses/CIDRs separated by commas, never unrestricted trust. The source IP
 comes from Fastify's configured trust chain, is canonicalized, and is used with
-the token hash for bounded in-memory rate limits. Rate state resets on restart.
+an independent source-IP admission limit before bounded per-source token-hash
+buckets. One source can retain at most its admission limit of token entries and
+cannot fill the other source slots by changing tokens. Rate state resets on restart.
 Do not configure a proxy to log enrollment request/response bodies or credentials.
 
 `MASTER_ENCRYPTION_KEY_VERSION` defaults to 1 and accepts integers 1 through 65535.
@@ -40,19 +42,37 @@ unexpired token, enabled matching device and existing credentials, it allows a
 retry to rotate credentials without consuming another use, including at max uses.
 Existence of a device alone does not authorize this operation.
 
-Only a pending receipt with matching identities, `token_use_consumed=false`, token
-`use_count=0`, and no device/token/credential documents is reconciled automatically.
-All other pending states fail closed and require operator reconciliation. Do not
-delete a pending receipt or change a use count based on device existence alone.
+Before any device/credential mutation, a pending receipt persists its
+`expected_use_count` target. Consumption updates **only** use_count, setting that
+target after credentials persist; it never rewrites a stale active flag.
+Confirmed failures use reverse snapshot compensation; datetime fields compare
+normalized instants so Appwrite UTC offset formatting does not cause conflicts.
 
-Each mutation is journaled before submission and compensated in reverse order
-against exact expected state. A post-write timeout is reconciled by rereading that
-state. Credential persistence precedes token consumption; receipt commit and audit
-follow. Late failure restores previous usable credentials and previous use count.
-Compensation failures return a generic error, attempt the remaining undo operations,
-write a best-effort fixed-field failure audit, and quarantine the token in memory.
-An abrupt process loss loses the journal; pending/ambiguous state requires manual
-reconciliation from trustworthy operational evidence. Inspect outstanding failures
-before restarting or enabling enrollment after a storage outage. This saga is not
-a distributed transaction and cannot guarantee atomic recovery during an ongoing
-storage outage or process crash.
+Network failures and timeouts have indeterminate outcomes. Bounded polling can
+confirm the exact new state, but a read of the old state never proves rollback.
+If outcome remains unknown, keep all artifacts and the pending receipt, freeze
+the enrollment token with active=false, return a generic error and audit recovery
+required. An indeterminate compensation also stops destructive cleanup. Queries
+for pending receipts block other devices even after process replacement.
+
+Recovery of a pending consumption requires matching identities and artifacts,
+token use_count exactly equal to expected_use_count, and durably observed
+active=false. Counts below or above the target remain pending; do not replay a
+write that may still be in flight. Recovery rotates credentials and commits the
+receipt without another count increment. The token remains permanently inactive
+for manual review, sacrificing remaining capacity so a late count-only write
+cannot affect later enrollment uses or reactivate the token.
+
+For indeterminate credential rotations, the same process must first observe the
+unique hash/envelope it attempted to write before another rotation is safe.
+After process-state loss, a pending consumed receipt does not prove which
+credential generation will finish; it fails closed for manual reconciliation.
+The journal is in memory. A distributed transaction or durable generation/fencing
+design is required for automatic recovery of every crash/rotation phase.
+
+Known token, device and receipt denials write a best-effort failure audit with
+fixed nonsecret reason codes. Audit failure cannot mutate enrollment state or
+change the stable denial response. Unknown tokens have no trusted organization;
+they do not write organization audit rows and emit only a generic application log.
+The global application logger omits raw URLs/queries and exception messages on
+POST, OPTIONS, unsupported methods, not-found and error responses.

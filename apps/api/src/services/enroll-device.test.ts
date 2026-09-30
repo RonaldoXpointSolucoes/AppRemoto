@@ -27,6 +27,8 @@ function fixture() {
       return current.token_hash === hash ? structuredClone(current) : null;
     },
     organizationActive: async () => true,
+    pendingReceipts: async (tokenId) => [...rows].filter(([path, data]) => path.startsWith('enrollment_receipts/') &&
+      data.enrollment_token_id === tokenId && data.status === 'pending').map(([, data]) => structuredClone(data)),
     snapshot: async (kind, id) => structuredClone(rows.get(`${kind}/${id}`) ?? null),
     write: async (kind, id, data, previous) => {
       calls.push(`write:${kind}`);
@@ -156,14 +158,38 @@ for (const changes of [{ active: false }, { expires_at: now.toISOString() }, { e
   { use_count: 1 }, { use_count: -1 }, { max_uses: 0 }]) {
   test(`rejects invalid enrollment token ${JSON.stringify(changes)}`, async () => {
     const f = fixture(); Object.assign(f.rows.get('enrollment_tokens/enroll-1')!, changes);
-    await assert.rejects(f.enroll(request, '127.0.0.1'), EnrollmentError); assert.equal(f.calls.length, 0);
+    await assert.rejects(f.enroll(request, '127.0.0.1'), EnrollmentError); assert.ok(!f.calls.some((call) => call.startsWith('write:')));
   });
 }
 
 test('unknown token and inactive organization fail without writes', async () => {
   const f = fixture(); await assert.rejects(f.enroll({ ...request, enrollmentToken: 'x'.repeat(32) }, '127.0.0.1'), EnrollmentError);
   f.repo.organizationActive = async () => false;
-  await assert.rejects(f.enroll(request, '127.0.0.1'), EnrollmentError); assert.equal(f.calls.length, 0);
+  await assert.rejects(f.enroll(request, '127.0.0.1'), EnrollmentError); assert.ok(!f.calls.some((call) => call.startsWith('write:')));
+});
+
+test('known authentication and replay denials record fixed-field audit without changing enrollment state', async () => {
+  for (const changes of [{ active: false }, { expires_at: now.toISOString() }, { use_count: 1 }]) {
+    const f = fixture(); Object.assign(f.rows.get('enrollment_tokens/enroll-1')!, changes);
+    const before = structuredClone([...f.rows]);
+    await assert.rejects(f.enroll(request, '127.0.0.1'), (e: unknown) => e instanceof EnrollmentError && e.code === 'ENROLLMENT_DENIED');
+    const event = [...f.events.values()][0]!; assert.equal(event.result, 'failure'); assert.ok(event.reason);
+    assert.equal(event.organizationId, 'org-1'); assert.deepEqual([...f.rows], before);
+    assert.ok(!JSON.stringify(event).includes(request.enrollmentToken));
+  }
+  const f = fixture(); await f.enroll(request, '127.0.0.1'); f.events.clear();
+  f.rows.get(`enrollment_receipts/${enrollmentId('receipt', 'enroll-1', request.deviceUuid)}`)!.device_id = 'other';
+  const before = structuredClone([...f.rows]); await assert.rejects(f.enroll(request, '127.0.0.1'), EnrollmentError);
+  assert.equal([...f.events.values()][0]!.reason, 'identity_mismatch'); assert.deepEqual([...f.rows], before);
+});
+
+test('denial audit failure preserves stable denial and unknown tokens never create organization audit', async () => {
+  const f = fixture(); f.rows.get('enrollment_tokens/enroll-1')!.active = false; f.failAt('audit');
+  const before = structuredClone([...f.rows]);
+  await assert.rejects(f.enroll(request, '127.0.0.1'), (e: unknown) => e instanceof EnrollmentError && e.code === 'ENROLLMENT_DENIED');
+  assert.deepEqual([...f.rows], before);
+  const unknown = fixture(); await assert.rejects(unknown.enroll({ ...request, enrollmentToken: 'z'.repeat(32) }, '127.0.0.1'), EnrollmentError);
+  assert.equal(unknown.events.size, 0);
 });
 
 test('device existence without a committed receipt never permits credential rotation', async () => {
@@ -195,12 +221,13 @@ test('committed retry still requires active unexpired token and matching enabled
   }
 });
 
-test('recovers only an untouched pending receipt with zero use count and no artifacts', async () => {
+test('pending receipt with unobserved target stays pending and does not guess the consumption outcome', async () => {
   const f = fixture(); const deviceId = enrollmentId('device', 'org-1', request.deviceUuid);
   f.rows.set(`enrollment_receipts/${enrollmentId('receipt', 'enroll-1', request.deviceUuid)}`, {
     organization_id: 'org-1', enrollment_token_id: 'enroll-1', device_id: deviceId,
-    device_uuid: request.deviceUuid, status: 'pending', token_use_consumed: false });
-  const result = await f.enroll(request, '127.0.0.1'); assert.equal(result.deviceId, deviceId);
+    device_uuid: request.deviceUuid, status: 'pending', token_use_consumed: false, expected_use_count: 1 });
+  await assert.rejects(f.enroll(request, '127.0.0.1'), EnrollmentError);
+  assert.ok(!f.rows.has(`devices/${deviceId}`));
 });
 
 for (const point of ['enrollment_receipts', 'devices', 'device_tokens', 'device_credentials', 'enrollment_tokens', 'receipt_commit', 'audit']) {
