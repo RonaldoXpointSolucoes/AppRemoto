@@ -43,8 +43,9 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     throw new Error('ALLOWED_ORIGINS must contain HTTPS origins');
   }
 
-  const port = Number(env.PORT ?? '3000');
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  const portValue = env.PORT ?? '3000';
+  const port = Number(portValue);
+  if (!/^[1-9]\d{0,4}$/.test(portValue) || port > 65535) {
     throw new Error('PORT must be an integer between 1 and 65535');
   }
 
