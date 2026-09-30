@@ -28,10 +28,11 @@ test('device list query validates filters and pagination boundaries', () => {
   assert.deepEqual(DeviceListQuerySchema.parse({ organizationId: 'org-1', status: 'ONLINE', search: '  office  ', cursor: 'next', limit: 100 }),
     { organizationId: 'org-1', status: 'ONLINE', search: 'office', cursor: 'next', limit: 100 });
   assert.deepEqual(DeviceListQuerySchema.parse({ limit: '20' }), { limit: 20 });
+  assert.equal(DeviceListQuerySchema.safeParse({ cursor: 'a'.repeat(400) }).success, true);
   for (const invalid of [
     { organizationId: '' }, { organizationId: 'x'.repeat(37) },
     { status: 'online' }, { search: '  ' }, { search: 'x'.repeat(129) },
-    { cursor: '' }, { cursor: 'x'.repeat(37) },
+    { cursor: '' }, { cursor: 'x'.repeat(1025) },
     { limit: 0 }, { limit: 101 }, { limit: 1.5 },
     { limit: '' }, { limit: '1.5' }, { limit: '+20' }, { limit: '2e1' }, { limit: ['20'] },
     { unknown: true },

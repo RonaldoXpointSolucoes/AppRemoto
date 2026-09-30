@@ -14,6 +14,7 @@ export interface TechnicianServices {
   technicians: TechnicianRepository;
   organizations: OrganizationRepository;
   devices?: DeviceRepository;
+  cursorSecret?: Buffer;
   now?: () => Date;
 }
 

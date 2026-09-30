@@ -7,7 +7,7 @@ export const DeviceListQuerySchema = z.object({
   organizationId: shortId.optional(),
   status: deviceStatus.optional(),
   search: z.string().trim().min(1).max(128).optional(),
-  cursor: shortId.optional(),
+  cursor: z.string().min(1).max(1024).optional(),
   limit: z.preprocess(
     (value) => typeof value === 'string' && /^[0-9]+$/.test(value) ? Number(value) : value,
     z.number().int().min(1).max(100),

@@ -2,6 +2,7 @@ import { Query, type Databases, type Models } from 'node-appwrite';
 
 export interface DeviceRecord {
   id: string;
+  createdAt: string;
   organizationId: string;
   deviceUuid: string;
   displayName: string;
@@ -15,8 +16,13 @@ export interface DeviceRecord {
   enabled: boolean;
 }
 
+export interface DeviceScan {
+  records: DeviceRecord[];
+  hasMore: boolean;
+}
+
 export interface DeviceRepository {
-  listByOrganization(organizationId: string): Promise<DeviceRecord[]>;
+  scan(organizationIds: string[], afterId: string | null, snapshotTime: string, limit: number): Promise<DeviceScan>;
 }
 
 type DeviceDocument = Models.Document & {
@@ -33,32 +39,37 @@ type DeviceDocument = Models.Document & {
   enabled: boolean;
 };
 
-const selectedFields = ['$id', 'organization_id', 'device_uuid', 'display_name', 'hostname',
-  'operating_system', 'os_version', 'rustdesk_id', 'agent_version', 'rustdesk_version',
-  'last_seen_at', 'enabled'];
-const pageSize = 100;
-const maxPages = 1000;
+const selectedFields = ['$id', '$createdAt', 'organization_id', 'device_uuid', 'display_name',
+  'hostname', 'operating_system', 'os_version', 'rustdesk_id', 'agent_version',
+  'rustdesk_version', 'last_seen_at', 'enabled'];
 
 export function createDeviceRepository(databases: Databases): DeviceRepository {
   return {
-    async listByOrganization(organizationId) {
-      const devices: DeviceRecord[] = [];
-      for (let pageNumber = 0; pageNumber < maxPages; pageNumber++) {
-        const page = await databases.listDocuments<DeviceDocument>('remote_management', 'devices', [
-          Query.equal('organization_id', organizationId), Query.select(selectedFields),
-          Query.orderAsc('$id'), Query.limit(pageSize), Query.offset(devices.length),
-        ]);
-        devices.push(...page.documents.map((doc) => ({
-          id: doc.$id, organizationId: doc.organization_id, deviceUuid: doc.device_uuid,
-          displayName: doc.display_name, hostname: doc.hostname, operatingSystem: doc.operating_system,
-          osVersion: doc.os_version, rustdeskId: doc.rustdesk_id,
-          agentVersion: doc.agent_version ?? null, rustdeskVersion: doc.rustdesk_version ?? null,
-          lastSeenAt: doc.last_seen_at ?? null, enabled: doc.enabled,
-        })));
-        if (devices.length >= page.total) return devices;
-        if (!page.documents.length) throw new Error('Incomplete Appwrite device page');
+    async scan(organizationIds, afterId, snapshotTime, limit) {
+      if (!organizationIds.length || organizationIds.length > 25 || limit < 1 || limit > 99) {
+        throw new Error('Invalid device scan bounds');
       }
-      throw new Error('Appwrite device page limit exceeded');
+      const queries = [Query.equal('organization_id', organizationIds),
+        Query.lessThanEqual('$createdAt', snapshotTime), Query.select(selectedFields),
+        Query.orderAsc('$id'), Query.limit(limit + 1)];
+      if (afterId) queries.push(Query.greaterThan('$id', afterId));
+      const page = await databases.listDocuments<DeviceDocument>('remote_management', 'devices', queries);
+      const documents = page.documents.slice(0, limit);
+      if (documents.some((doc) => !organizationIds.includes(doc.organization_id) ||
+          doc.$createdAt > snapshotTime || (afterId !== null && doc.$id <= afterId))) {
+        throw new Error('Invalid Appwrite device page');
+      }
+      return {
+        records: documents.map((doc) => ({
+          id: doc.$id, createdAt: doc.$createdAt, organizationId: doc.organization_id,
+          deviceUuid: doc.device_uuid, displayName: doc.display_name, hostname: doc.hostname,
+          operatingSystem: doc.operating_system, osVersion: doc.os_version,
+          rustdeskId: doc.rustdesk_id, agentVersion: doc.agent_version ?? null,
+          rustdeskVersion: doc.rustdesk_version ?? null, lastSeenAt: doc.last_seen_at ?? null,
+          enabled: doc.enabled,
+        })),
+        hasMore: page.documents.length > limit,
+      };
     },
   };
 }

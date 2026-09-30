@@ -21,7 +21,9 @@ export function buildApp(options: FastifyServerOptions = {}, services?: Technici
     const authenticate = registerTechnicianAuth(app, services);
     registerMeRoute(app, authenticate);
     registerOrganizationsRoute(app, authenticate);
-    if (services.devices) registerDevicesRoute(app, authenticate, services.devices, services.now);
+    if (services.devices && services.cursorSecret) {
+      registerDevicesRoute(app, authenticate, services.devices, services.cursorSecret, services.now);
+    }
   }
 
   return app;

@@ -8,12 +8,12 @@ const invalid = { error: { code: 'INVALID_DEVICE_QUERY', message: 'Invalid devic
 const unavailable = { error: { code: 'DEVICES_UNAVAILABLE', message: 'Devices unavailable' } };
 
 export function registerDevicesRoute(app: FastifyInstance, authenticate: preHandlerHookHandler,
-  repository: DeviceRepository, now: () => Date = () => new Date()): void {
+  repository: DeviceRepository, cursorSecret: Buffer, now: () => Date = () => new Date()): void {
   app.get('/v1/devices', { preHandler: authenticate }, async (request, reply) => {
     const parsed = DeviceListQuerySchema.safeParse(request.query);
     if (!parsed.success) return reply.code(400).send(invalid);
     try {
-      return await listDevices(request.technician!, parsed.data, repository, now());
+      return await listDevices(request.technician!, parsed.data, repository, now(), cursorSecret);
     } catch (error) {
       if (error instanceof InvalidDeviceCursorError) return reply.code(400).send(invalid);
       return reply.code(503).send(unavailable);

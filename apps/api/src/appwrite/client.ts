@@ -1,4 +1,5 @@
 import { Account, AppwriteException, Client, Databases } from 'node-appwrite';
+import { hkdfSync } from 'node:crypto';
 
 import type { ApiConfig } from '../config.ts';
 import type { TechnicianServices } from '../plugins/technician-auth.ts';
@@ -29,5 +30,7 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
     technicians: createTechnicianRepository(databases),
     organizations: createOrganizationRepository(databases),
     devices: createDeviceRepository(databases),
+    cursorSecret: Buffer.from(hkdfSync('sha256', config.masterEncryptionKey, Buffer.alloc(0),
+      'appremoto-device-list-cursor-v1', 32)),
   };
 }
