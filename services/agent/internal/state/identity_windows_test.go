@@ -6,13 +6,136 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"golang.org/x/sys/windows"
 )
 
+func TestValidateRestrictedWindowsACLRejectsUnexpectedOwner(t *testing.T) {
+	userSID, systemSID, err := identitySIDs()
+	if err != nil {
+		t.Fatalf("identitySIDs() error = %v", err)
+	}
+	everyone, err := windows.StringToSid("S-1-1-0")
+	if err != nil {
+		t.Fatalf("StringToSid() error = %v", err)
+	}
+	acl, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{
+		allowFullAccess(userSID, windows.TRUSTEE_IS_USER),
+		allowFullAccess(systemSID, windows.TRUSTEE_IS_WELL_KNOWN_GROUP),
+	}, nil)
+	if err != nil {
+		t.Fatalf("ACLFromEntries() error = %v", err)
+	}
+	descriptor, err := windows.NewSecurityDescriptor()
+	if err != nil {
+		t.Fatalf("NewSecurityDescriptor() error = %v", err)
+	}
+	if err := descriptor.SetDACL(acl, true, false); err != nil {
+		t.Fatalf("SetDACL() error = %v", err)
+	}
+	if err := descriptor.SetControl(windows.SE_DACL_PROTECTED, windows.SE_DACL_PROTECTED); err != nil {
+		t.Fatalf("SetControl() error = %v", err)
+	}
+	if err := descriptor.SetOwner(everyone, false); err != nil {
+		t.Fatalf("SetOwner() error = %v", err)
+	}
+	runtime.KeepAlive(userSID)
+	runtime.KeepAlive(systemSID)
+	runtime.KeepAlive(everyone)
+
+	err = validateSecurityDescriptor(descriptor)
+	if err == nil || !strings.Contains(err.Error(), "owner") {
+		t.Fatalf("validateSecurityDescriptor() error = %v, want unexpected owner error", err)
+	}
+}
+
+func TestOpenIdentityDirectoryPreventsPathReplacement(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "state")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+	if err := restrictIdentityDirectory(dir); err != nil {
+		t.Fatalf("restrictIdentityDirectory() error = %v", err)
+	}
+	guard, err := openIdentityDirectory(dir)
+	if err != nil {
+		t.Fatalf("openIdentityDirectory() error = %v", err)
+	}
+	renamed := filepath.Join(root, "renamed")
+	if err := os.Rename(dir, renamed); err == nil {
+		guard.Close()
+		t.Fatal("Rename() error = nil while guarded directory is open")
+	}
+	if err := guard.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if err := os.Rename(dir, renamed); err != nil {
+		t.Fatalf("Rename() after Close() error = %v", err)
+	}
+}
+
+func TestOpenIdentityDirectoryRejectsUntrustedWriter(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "state")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+	everyone, err := windows.StringToSid("S-1-1-0")
+	if err != nil {
+		t.Fatalf("StringToSid() error = %v", err)
+	}
+	acl, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{{
+		AccessPermissions: windows.GENERIC_ALL,
+		AccessMode:        windows.GRANT_ACCESS,
+		Trustee: windows.TRUSTEE{
+			TrusteeForm:  windows.TRUSTEE_IS_SID,
+			TrusteeValue: windows.TrusteeValueFromSID(everyone),
+		},
+	}}, nil)
+	if err != nil {
+		t.Fatalf("ACLFromEntries() error = %v", err)
+	}
+	if err := windows.SetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+		nil, nil, acl, nil); err != nil {
+		t.Fatalf("SetNamedSecurityInfo() error = %v", err)
+	}
+	runtime.KeepAlive(everyone)
+
+	if guard, err := openIdentityDirectory(dir); err == nil {
+		guard.Close()
+		t.Fatal("openIdentityDirectory() error = nil, want untrusted writer rejection")
+	}
+}
+
+func TestCreateRestrictedIdentityTempPreventsPathReplacement(t *testing.T) {
+	dir := t.TempDir()
+	temp, path, err := createRestrictedIdentityTemp(dir)
+	if err != nil {
+		t.Fatalf("createRestrictedIdentityTemp() error = %v", err)
+	}
+	defer os.Remove(path)
+	renamed := path + ".renamed"
+	if err := os.Rename(path, renamed); err == nil {
+		temp.Close()
+		t.Fatal("Rename() error = nil while temporary identity is open")
+	}
+	if err := temp.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if err := os.Rename(path, renamed); err != nil {
+		t.Fatalf("Rename() after Close() error = %v", err)
+	}
+	if err := os.Rename(renamed, path); err != nil {
+		t.Fatalf("restore temporary path: %v", err)
+	}
+}
+
 func TestLoadOrCreateIdentityAppliesAndValidatesRestrictedWindowsACL(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "identity.json")
+	path := filepath.Join(identityTestDir(t), "identity.json")
 	if _, err := LoadOrCreateIdentity(path); err != nil {
 		t.Fatalf("LoadOrCreateIdentity() error = %v", err)
 	}
@@ -108,7 +231,7 @@ func TestLoadOrCreateIdentityRejectsJunctionAsIdentityFile(t *testing.T) {
 }
 
 func TestLoadOrCreateIdentityRejectsJunctionTemporaryFile(t *testing.T) {
-	root := t.TempDir()
+	root := identityTestDir(t)
 	target := filepath.Join(root, "target")
 	if err := os.Mkdir(target, 0o700); err != nil {
 		t.Fatalf("Mkdir() error = %v", err)
@@ -121,7 +244,7 @@ func TestLoadOrCreateIdentityRejectsJunctionTemporaryFile(t *testing.T) {
 }
 
 func TestLoadOrCreateIdentityRejectsReparseTemporaryFile(t *testing.T) {
-	dir := t.TempDir()
+	dir := identityTestDir(t)
 	target := filepath.Join(dir, "target.tmp")
 	if err := os.WriteFile(target, []byte("target"), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)

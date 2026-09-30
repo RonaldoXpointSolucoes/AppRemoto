@@ -29,15 +29,28 @@ const (
 )
 
 // LoadOrCreateIdentity loads an existing identity or atomically creates one.
+// On Windows, the parent must be owned by the current user, SYSTEM, or
+// Administrators and must not grant write or delete access to other principals.
 func LoadOrCreateIdentity(path string) (Identity, error) {
-	if err := validateIdentityPath(path); err != nil {
+	canonicalPath, err := filepath.Abs(path)
+	if err != nil {
+		return Identity{}, fmt.Errorf("resolve identity path: %w", err)
+	}
+	canonicalPath = filepath.Clean(canonicalPath)
+	if err := validateIdentityPath(canonicalPath); err != nil {
 		return Identity{}, err
 	}
-	if err := cleanStaleIdentityFiles(filepath.Dir(path), time.Now()); err != nil {
+	directory, err := openIdentityDirectory(filepath.Dir(canonicalPath))
+	if err != nil {
+		return Identity{}, fmt.Errorf("open identity directory: %w", err)
+	}
+	defer directory.Close()
+
+	if err := cleanStaleIdentityFiles(directory, time.Now()); err != nil {
 		return Identity{}, err
 	}
 
-	identity, err := loadIdentity(path)
+	identity, err := loadIdentity(canonicalPath)
 	if err == nil {
 		return identity, nil
 	}
@@ -49,9 +62,9 @@ func LoadOrCreateIdentity(path string) (Identity, error) {
 	if err != nil {
 		return Identity{}, err
 	}
-	if err := publishIdentity(path, identity); err != nil {
+	if err := publishIdentity(canonicalPath, identity, directory); err != nil {
 		if errors.Is(err, os.ErrExist) {
-			return loadIdentity(path)
+			return loadIdentity(canonicalPath)
 		}
 		return Identity{}, err
 	}
@@ -147,37 +160,26 @@ func newIdentity() (Identity, error) {
 	return Identity{DeviceUUID: string(encoded[:])}, nil
 }
 
-func publishIdentity(path string, identity Identity) error {
+func publishIdentity(path string, identity Identity, directory *identityDirectory) error {
 	data, err := json.Marshal(identity)
 	if err != nil {
 		return fmt.Errorf("encode identity: %w", err)
 	}
 	data = append(data, '\n')
 
-	dir := filepath.Dir(path)
-	temp, err := os.CreateTemp(dir, ".identity-*.tmp")
+	temp, tempPath, err := createRestrictedIdentityTemp(directory.path)
 	if err != nil {
 		return fmt.Errorf("create temporary identity: %w", err)
 	}
-	tempPath := temp.Name()
 	defer os.Remove(tempPath)
-
-	if err := restrictIdentityFile(tempPath); err != nil {
-		temp.Close()
-		return fmt.Errorf("restrict temporary identity: %w", err)
-	}
+	defer temp.Close()
 	if _, err := temp.Write(data); err != nil {
-		temp.Close()
 		return fmt.Errorf("write temporary identity: %w", err)
 	}
 	if err := temp.Sync(); err != nil {
-		temp.Close()
 		return fmt.Errorf("sync temporary identity: %w", err)
 	}
-	if err := temp.Close(); err != nil {
-		return fmt.Errorf("close temporary identity: %w", err)
-	}
-	if err := validateRestrictedACL(tempPath); err != nil {
+	if err := validateRestrictedIdentityHandle(temp); err != nil {
 		return fmt.Errorf("validate temporary identity: %w", err)
 	}
 	if err := validateIdentityPath(path); err != nil {
@@ -187,14 +189,22 @@ func publishIdentity(path string, identity Identity) error {
 	if err := os.Link(tempPath, path); err != nil {
 		return fmt.Errorf("publish identity: %w", err)
 	}
-	if err := syncIdentityDirectory(filepath.Dir(path)); err != nil {
+	published, err := openValidatedIdentity(path)
+	if err != nil {
+		return fmt.Errorf("verify published identity: %w", err)
+	}
+	defer published.Close()
+	if err := verifySameIdentityFile(temp, published); err != nil {
+		return fmt.Errorf("verify published identity: %w", err)
+	}
+	if err := directory.Sync(); err != nil {
 		return fmt.Errorf("sync identity directory: %w", err)
 	}
 	return nil
 }
 
-func cleanStaleIdentityFiles(dir string, now time.Time) error {
-	entries, err := os.ReadDir(dir)
+func cleanStaleIdentityFiles(directory *identityDirectory, now time.Time) error {
+	entries, err := os.ReadDir(directory.path)
 	if err != nil {
 		return fmt.Errorf("inspect identity directory: %w", err)
 	}
@@ -204,7 +214,7 @@ func cleanStaleIdentityFiles(dir string, now time.Time) error {
 		if !strings.HasPrefix(name, ".identity-") || !strings.HasSuffix(name, ".tmp") {
 			continue
 		}
-		path := filepath.Join(dir, name)
+		path := filepath.Join(directory.path, name)
 		info, err := lstatRegularIdentityFile(path)
 		if errors.Is(err, os.ErrNotExist) {
 			continue
@@ -221,7 +231,7 @@ func cleanStaleIdentityFiles(dir string, now time.Time) error {
 		removed = true
 	}
 	if removed {
-		if err := syncIdentityDirectory(dir); err != nil {
+		if err := directory.Sync(); err != nil {
 			return fmt.Errorf("sync identity directory: %w", err)
 		}
 	}

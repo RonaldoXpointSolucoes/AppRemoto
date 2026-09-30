@@ -15,7 +15,7 @@ import (
 var uuidV4Pattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 func TestLoadOrCreateIdentityCreatesUUID(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "identity.json")
+	path := filepath.Join(identityTestDir(t), "identity.json")
 
 	identity, err := LoadOrCreateIdentity(path)
 	if err != nil {
@@ -39,7 +39,7 @@ func TestLoadOrCreateIdentityCreatesUUID(t *testing.T) {
 }
 
 func TestLoadOrCreateIdentityReloadsExistingIdentity(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "identity.json")
+	path := filepath.Join(identityTestDir(t), "identity.json")
 	first, err := LoadOrCreateIdentity(path)
 	if err != nil {
 		t.Fatalf("first LoadOrCreateIdentity() error = %v", err)
@@ -55,7 +55,7 @@ func TestLoadOrCreateIdentityReloadsExistingIdentity(t *testing.T) {
 }
 
 func TestLoadOrCreateIdentityPublishesOneCompleteIdentityAtomically(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "identity.json")
+	path := filepath.Join(identityTestDir(t), "identity.json")
 	const callers = 24
 	identities := make(chan Identity, callers)
 	errors := make(chan error, callers)
@@ -102,7 +102,7 @@ func TestLoadOrCreateIdentityPublishesOneCompleteIdentityAtomically(t *testing.T
 }
 
 func TestLoadOrCreateIdentityRejectsAndPreservesMalformedState(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "identity.json")
+	path := filepath.Join(identityTestDir(t), "identity.json")
 	original := []byte(`{"device_uuid":"not-a-uuid"}`)
 	writeIdentityFixture(t, path, original)
 
@@ -139,7 +139,7 @@ func TestLoadOrCreateIdentityRejectsNonCanonicalState(t *testing.T) {
 }
 
 func TestLoadOrCreateIdentityRejectsOversizedState(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "identity.json")
+	path := filepath.Join(identityTestDir(t), "identity.json")
 	original := []byte(`{"device_uuid":"` + strings.Repeat("a", maxIdentityBytes) + `"}`)
 	writeIdentityFixture(t, path, original)
 
@@ -149,7 +149,7 @@ func TestLoadOrCreateIdentityRejectsOversizedState(t *testing.T) {
 }
 
 func TestLoadOrCreateIdentityCleansStaleTemporaryFileAfterRestart(t *testing.T) {
-	dir := t.TempDir()
+	dir := identityTestDir(t)
 	path := filepath.Join(dir, "identity.json")
 	stalePath := filepath.Join(dir, ".identity-abandoned.tmp")
 	if err := os.WriteFile(stalePath, []byte("partial"), 0o600); err != nil {
@@ -169,7 +169,7 @@ func TestLoadOrCreateIdentityCleansStaleTemporaryFileAfterRestart(t *testing.T) 
 }
 
 func TestLoadOrCreateIdentityPreservesRecentTemporaryFile(t *testing.T) {
-	dir := t.TempDir()
+	dir := identityTestDir(t)
 	path := filepath.Join(dir, "identity.json")
 	recentPath := filepath.Join(dir, ".identity-active.tmp")
 	if err := os.WriteFile(recentPath, []byte("in progress"), 0o600); err != nil {
@@ -185,7 +185,7 @@ func TestLoadOrCreateIdentityPreservesRecentTemporaryFile(t *testing.T) {
 }
 
 func TestLoadOrCreateIdentityUsesRestrictivePermissions(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "identity.json")
+	path := filepath.Join(identityTestDir(t), "identity.json")
 	if _, err := LoadOrCreateIdentity(path); err != nil {
 		t.Fatalf("LoadOrCreateIdentity() error = %v", err)
 	}
@@ -218,4 +218,16 @@ func writeIdentityFixture(t *testing.T, path string, content []byte) {
 	if err := restrictIdentityFile(path); err != nil {
 		t.Fatalf("restrictIdentityFile() error = %v", err)
 	}
+}
+
+func identityTestDir(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "state")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+	if err := restrictIdentityDirectory(dir); err != nil {
+		t.Fatalf("restrictIdentityDirectory() error = %v", err)
+	}
+	return dir
 }

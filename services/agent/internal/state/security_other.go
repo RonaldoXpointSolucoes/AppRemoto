@@ -4,18 +4,40 @@ package state
 
 import (
 	"errors"
-	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 )
 
-func validateIdentityPath(path string) error {
-	abs, err := filepath.Abs(path)
+// The non-Windows fallback relies on lstat plus Unix directory/file handles.
+// Windows receives the stronger no-share-delete and file-ID verification path.
+type identityDirectory struct {
+	file *os.File
+	path string
+}
+
+func openIdentityDirectory(path string) (*identityDirectory, error) {
+	file, err := os.Open(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	parent := filepath.Dir(abs)
+	info, err := file.Stat()
+	if err != nil || !info.IsDir() {
+		file.Close()
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.New("identity directory is not a directory")
+	}
+	return &identityDirectory{file: file, path: path}, nil
+}
+
+func (directory *identityDirectory) Sync() error  { return directory.file.Sync() }
+func (directory *identityDirectory) Close() error { return directory.file.Close() }
+
+func restrictIdentityDirectory(path string) error { return os.Chmod(path, 0o700) }
+
+func validateIdentityPath(path string) error {
+	parent := filepath.Dir(path)
 	for current := parent; ; current = filepath.Dir(current) {
 		info, err := os.Lstat(current)
 		if err != nil {
@@ -32,7 +54,7 @@ func validateIdentityPath(path string) error {
 			break
 		}
 	}
-	info, err := os.Lstat(abs)
+	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -60,11 +82,51 @@ func validateRestrictedACL(path string) error {
 	return nil
 }
 
-func openValidatedIdentity(path string) (io.ReadCloser, error) {
+func openValidatedIdentity(path string) (*os.File, error) {
 	if err := validateRestrictedACL(path); err != nil {
 		return nil, err
 	}
 	return os.Open(path)
+}
+
+func validateRestrictedIdentityHandle(file *os.File) error {
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+		return errors.New("identity file permissions are not restricted")
+	}
+	return nil
+}
+
+func createRestrictedIdentityTemp(dir string) (*os.File, string, error) {
+	file, err := os.CreateTemp(dir, ".identity-*.tmp")
+	if err != nil {
+		return nil, "", err
+	}
+	path := file.Name()
+	if err := file.Chmod(0o600); err != nil {
+		file.Close()
+		os.Remove(path)
+		return nil, "", err
+	}
+	return file, path, nil
+}
+
+func verifySameIdentityFile(temporary, published *os.File) error {
+	temporaryInfo, err := temporary.Stat()
+	if err != nil {
+		return err
+	}
+	publishedInfo, err := published.Stat()
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(temporaryInfo, publishedInfo) {
+		return errors.New("published identity does not match temporary file")
+	}
+	return nil
 }
 
 func lstatRegularIdentityFile(path string) (os.FileInfo, error) {
@@ -76,16 +138,4 @@ func lstatRegularIdentityFile(path string) (os.FileInfo, error) {
 		return nil, errors.New("temporary identity is not a regular file")
 	}
 	return info, nil
-}
-
-func syncIdentityDirectory(dir string) error {
-	directory, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	defer directory.Close()
-	if err := directory.Sync(); err != nil {
-		return fmt.Errorf("flush directory: %w", err)
-	}
-	return nil
 }

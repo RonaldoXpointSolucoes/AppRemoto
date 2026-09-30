@@ -3,9 +3,10 @@
 package state
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,16 +17,133 @@ import (
 
 const fileAllAccess windows.ACCESS_MASK = windows.STANDARD_RIGHTS_REQUIRED | windows.SYNCHRONIZE | 0x1ff
 
-func validateIdentityPath(path string) error {
-	abs, err := filepath.Abs(path)
+const directoryDangerousAccess windows.ACCESS_MASK = windows.GENERIC_ALL | windows.GENERIC_WRITE |
+	windows.DELETE | windows.WRITE_DAC | windows.WRITE_OWNER | windows.FILE_WRITE_DATA |
+	windows.FILE_APPEND_DATA | 0x40 // FILE_DELETE_CHILD
+
+type identityDirectory struct {
+	handle windows.Handle
+	path   string
+}
+
+func openIdentityDirectory(path string) (*identityDirectory, error) {
+	pointer, err := windows.UTF16PtrFromString(path)
 	if err != nil {
-		return fmt.Errorf("resolve identity path: %w", err)
+		return nil, err
 	}
-	volume := filepath.VolumeName(abs)
+	handle, err := windows.CreateFile(pointer, windows.GENERIC_READ|windows.GENERIC_WRITE|windows.READ_CONTROL,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING,
+		windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		return nil, err
+	}
+	directory := &identityDirectory{handle: handle, path: path}
+	if err := directory.validate(); err != nil {
+		directory.Close()
+		return nil, err
+	}
+	return directory, nil
+}
+
+func (directory *identityDirectory) validate() error {
+	var info windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(directory.handle, &info); err != nil {
+		return err
+	}
+	if info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 || info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY == 0 {
+		return errors.New("identity directory is not a trusted directory")
+	}
+	descriptor, err := windows.GetSecurityInfo(directory.handle, windows.SE_FILE_OBJECT,
+		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		return err
+	}
+	return validateDirectorySecurityDescriptor(descriptor)
+}
+
+func (directory *identityDirectory) Sync() error {
+	return windows.FlushFileBuffers(directory.handle)
+}
+
+func (directory *identityDirectory) Close() error {
+	return windows.CloseHandle(directory.handle)
+}
+
+func restrictIdentityDirectory(path string) error {
+	userSID, systemSID, err := identitySIDs()
+	if err != nil {
+		return err
+	}
+	entries := []windows.EXPLICIT_ACCESS{
+		allowInheritedFullAccess(userSID, windows.TRUSTEE_IS_USER),
+		allowInheritedFullAccess(systemSID, windows.TRUSTEE_IS_WELL_KNOWN_GROUP),
+	}
+	acl, err := windows.ACLFromEntries(entries, nil)
+	if err != nil {
+		return err
+	}
+	runtime.KeepAlive(userSID)
+	runtime.KeepAlive(systemSID)
+	return windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+		nil, nil, acl, nil)
+}
+
+func allowInheritedFullAccess(sid *windows.SID, trusteeType windows.TRUSTEE_TYPE) windows.EXPLICIT_ACCESS {
+	entry := allowFullAccess(sid, trusteeType)
+	entry.Inheritance = windows.SUB_CONTAINERS_AND_OBJECTS_INHERIT
+	return entry
+}
+
+func validateDirectorySecurityDescriptor(descriptor *windows.SECURITY_DESCRIPTOR) error {
+	owner, _, err := descriptor.Owner()
+	if err != nil || owner == nil {
+		return errors.New("identity directory owner is missing")
+	}
+	userSID, systemSID, err := identitySIDs()
+	if err != nil {
+		return err
+	}
+	administratorsSID, err := windows.StringToSid("S-1-5-32-544")
+	if err != nil {
+		return err
+	}
+	if !owner.Equals(userSID) && !owner.Equals(systemSID) && !owner.Equals(administratorsSID) {
+		return errors.New("identity directory owner is untrusted")
+	}
+	dacl, _, err := descriptor.DACL()
+	if err != nil || dacl == nil {
+		return errors.New("identity directory has no DACL")
+	}
+	for index := uint32(0); index < uint32(dacl.AceCount); index++ {
+		var ace *windows.ACCESS_ALLOWED_ACE
+		if err := windows.GetAce(dacl, index, &ace); err != nil {
+			return err
+		}
+		if ace.Header.AceType == windows.ACCESS_DENIED_ACE_TYPE {
+			continue
+		}
+		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE {
+			return errors.New("identity directory DACL contains an unsupported allow entry")
+		}
+		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
+		trusted := sid.Equals(userSID) || sid.Equals(systemSID) || sid.Equals(administratorsSID)
+		if !trusted && ace.Mask&directoryDangerousAccess != 0 {
+			return errors.New("identity directory grants write or delete access to an untrusted principal")
+		}
+	}
+	runtime.KeepAlive(userSID)
+	runtime.KeepAlive(systemSID)
+	runtime.KeepAlive(administratorsSID)
+	return nil
+}
+
+func validateIdentityPath(path string) error {
+	volume := filepath.VolumeName(path)
 	if volume == "" {
 		return errors.New("identity path has no Windows volume")
 	}
-	parent := filepath.Dir(abs)
+	parent := filepath.Dir(path)
 	current := volume + string(os.PathSeparator)
 	relative := stringsTrimLeadingSeparator(parent[len(volume):])
 	for _, component := range splitPathComponents(relative) {
@@ -42,7 +160,7 @@ func validateIdentityPath(path string) error {
 		}
 	}
 
-	attributes, err := getFileAttributes(abs)
+	attributes, err := getFileAttributes(path)
 	if err == nil {
 		if attributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
 			return errors.New("identity file is a reparse point")
@@ -87,6 +205,21 @@ func getFileAttributes(value string) (uint32, error) {
 }
 
 func restrictIdentityFile(path string) error {
+	pointer, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return err
+	}
+	handle, err := windows.CreateFile(pointer, windows.GENERIC_READ|windows.READ_CONTROL|windows.WRITE_DAC,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING,
+		windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseHandle(handle)
+	return restrictIdentityWindowsHandle(handle)
+}
+
+func restrictIdentityWindowsHandle(handle windows.Handle) error {
 	userSID, systemSID, err := identitySIDs()
 	if err != nil {
 		return err
@@ -103,12 +236,12 @@ func restrictIdentityFile(path string) error {
 	}
 	runtime.KeepAlive(userSID)
 	runtime.KeepAlive(systemSID)
-	if err := windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
+	if err := windows.SetSecurityInfo(handle, windows.SE_FILE_OBJECT,
 		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
 		nil, nil, acl, nil); err != nil {
 		return fmt.Errorf("set identity ACL: %w", err)
 	}
-	return validateRestrictedACL(path)
+	return validateRestrictedIdentityWindowsHandle(handle)
 }
 
 func allowFullAccess(sid *windows.SID, trusteeType windows.TRUSTEE_TYPE) windows.EXPLICIT_ACCESS {
@@ -145,6 +278,9 @@ func validateRestrictedACL(path string) error {
 }
 
 func validateSecurityDescriptor(descriptor *windows.SECURITY_DESCRIPTOR) error {
+	if err := validateAllowedOwner(descriptor); err != nil {
+		return err
+	}
 	control, _, err := descriptor.Control()
 	if err != nil {
 		return fmt.Errorf("read identity ACL control: %w", err)
@@ -190,13 +326,28 @@ func validateSecurityDescriptor(descriptor *windows.SECURITY_DESCRIPTOR) error {
 	return nil
 }
 
-func openValidatedIdentity(path string) (io.ReadCloser, error) {
+func validateAllowedOwner(descriptor *windows.SECURITY_DESCRIPTOR) error {
+	owner, _, err := descriptor.Owner()
+	if err != nil || owner == nil {
+		return errors.New("identity owner is missing")
+	}
+	userSID, systemSID, err := identitySIDs()
+	if err != nil {
+		return err
+	}
+	if !owner.Equals(userSID) && !owner.Equals(systemSID) {
+		return errors.New("identity owner is not current user or SYSTEM")
+	}
+	return nil
+}
+
+func openValidatedIdentity(path string) (*os.File, error) {
 	pointer, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return nil, err
 	}
 	handle, err := windows.CreateFile(pointer, windows.GENERIC_READ|windows.READ_CONTROL,
-		windows.FILE_SHARE_READ, nil, windows.OPEN_EXISTING,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING,
 		windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
 	if err != nil {
 		return nil, err
@@ -210,7 +361,8 @@ func openValidatedIdentity(path string) (io.ReadCloser, error) {
 		windows.CloseHandle(handle)
 		return nil, errors.New("identity file is not a regular file")
 	}
-	descriptor, err := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	descriptor, err := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT,
+		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
 	if err != nil {
 		windows.CloseHandle(handle)
 		return nil, err
@@ -222,6 +374,74 @@ func openValidatedIdentity(path string) (io.ReadCloser, error) {
 	return os.NewFile(uintptr(handle), path), nil
 }
 
+func validateRestrictedIdentityHandle(file *os.File) error {
+	return validateRestrictedIdentityWindowsHandle(windows.Handle(file.Fd()))
+}
+
+func validateRestrictedIdentityWindowsHandle(handle windows.Handle) error {
+	var info windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(handle, &info); err != nil {
+		return err
+	}
+	if info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 || info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY != 0 {
+		return errors.New("identity file is not a regular file")
+	}
+	descriptor, err := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT,
+		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		return err
+	}
+	return validateSecurityDescriptor(descriptor)
+}
+
+func createRestrictedIdentityTemp(dir string) (*os.File, string, error) {
+	for range 32 {
+		var random [16]byte
+		if _, err := rand.Read(random[:]); err != nil {
+			return nil, "", err
+		}
+		path := filepath.Join(dir, ".identity-"+hex.EncodeToString(random[:])+".tmp")
+		pointer, err := windows.UTF16PtrFromString(path)
+		if err != nil {
+			return nil, "", err
+		}
+		handle, err := windows.CreateFile(pointer,
+			windows.GENERIC_READ|windows.GENERIC_WRITE|windows.READ_CONTROL|windows.WRITE_DAC,
+			windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.CREATE_NEW,
+			windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_WRITE_THROUGH|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+		if errors.Is(err, windows.ERROR_FILE_EXISTS) || errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
+			continue
+		}
+		if err != nil {
+			return nil, "", err
+		}
+		file := os.NewFile(uintptr(handle), path)
+		if err := restrictIdentityWindowsHandle(handle); err != nil {
+			file.Close()
+			os.Remove(path)
+			return nil, "", err
+		}
+		return file, path, nil
+	}
+	return nil, "", errors.New("could not allocate temporary identity name")
+}
+
+func verifySameIdentityFile(temporary, published *os.File) error {
+	var temporaryInfo, publishedInfo windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(windows.Handle(temporary.Fd()), &temporaryInfo); err != nil {
+		return err
+	}
+	if err := windows.GetFileInformationByHandle(windows.Handle(published.Fd()), &publishedInfo); err != nil {
+		return err
+	}
+	if temporaryInfo.VolumeSerialNumber != publishedInfo.VolumeSerialNumber ||
+		temporaryInfo.FileIndexHigh != publishedInfo.FileIndexHigh ||
+		temporaryInfo.FileIndexLow != publishedInfo.FileIndexLow {
+		return errors.New("published identity does not match temporary file")
+	}
+	return nil
+}
+
 func lstatRegularIdentityFile(path string) (os.FileInfo, error) {
 	attributes, err := getFileAttributes(path)
 	if err != nil {
@@ -231,19 +451,4 @@ func lstatRegularIdentityFile(path string) (os.FileInfo, error) {
 		return nil, errors.New("temporary identity is not a regular file")
 	}
 	return os.Lstat(path)
-}
-
-func syncIdentityDirectory(dir string) error {
-	pointer, err := windows.UTF16PtrFromString(dir)
-	if err != nil {
-		return err
-	}
-	handle, err := windows.CreateFile(pointer, windows.GENERIC_READ|windows.GENERIC_WRITE,
-		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
-		nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
-	if err != nil {
-		return err
-	}
-	defer windows.CloseHandle(handle)
-	return windows.FlushFileBuffers(handle)
 }
