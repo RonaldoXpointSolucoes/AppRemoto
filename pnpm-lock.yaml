@@ -9,6 +9,10 @@ importers:
   .: {}
 
   infra/appwrite:
+    dependencies:
+      node-appwrite:
+        specifier: 17.0.0
+        version: 17.0.0
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
@@ -35,6 +39,12 @@ packages:
   '@types/node@24.19.0':
     resolution: {integrity: sha512-zY+5tKxXdhGh1PYI0ac+7juvEu4OI6vWtVVoj5i2m42jxAY1U+zHGt6QCyOFwykdP62sM3MJ9stoYYUw5aCWew==}
 
+  node-appwrite@17.0.0:
+    resolution: {integrity: sha512-5Moi5ENPnoAfU1/6CZP9K2NTuB6Nm3dSyhokno+24RDuP7czjXCdwzfeyjmyHieggbrLkN89AYSOv9W1XkCL9w==}
+
+  node-fetch-native-with-agent@1.7.2:
+    resolution: {integrity: sha512-5MaOOCuJEvcckoz7/tjdx1M6OusOY6Xc5f459IaruGStWnKzlI1qpNgaAwmn4LmFYcsSlj+jBMk84wmmRxfk5g==}
+
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
     engines: {node: '>=14.17'}
@@ -51,6 +61,12 @@ snapshots:
   '@types/node@24.19.0':
     dependencies:
       undici-types: 7.24.6
+
+  node-appwrite@17.0.0:
+    dependencies:
+      node-fetch-native-with-agent: 1.7.2
+
+  node-fetch-native-with-agent@1.7.2: {}
 
   typescript@5.9.3: {}
 

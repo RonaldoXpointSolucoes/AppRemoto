@@ -7,7 +7,9 @@
     ".": "./src/schema.ts"
   },
   "scripts": {
-    "test": "node --experimental-strip-types --test src/schema.test.ts src/plan.test.ts",
+    "test": "node --experimental-strip-types --test src/*.test.ts",
+    "provision": "node --experimental-strip-types src/cli.ts",
+    "apply:fake": "node --experimental-strip-types src/testing/apply-fake.ts",
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "schema:check": "node --experimental-strip-types src/generate-schema.ts --check",
     "schema:write": "node --experimental-strip-types src/generate-schema.ts --write"
@@ -15,5 +17,8 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "node-appwrite": "17.0.0"
   }
 }
