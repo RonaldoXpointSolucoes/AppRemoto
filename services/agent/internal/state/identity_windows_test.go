@@ -3,6 +3,7 @@
 package state
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -213,6 +214,23 @@ func TestLoadOrCreateIdentityRejectsDirectoryJunctionInPath(t *testing.T) {
 
 	if _, err := LoadOrCreateIdentity(filepath.Join(junction, "identity.json")); err == nil {
 		t.Fatal("LoadOrCreateIdentity() error = nil, want junction error")
+	}
+}
+
+func TestPrepareIdentityDirectoryRejectsJunctionParentBeforeCreating(t *testing.T) {
+	root := t.TempDir()
+	realParent := filepath.Join(root, "real")
+	if err := os.Mkdir(realParent, 0o700); err != nil {
+		t.Fatalf("Mkdir(real parent) error = %v", err)
+	}
+	junction := filepath.Join(root, "junction")
+	createJunction(t, junction, realParent)
+
+	if err := PrepareIdentityDirectory(filepath.Join(junction, "agent-state")); err == nil {
+		t.Fatal("PrepareIdentityDirectory() error = nil, want junction rejection")
+	}
+	if _, err := os.Lstat(filepath.Join(realParent, "agent-state")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("directory was created behind junction, Lstat() error = %v", err)
 	}
 }
 

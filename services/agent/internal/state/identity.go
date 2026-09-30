@@ -28,6 +28,34 @@ const (
 	staleIdentityAge = 24 * time.Hour
 )
 
+// PrepareIdentityDirectory creates or hardens one dedicated identity directory.
+// It changes only path; callers remain responsible for choosing a dedicated
+// directory and must call this before LoadOrCreateIdentity.
+func PrepareIdentityDirectory(path string) error {
+	canonicalPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolve identity directory: %w", err)
+	}
+	canonicalPath = filepath.Clean(canonicalPath)
+	if filepath.Dir(canonicalPath) == canonicalPath {
+		return errors.New("identity directory must not be a filesystem root")
+	}
+	if err := os.Mkdir(canonicalPath, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+		return fmt.Errorf("create identity directory: %w", err)
+	}
+	if err := validateIdentityPath(filepath.Join(canonicalPath, ".identity-directory-check")); err != nil {
+		return fmt.Errorf("validate identity directory path: %w", err)
+	}
+	if err := prepareIdentityDirectory(canonicalPath); err != nil {
+		return fmt.Errorf("harden identity directory: %w", err)
+	}
+	directory, err := openIdentityDirectory(canonicalPath)
+	if err != nil {
+		return fmt.Errorf("validate prepared identity directory: %w", err)
+	}
+	return directory.Close()
+}
+
 // LoadOrCreateIdentity loads an existing identity or atomically creates one.
 // On Windows, the parent must be owned by the current user, SYSTEM, or
 // Administrators and must not grant write or delete access to other principals.

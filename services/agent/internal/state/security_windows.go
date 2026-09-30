@@ -69,7 +69,50 @@ func (directory *identityDirectory) Close() error {
 	return windows.CloseHandle(directory.handle)
 }
 
+func prepareIdentityDirectory(path string) error {
+	pointer, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return err
+	}
+	handle, err := windows.CreateFile(pointer,
+		windows.GENERIC_READ|windows.GENERIC_WRITE|windows.READ_CONTROL|windows.WRITE_DAC,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING,
+		windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseHandle(handle)
+
+	var info windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(handle, &info); err != nil {
+		return err
+	}
+	if info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 || info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY == 0 {
+		return errors.New("identity directory is not a trusted directory")
+	}
+	descriptor, err := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+	if err != nil {
+		return err
+	}
+	if err := validateDirectoryOwner(descriptor); err != nil {
+		return err
+	}
+	if err := restrictIdentityDirectoryHandle(handle); err != nil {
+		return err
+	}
+	descriptor, err = windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT,
+		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		return err
+	}
+	return validateDirectorySecurityDescriptor(descriptor)
+}
+
 func restrictIdentityDirectory(path string) error {
+	return prepareIdentityDirectory(path)
+}
+
+func restrictIdentityDirectoryHandle(handle windows.Handle) error {
 	userSID, systemSID, err := identitySIDs()
 	if err != nil {
 		return err
@@ -84,7 +127,7 @@ func restrictIdentityDirectory(path string) error {
 	}
 	runtime.KeepAlive(userSID)
 	runtime.KeepAlive(systemSID)
-	return windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
+	return windows.SetSecurityInfo(handle, windows.SE_FILE_OBJECT,
 		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
 		nil, nil, acl, nil)
 }
@@ -96,9 +139,8 @@ func allowInheritedFullAccess(sid *windows.SID, trusteeType windows.TRUSTEE_TYPE
 }
 
 func validateDirectorySecurityDescriptor(descriptor *windows.SECURITY_DESCRIPTOR) error {
-	owner, _, err := descriptor.Owner()
-	if err != nil || owner == nil {
-		return errors.New("identity directory owner is missing")
+	if err := validateDirectoryOwner(descriptor); err != nil {
+		return err
 	}
 	userSID, systemSID, err := identitySIDs()
 	if err != nil {
@@ -107,9 +149,6 @@ func validateDirectorySecurityDescriptor(descriptor *windows.SECURITY_DESCRIPTOR
 	administratorsSID, err := windows.StringToSid("S-1-5-32-544")
 	if err != nil {
 		return err
-	}
-	if !owner.Equals(userSID) && !owner.Equals(systemSID) && !owner.Equals(administratorsSID) {
-		return errors.New("identity directory owner is untrusted")
 	}
 	dacl, _, err := descriptor.DACL()
 	if err != nil || dacl == nil {
@@ -131,6 +170,28 @@ func validateDirectorySecurityDescriptor(descriptor *windows.SECURITY_DESCRIPTOR
 		if !trusted && ace.Mask&directoryDangerousAccess != 0 {
 			return errors.New("identity directory grants write or delete access to an untrusted principal")
 		}
+	}
+	runtime.KeepAlive(userSID)
+	runtime.KeepAlive(systemSID)
+	runtime.KeepAlive(administratorsSID)
+	return nil
+}
+
+func validateDirectoryOwner(descriptor *windows.SECURITY_DESCRIPTOR) error {
+	owner, _, err := descriptor.Owner()
+	if err != nil || owner == nil {
+		return errors.New("identity directory owner is missing")
+	}
+	userSID, systemSID, err := identitySIDs()
+	if err != nil {
+		return err
+	}
+	administratorsSID, err := windows.StringToSid("S-1-5-32-544")
+	if err != nil {
+		return err
+	}
+	if !owner.Equals(userSID) && !owner.Equals(systemSID) && !owner.Equals(administratorsSID) {
+		return errors.New("identity directory owner is untrusted")
 	}
 	runtime.KeepAlive(userSID)
 	runtime.KeepAlive(systemSID)

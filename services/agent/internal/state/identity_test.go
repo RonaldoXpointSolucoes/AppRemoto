@@ -202,6 +202,45 @@ func TestLoadOrCreateIdentityUsesRestrictivePermissions(t *testing.T) {
 	}
 }
 
+func TestVerifySameIdentityFileAcceptsHardlinkAndRejectsDistinctFile(t *testing.T) {
+	dir := t.TempDir()
+	originalPath := filepath.Join(dir, "original")
+	hardlinkPath := filepath.Join(dir, "hardlink")
+	distinctPath := filepath.Join(dir, "distinct")
+	if err := os.WriteFile(originalPath, []byte("original"), 0o600); err != nil {
+		t.Fatalf("WriteFile(original) error = %v", err)
+	}
+	if err := os.Link(originalPath, hardlinkPath); err != nil {
+		t.Skipf("hardlinks unavailable: %v", err)
+	}
+	if err := os.WriteFile(distinctPath, []byte("distinct"), 0o600); err != nil {
+		t.Fatalf("WriteFile(distinct) error = %v", err)
+	}
+
+	original, err := os.Open(originalPath)
+	if err != nil {
+		t.Fatalf("Open(original) error = %v", err)
+	}
+	defer original.Close()
+	hardlink, err := os.Open(hardlinkPath)
+	if err != nil {
+		t.Fatalf("Open(hardlink) error = %v", err)
+	}
+	defer hardlink.Close()
+	distinct, err := os.Open(distinctPath)
+	if err != nil {
+		t.Fatalf("Open(distinct) error = %v", err)
+	}
+	defer distinct.Close()
+
+	if err := verifySameIdentityFile(original, hardlink); err != nil {
+		t.Fatalf("verifySameIdentityFile(hardlink) error = %v", err)
+	}
+	if err := verifySameIdentityFile(original, distinct); err == nil {
+		t.Fatal("verifySameIdentityFile(distinct) error = nil, want identity mismatch")
+	}
+}
+
 func entryNames(entries []os.DirEntry) []string {
 	names := make([]string, len(entries))
 	for i, entry := range entries {

@@ -34,7 +34,36 @@ func openIdentityDirectory(path string) (*identityDirectory, error) {
 func (directory *identityDirectory) Sync() error  { return directory.file.Sync() }
 func (directory *identityDirectory) Close() error { return directory.file.Close() }
 
-func restrictIdentityDirectory(path string) error { return os.Chmod(path, 0o700) }
+func prepareIdentityDirectory(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return errors.New("identity directory is not a directory")
+	}
+	if err := file.Chmod(0o700); err != nil {
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	info, err = file.Stat()
+	if err != nil {
+		return err
+	}
+	if info.Mode().Perm() != 0o700 {
+		return errors.New("identity directory permissions are not restricted")
+	}
+	return nil
+}
+
+func restrictIdentityDirectory(path string) error { return prepareIdentityDirectory(path) }
 
 func validateIdentityPath(path string) error {
 	parent := filepath.Dir(path)
