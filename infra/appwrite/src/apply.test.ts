@@ -19,10 +19,54 @@ function priorNinetyResourceGateway(): FakeGateway {
   return gateway;
 }
 
-test('prior 90-resource inventory plans only 11 receipt creates and fake apply converges', async () => {
+function currentOneHundredOneResourceGateway(): FakeGateway {
+  const gateway = new FakeGateway();
+  gateway.database = { $id: 'remote_management', name: 'remote_management' };
+  for (const collection of REMOTE_MANAGEMENT_SCHEMA.collections) {
+    gateway.collections.set(collection.id, collection);
+    gateway.attributes.set(collection.id, collection.attributes.filter((attribute) =>
+      collection.id !== 'enrollment_receipts' || attribute.key !== 'expected_use_count'));
+    gateway.indexes.set(collection.id, [...collection.indexes]);
+  }
+  return gateway;
+}
+
+test('current 101-resource inventory plans one receipt attribute create and fake apply converges', async () => {
+  const gateway = currentOneHundredOneResourceGateway();
+  const first = await planFor(gateway);
+  assert.equal(first.actions.length, 102);
+  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 101);
+  assert.deepEqual(first.actions.filter((action) => action.outcome === 'create').map(({ resource, id }) => [resource, id]), [
+    ['attribute', 'enrollment_receipts/expected_use_count'],
+  ]);
+  assert.deepEqual(first.actions.filter((action) => action.outcome === 'conflict'), []);
+  await applyProvisionPlan(gateway, first);
+  assert.equal(gateway.writes, 1);
+  const second = await planFor(gateway);
+  assert.equal(second.actions.length, 102);
+  assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
+  await applyProvisionPlan(gateway, second);
+  assert.equal(gateway.writes, 1);
+});
+
+test('incompatible expected use count blocks the whole apply without writes', async () => {
+  const gateway = currentOneHundredOneResourceGateway();
+  gateway.attributes.set('enrollment_receipts', [
+    ...gateway.attributes.get('enrollment_receipts')!,
+    { key: 'expected_use_count', type: 'string', size: 16, required: true },
+  ]);
+  const plan = await planFor(gateway);
+  assert.deepEqual(plan.actions.filter((action) => action.outcome === 'conflict'), [
+    { resource: 'attribute', id: 'enrollment_receipts/expected_use_count', outcome: 'conflict', reason: 'definition_mismatch' },
+  ]);
+  await assert.rejects(applyProvisionPlan(gateway, plan), /conflict/i);
+  assert.equal(gateway.writes, 0);
+});
+
+test('prior 90-resource inventory plans only 12 receipt creates and fake apply converges', async () => {
   const gateway = priorNinetyResourceGateway();
   const first = await planFor(gateway);
-  assert.equal(first.actions.length, 101);
+  assert.equal(first.actions.length, 102);
   assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 90);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'create').map(({ resource, id }) => [resource, id]), [
     ['collection', 'enrollment_receipts'],
@@ -32,18 +76,19 @@ test('prior 90-resource inventory plans only 11 receipt creates and fake apply c
     ['attribute', 'enrollment_receipts/device_uuid'],
     ['attribute', 'enrollment_receipts/status'],
     ['attribute', 'enrollment_receipts/token_use_consumed'],
+    ['attribute', 'enrollment_receipts/expected_use_count'],
     ['index', 'enrollment_receipts/u_enrollment_token_id_device_uuid'],
     ['index', 'enrollment_receipts/q_organization_id'],
     ['index', 'enrollment_receipts/q_device_id'],
     ['index', 'enrollment_receipts/q_status'],
   ]);
   await applyProvisionPlan(gateway, first);
-  assert.equal(gateway.writes, 11);
+  assert.equal(gateway.writes, 12);
   const second = await planFor(gateway);
-  assert.equal(second.actions.length, 101);
+  assert.equal(second.actions.length, 102);
   assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
   await applyProvisionPlan(gateway, second);
-  assert.equal(gateway.writes, 11);
+  assert.equal(gateway.writes, 12);
 });
 
 test('incompatible preexisting receipt field blocks the whole generic apply', async () => {
