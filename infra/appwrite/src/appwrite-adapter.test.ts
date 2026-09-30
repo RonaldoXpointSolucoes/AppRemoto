@@ -27,6 +27,7 @@ test('environment rejects wrong project, absent key, unsafe endpoint without exp
 
 test('endpoint guard rejects non-target URLs before configuring the SDK client', (t) => {
   t.mock.method(Client.prototype, 'setEndpoint', () => { assert.fail('SDK client must not be configured'); });
+  t.mock.method(Client.prototype, 'call', async () => { assert.fail('SDK must not be called'); });
   const endpoints = [
     'https://unrelated.example/v1',
     'https://appwrite.xpointsolucoes.com.br/other/v1',
@@ -38,6 +39,14 @@ test('endpoint guard rejects non-target URLs before configuring the SDK client',
     'https://appwrite.xpointsolucoes.com.br/v1#private',
     'https://appwrite.xpointsolucoes.com.br/v1#',
     'https://appwrite.xpointsolucoes.com.br:8443/v1',
+    'https://appwrite.xpointsolucoes.com.br:443/v1',
+    'https://appwrite.xpointsolucoes.com.br/v1/../v1',
+    'https://appwrite.xpointsolucoes.com.br/v1/.',
+    String.raw`https://appwrite.xpointsolucoes.com.br\v1`,
+    'https://APPWRITE.xpointsolucoes.com.br/v1',
+    'HTTPS://appwrite.xpointsolucoes.com.br/v1',
+    ' https://appwrite.xpointsolucoes.com.br/v1',
+    'https://appwrite.xpointsolucoes.com.br/v1 ',
   ];
   for (const endpoint of endpoints) {
     assert.throws(() => createAppwriteGateway({ ...environment, APPWRITE_ENDPOINT: endpoint }),
@@ -45,12 +54,18 @@ test('endpoint guard rejects non-target URLs before configuring the SDK client',
   }
 });
 
-test('endpoint guard accepts target path with trailing slash and default HTTPS port', () => {
-  for (const endpoint of [environment.APPWRITE_ENDPOINT,
-    'https://appwrite.xpointsolucoes.com.br/v1/',
-    'https://appwrite.xpointsolucoes.com.br:443/v1']) {
-    assert.equal(readAppwriteEnvironment({ ...environment, APPWRITE_ENDPOINT: endpoint }).endpoint, endpoint);
+test('only the two allowed endpoint strings reach the SDK as one canonical URL', (t) => {
+  const configured: string[] = [];
+  t.mock.method(Client.prototype, 'setEndpoint', function (this: Client, endpoint: string) {
+    configured.push(endpoint);
+    return this;
+  });
+  for (const endpoint of [environment.APPWRITE_ENDPOINT, 'https://appwrite.xpointsolucoes.com.br/v1/']) {
+    assert.equal(readAppwriteEnvironment({ ...environment, APPWRITE_ENDPOINT: endpoint }).endpoint,
+      'https://appwrite.xpointsolucoes.com.br/v1');
+    createAppwriteGateway({ ...environment, APPWRITE_ENDPOINT: endpoint });
   }
+  assert.deepEqual(configured, [environment.APPWRITE_ENDPOINT, environment.APPWRITE_ENDPOINT]);
 });
 
 test('official SDK adapter paginates and maps enum metadata and collection permissions', async (t) => {

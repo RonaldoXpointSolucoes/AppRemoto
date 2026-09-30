@@ -4,22 +4,18 @@ import type { AdministratorGateway, AdminProfile, AppwriteAttribute, Provisionin
 import type { SchemaAttribute } from './schema.ts';
 import { requireTargetProject } from './safety.ts';
 
+const TARGET_ENDPOINT = 'https://appwrite.xpointsolucoes.com.br/v1';
+
 export function readAppwriteEnvironment(environment: NodeJS.ProcessEnv) {
   const projectId = environment.APPWRITE_PROJECT_ID ?? '';
   requireTargetProject(projectId);
   const endpoint = environment.APPWRITE_ENDPOINT ?? '';
   const apiKey = environment.APPWRITE_API_KEY ?? '';
-  try {
-    const url = new URL(endpoint);
-    if (url.protocol !== 'https:' || url.hostname !== 'appwrite.xpointsolucoes.com.br' ||
-        url.port || url.username || url.password || endpoint.includes('@') ||
-        endpoint.includes('?') || endpoint.includes('#') ||
-        (url.pathname !== '/v1' && url.pathname !== '/v1/') || endpoint !== endpoint.trim()) throw new Error();
-  } catch {
+  if (endpoint !== TARGET_ENDPOINT && endpoint !== `${TARGET_ENDPOINT}/`) {
     throw new Error('APPWRITE_ENDPOINT must be the approved Appwrite API endpoint');
   }
   if (!apiKey.trim()) throw new Error('APPWRITE_API_KEY is required');
-  return { projectId, endpoint, apiKey };
+  return { projectId, endpoint: TARGET_ENDPOINT, apiKey };
 }
 
 async function safe<T>(operation: () => Promise<T>): Promise<T> {
