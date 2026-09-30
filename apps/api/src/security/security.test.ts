@@ -1,10 +1,35 @@
 import assert from 'node:assert/strict';
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { test } from 'node:test';
 
 import { decryptPassword, encryptPassword } from './credentials.ts';
 import { redactLogData } from './redaction.ts';
-import { hashToken, issueToken } from './tokens.ts';
+import { deriveDeviceToken, hashToken, issueToken } from './tokens.ts';
+
+test('derived device tokens use domain-separated HMAC over an unambiguous immutable identity', () => {
+  const key = Buffer.alloc(32, 7);
+  const identity = { organizationId: 'org', enrollmentTokenId: 'token', deviceId: 'device', deviceUuid: 'uuid', receiptId: 'receipt' };
+  const expected = createHmac('sha256', key).update('appremoto:enrollment-device-token:v1\0')
+    .update('["org","token","device","uuid","receipt"]').digest('base64url');
+  const token = deriveDeviceToken(key, identity);
+  assert.equal(token, expected); assert.match(token, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(Buffer.from(token, 'base64url').toString('base64url'), token);
+  assert.equal(deriveDeviceToken(key, { ...identity }), token);
+  assert.notEqual(deriveDeviceToken(Buffer.alloc(32, 8), identity), token);
+  for (const field of Object.keys(identity)) assert.notEqual(deriveDeviceToken(key, { ...identity, [field]: 'different' }), token);
+  assert.notEqual(deriveDeviceToken(key, { ...identity, organizationId: 'ab', enrollmentTokenId: 'c' }),
+    deriveDeviceToken(key, { ...identity, organizationId: 'a', enrollmentTokenId: 'bc' }));
+});
+
+test('device-token derivation rejects malformed keys and identities generically', () => {
+  const identity = { organizationId: 'org', enrollmentTokenId: 'token', deviceId: 'device', deviceUuid: 'uuid', receiptId: 'receipt' };
+  for (const key of [Buffer.alloc(31), Buffer.alloc(33), 'secret', null]) {
+    assert.throws(() => deriveDeviceToken(key as Buffer, identity), /^Error: Invalid token derivation$/);
+  }
+  for (const value of ['', 'x'.repeat(513), '\ud800', null, 42]) {
+    assert.throws(() => deriveDeviceToken(Buffer.alloc(32), { ...identity, receiptId: value as string }), /^Error: Invalid token derivation$/);
+  }
+});
 
 test('issueToken emits unique canonical 32-byte base64url tokens', () => {
   const tokens = Array.from({ length: 64 }, () => issueToken());

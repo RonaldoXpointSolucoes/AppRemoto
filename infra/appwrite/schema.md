@@ -143,6 +143,7 @@ empty collection permissions and document security disabled (server-only access)
 | `use_count` | integer | - | yes | - |
 | `active` | boolean | - | yes | - |
 | `created_by_user_id` | string | 36 | yes | - |
+| `revoked_at` | datetime | - | no | - |
 
 | Index ID | Type | Attributes |
 | --- | --- | --- |

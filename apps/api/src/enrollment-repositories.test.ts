@@ -41,6 +41,39 @@ test('enrollment repository never treats upstream failures or conflicting duplic
   await assert.rejects(failing.findToken('a'.repeat(64)), /^Error: Enrollment storage unavailable$/);
 });
 
+test('freeze repeats authoritative active/unrevoked checks and returns the actual narrow PATCH response', async () => {
+  const calls: string[] = []; const timestamp = '2026-10-01T00:00:01.000+00:00';
+  const repo = createEnrollmentRepository({
+    getDocument: async () => { calls.push('read'); return { token_hash: 'hash', active: true }; },
+    updateDocument: async (...args: unknown[]) => {
+      calls.push('write'); assert.deepEqual(args[3], { active: false });
+      return { token_hash: 'hash', active: false, revoked_at: timestamp };
+    },
+  } as unknown as Databases);
+  const result = await repo.freezeToken('token', 'hash');
+  assert.deepEqual(calls, ['read', 'read', 'write']);
+  assert.deepEqual(result, { token_hash: 'hash', active: false, revoked_at: '2026-10-01T00:00:01.000Z' });
+});
+
+test('freeze rejects revocation or inactivity observed by either precondition read', async () => {
+  for (const changedRead of [1, 2]) for (const change of [{ active: false }, { revoked_at: '2026-10-01T00:00:00Z' }]) {
+    let reads = 0;
+    const repo = createEnrollmentRepository({
+      getDocument: async () => ({ token_hash: 'hash', active: true, ...(++reads === changedRead ? change : {}) }),
+      updateDocument: async () => assert.fail('must not freeze'),
+    } as unknown as Databases);
+    assert.equal(await repo.freezeToken('token', 'hash'), null);
+  }
+});
+
+test('enrollment mutations cannot clear independent administrative revocation', async () => {
+  const payloads: unknown[] = [];
+  const repo = createEnrollmentRepository({ updateDocument: async (...args: unknown[]) => { payloads.push(args[3]); return {}; } } as unknown as Databases);
+  await repo.write('enrollment_tokens', 'token', { use_count: 1, active: false, revoked_at: null },
+    { use_count: 0, active: true, revoked_at: '2026-10-01T00:00:00Z' });
+  assert.deepEqual(payloads, [{ use_count: 1, active: false }]);
+});
+
 test('audit persists only fixed nonsecret enrollment metadata and compensates missing document', async () => {
   const calls: unknown[][] = [];
   const audit = createAuditRepository({ createDocument: async (...args: unknown[]) => { calls.push(args); },

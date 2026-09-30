@@ -2,7 +2,7 @@
 
 `POST /v1/agent/enroll` accepts the strict contracts package request. The enrollment
 token is supplied only as `enrollmentToken` in the JSON body. Organization identity
-comes exclusively from the stored token hash lookup. Responses contain one-time
+comes exclusively from the stored token hash lookup. Responses contain replayable
 plaintext credentials and must not be cached or logged. Persisted device tokens
 are SHA-256 hashes; RustDesk passwords use the versioned AES-GCM envelope.
 
@@ -28,7 +28,10 @@ Do not configure a proxy to log enrollment request/response bodies or credential
 
 `MASTER_ENCRYPTION_KEY_VERSION` defaults to 1 and accepts integers 1 through 65535.
 The active encryption key must correspond to that version. A key rotation needs a
-separate migration/read-key strategy for existing stored envelopes.
+separate migration/read-key strategy for existing stored envelopes and derived
+device tokens; replacing the key alone makes existing enrollment retries fail closed.
+Receipts created by an older random-device-token implementation cannot reproduce
+that token and fail closed; they require explicit migration/manual reconciliation.
 
 ## Retry and failure recovery
 
@@ -39,7 +42,15 @@ are deterministic hashes of nonsecret identity tuples.
 
 A committed receipt binds token, organization, UUID and device ID. With an active,
 unexpired token, enabled matching device and existing credentials, it allows a
-retry to rotate credentials without consuming another use, including at max uses.
+read-only retry returning the original credentials without consuming another use,
+including at max uses. Device tokens are canonical 43-character base64url HMAC-SHA256
+values derived from the master key, the domain `appremoto:enrollment-device-token:v1`
+with a NUL terminator, and the JSON tuple [organization ID, enrollment token ID,
+device ID, device UUID, receipt ID]. Only the SHA-256 token hash is stored.
+Replay derives and constant-time verifies that hash, rejects revoked device tokens,
+decrypts the existing authenticated password envelope and validates the response.
+It never updates device metadata, token, credentials, receipt, or success audit.
+The random RustDesk password is generated once during initial enrollment.
 Existence of a device alone does not authorize this operation.
 
 Every new receipt starts with required `recovery_frozen=false`. Only the live
@@ -48,8 +59,27 @@ active token to inactive and reads back that durable inactive state. The receipt
 marker is then written and verified separately. Merely finding an inactive token,
 including after restart, never establishes why it became inactive. A rejected
 freeze cannot create this marker; a partial freeze without a verified marker
-requires manual reconciliation. This provenance covers uncertain consumption,
-device-token/password rotation, and indeterminate compensation safety freezes.
+requires manual reconciliation. This provenance covers uncertain initial writes
+and indeterminate compensation safety freezes; committed retries never rotate.
+
+Administrative revocation MUST atomically PATCH `active=false` together with
+`revoked_at=<server UTC timestamp>` on the enrollment token. Treat this timestamp
+as irreversible; enrollment never writes or clears it. New/legacy unrevoked tokens
+have null (or absent optional) revoked_at. Every authoritative enrollment-token
+read checks revocation, including both freeze precondition reads, the actual
+freeze PATCH response, immediately before/after the receipt marker, and replay
+before returning credentials. Freeze sends only `{active:false}`. A concurrent
+revocation therefore survives late count/freeze writes and always denies replay,
+even if recovery_frozen had already been written or the process restarted.
+
+Direct console changes of `active` alone are NOT a supported administrative
+revocation protocol: Appwrite has no CAS and cannot distinguish an overlapping
+active-only disable from our own freeze. Administrative tooling/operators must
+write the independent timestamp, never clear it or re-enable that token. Create
+a new token instead. This is a deployment gate, not an atomic transaction claim.
+An operation already authorized before the final authoritative revocation read
+cannot have its in-flight response recalled; revoke the bound device/device token
+as well when existing device access must stop.
 
 Before any device/credential mutation, a pending receipt persists its
 `expected_use_count` target. Consumption updates **only** use_count, setting that
@@ -68,8 +98,10 @@ Recovery of a pending consumption requires matching identities and artifacts and
 use_count exactly equal to expected_use_count. An inactive token additionally
 requires recovery_frozen=true; administrator-disabled receipts without the marker
 remain denied and audited. Counts below or above target remain pending; do not
-replay a write that may still be in flight. Recovery rotates credentials and
-commits the receipt without another count increment, preserving the marker.
+replay a write that may still be in flight. Recovery verifies and returns the original
+derived token and decrypted password, committing only the receipt without another
+count increment and preserving the marker. No committed-to-pending transition is
+submitted on retry, so no late retry PATCH can demote a finalized receipt.
 The token remains permanently inactive for manual review, sacrificing remaining
 capacity so a late count-only write cannot affect later uses or reactivate it.
 A committed recovery receipt remains retriable, even after restart or response
@@ -77,12 +109,11 @@ loss, only with recovery_frozen=true, exact target count, consumed flag, and all
 identity/device/credential checks. This exception never applies to an ordinary
 inactive token. Disable the bound device to stop further recovery retries.
 
-For indeterminate credential rotations, the same process must first observe the
-unique hash/envelope it attempted to write before another rotation is safe.
-After process-state loss, a pending consumed receipt does not prove which
-credential generation will finish; it fails closed for manual reconciliation.
-The journal is in memory. A distributed transaction or durable generation/fencing
-design is required for automatic recovery of every crash/rotation phase.
+For other indeterminate initial artifact writes, the same process must first
+observe the exact attempted artifact. A pending consumed receipt without that
+phase evidence fails closed after process-state loss. The journal is in memory;
+a distributed transaction or durable fencing design is required for automatic
+recovery of every ambiguous crash phase.
 
 Known token, device and receipt denials write a best-effort failure audit with
 fixed nonsecret reason codes. Audit failure cannot mutate enrollment state or

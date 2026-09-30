@@ -38,6 +38,7 @@ const fields: Record<string, readonly (readonly [string, string, number | null, 
     ['expires_at', 'datetime', null, true, null], ['max_uses', 'integer', null, true, null],
     ['use_count', 'integer', null, true, null], ['active', 'boolean', null, true, null],
     ['created_by_user_id', 'string', 36, true, null],
+    ['revoked_at', 'datetime', null, false, null],
   ],
   enrollment_receipts: [
     ['organization_id', 'string', 36, true, null], ['enrollment_token_id', 'string', 36, true, null],

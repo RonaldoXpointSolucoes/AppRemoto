@@ -64,15 +64,17 @@ Inspect reports only the declared database and collections; it is not a dump of 
 | --- | ---: |
 | Database | 1 |
 | Collections | 10 |
-| Attributes | 65 |
+| Attributes | 66 |
 | Indexes | 27 |
-| Total | 103 |
+| Total | 104 |
 
 Check every action against `infra/appwrite/src/schema.ts`. Stop for any conflict, unknown resource, credential exposure, target mismatch, or failed command. Do not infer zero conflicts from a failed or missing plan.
 
-Apply re-inspects and builds a fresh plan before writing. It creates missing resources in dependency order, waits for attribute/index readiness, then bootstraps the administrator. It does not delete/recreate schema resources or reconcile incompatible schema definitions destructively. A successful post-apply plan for the current desired schema must show **103 unchanged, 0 create, 0 conflict**. Apply's own reported plan describes the actions selected before creation, not the post-apply inventory.
+Apply re-inspects and builds a fresh plan before writing. It creates missing resources in dependency order, waits for attribute/index readiness, then bootstraps the administrator. It does not delete/recreate schema resources or reconcile incompatible schema definitions destructively. A successful post-apply plan for the current desired schema must show **104 unchanged, 0 create, 0 conflict**. Apply's own reported plan describes the actions selected before creation, not the post-apply inventory.
 
-Against the 102-resource inventory already containing `enrollment_receipts.expected_use_count`, the current desired schema should plan **102 unchanged, 1 create, 0 conflict**. The sole create is the required boolean `enrollment_receipts/recovery_frozen`. Against the 101-resource inventory with the original six receipt attributes, plan **101 unchanged, 2 create, 0 conflict** for that boolean and the required integer `expected_use_count`. These are local expected deltas; use fresh inspect/plan and independent review before any authorized production apply. The verified 90-resource foundation below predates the collection: it would plan **90 unchanged, 13 create, 0 conflict** (one collection, eight attributes, four indexes).
+Against the 103-resource inventory already containing both receipt recovery fields, plan **103 unchanged, 1 create, 0 conflict**: optional datetime `enrollment_tokens/revoked_at`. Against 102 resources, additionally create required boolean `enrollment_receipts/recovery_frozen`; against 101, also create required integer `expected_use_count`. These are local expected deltas; use fresh inspect/plan and independent review before any authorized production apply. The verified 90-resource foundation below predates the collection: it would plan **90 unchanged, 14 create, 0 conflict** (one collection, nine attributes, four indexes).
+
+Administrative enrollment-token revocation must write `active=false` and an immutable `revoked_at` server UTC timestamp in the same PATCH. Safety freezes write only `active=false`; all enrollment/recovery paths deny non-null revocation, including after restart. Never clear the timestamp or reuse a revoked token. Direct console `active`-only mutation is unsupported because it is indistinguishable from a racing safety freeze without CAS. Apply this schema and update administrative tooling/procedures before enabling enrollment recovery. See `apps/api/ENROLLMENT.md` for the single-process and in-flight response limits.
 
 Apply also saves a redacted `.local/remote-platform/apply-<uuid>.json`. Never treat the existence of that file as success; check its status and repeat inspect/plan.
 

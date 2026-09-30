@@ -15,7 +15,7 @@ const key = Buffer.alloc(32, 9);
 
 function fixture() {
   const token: EnrollmentToken = { id: 'enroll-1', organization_id: 'org-1', token_hash: hashToken(request.enrollmentToken),
-    expires_at: '2026-10-01T00:00:00Z', max_uses: 1, use_count: 0, active: true };
+    expires_at: '2026-10-01T00:00:00Z', max_uses: 1, use_count: 0, active: true, revoked_at: null };
   const rows = new Map<string, EnrollmentData>();
   rows.set('enrollment_tokens/enroll-1', structuredClone(token));
   const events = new Map<string, EnrollmentAudit>();
@@ -30,6 +30,7 @@ function fixture() {
     pendingReceipts: async (tokenId) => [...rows].filter(([path, data]) => path.startsWith('enrollment_receipts/') &&
       data.enrollment_token_id === tokenId && data.status === 'pending').map(([, data]) => structuredClone(data)),
     snapshot: async (kind, id) => structuredClone(rows.get(`${kind}/${id}`) ?? null),
+    freezeToken: async (id) => { const row = rows.get(`enrollment_tokens/${id}`)!; row.active = false; return structuredClone(row); },
     write: async (kind, id, data, previous) => {
       calls.push(`write:${kind}`);
       const failing = fail === kind || (fail === 'receipt_commit' && kind === 'enrollment_receipts' && data.status === 'committed');
@@ -81,11 +82,11 @@ test('enrollment persists hashes, authenticated envelope, linkage and consumed u
     'write:enrollment_tokens', 'write:enrollment_receipts', 'audit:success']);
 });
 
-test('sequential committed retry rotates usable credentials without another use', async () => {
+test('sequential committed retry returns identical credentials without any writes', async () => {
   const f = fixture(); const first = await f.enroll(request, '127.0.0.1');
+  f.calls.length = 0; const before = structuredClone([...f.rows]);
   const second = await f.enroll(request, '127.0.0.1');
-  assert.equal(first.deviceId, second.deviceId); assert.notEqual(first.deviceToken, second.deviceToken);
-  assert.notEqual(first.rustdeskPassword, second.rustdeskPassword);
+  assert.deepEqual(second, first); assert.deepEqual(f.calls, []); assert.deepEqual([...f.rows], before);
   assert.equal(f.rows.get('enrollment_tokens/enroll-1')!.use_count, 1);
   assert.equal(f.rows.get(`device_tokens/${second.deviceId}`)!.token_hash, hashToken(second.deviceToken));
 });
@@ -154,7 +155,7 @@ test('different concurrent devices use the same token serially when capacity per
   assert.equal(f.rows.get('enrollment_tokens/enroll-1')!.use_count, 2);
 });
 
-for (const changes of [{ active: false }, { expires_at: now.toISOString() }, { expires_at: 'invalid' },
+for (const changes of [{ active: false }, { revoked_at: now.toISOString() }, { revoked_at: 'invalid' }, { expires_at: now.toISOString() }, { expires_at: 'invalid' },
   { use_count: 1 }, { use_count: -1 }, { max_uses: 0 }]) {
   test(`rejects invalid enrollment token ${JSON.stringify(changes)}`, async () => {
     const f = fixture(); Object.assign(f.rows.get('enrollment_tokens/enroll-1')!, changes);
@@ -238,10 +239,21 @@ for (const point of ['enrollment_receipts', 'devices', 'device_tokens', 'device_
   });
 }
 
-test('a late failed retry restores previous working credentials and committed receipt', async () => {
-  const f = fixture(); await f.enroll(request, '127.0.0.1'); const before = structuredClone([...f.rows]);
-  f.failAt('audit', true); await assert.rejects(f.enroll(request, '127.0.0.1'), EnrollmentError);
+test('committed replay does not depend on writable storage or audit availability', async () => {
+  const f = fixture(); const first = await f.enroll(request, '127.0.0.1'); const before = structuredClone([...f.rows]);
+  f.failAt('audit', true); assert.deepEqual(await f.enroll(request, '127.0.0.1'), first);
   assert.deepEqual([...f.rows], before);
+});
+
+for (const artifact of ['hash', 'revoked', 'ciphertext', 'keyVersion']) test(`read-only replay rejects invalid ${artifact}`, async () => {
+  const f = fixture(); const first = await f.enroll(request, '127.0.0.1');
+  if (artifact === 'hash') f.rows.get(`device_tokens/${first.deviceId}`)!.token_hash = 'a'.repeat(64);
+  if (artifact === 'revoked') f.rows.get(`device_tokens/${first.deviceId}`)!.revoked_at = now.toISOString();
+  if (artifact === 'ciphertext') f.rows.get(`device_credentials/${first.deviceId}`)!.password_ciphertext = 'invalid';
+  if (artifact === 'keyVersion') f.rows.get(`device_credentials/${first.deviceId}`)!.key_version = 99;
+  const before = structuredClone([...f.rows]); f.calls.length = 0;
+  await assert.rejects(f.enroll(request, '127.0.0.1'), EnrollmentError);
+  assert.deepEqual([...f.rows], before); assert.ok(f.calls.every((call) => call === 'audit:failure'));
 });
 
 for (const point of ['enrollment_receipts', 'devices', 'device_tokens', 'device_credentials', 'enrollment_tokens', 'audit']) {

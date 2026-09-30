@@ -87,6 +87,7 @@ export const REMOTE_MANAGEMENT_SCHEMA: RemoteManagementSchema = deepFreeze({
     collection('enrollment_tokens', [
       string('organization_id', 36), string('token_hash', 64), datetime('expires_at'),
       integer('max_uses'), integer('use_count'), boolean('active'), string('created_by_user_id', 36),
+      datetime('revoked_at', false),
     ], [unique('token_hash'), key('organization_id')]),
     collection('enrollment_receipts', [
       string('organization_id', 36), string('enrollment_token_id', 36),

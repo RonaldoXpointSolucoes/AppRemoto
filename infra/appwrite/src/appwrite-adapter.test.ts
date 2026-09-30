@@ -129,7 +129,19 @@ test('SDK adapter sends only the scoped enum update with a null default', async 
     body: { elements: ['super_admin'], required: false, default: null } }]);
 });
 
-test('full Appwrite 1.7 post-apply inventory plans 103 unchanged resources and zero writes', async (t) => {
+test('SDK adapter creates only an optional enrollment revocation datetime', async (t) => {
+  const requests: { method: string; path: string; body: Payload }[] = [];
+  t.mock.method(Client.prototype, 'call', async (method: string, url: URL, _headers: unknown, body: Payload) => {
+    requests.push({ method, path: url.pathname, body }); return {};
+  });
+  await createAppwriteGateway(environment).createAttribute('remote_management', 'enrollment_tokens',
+    { key: 'revoked_at', type: 'datetime', required: false });
+  assert.deepEqual(requests, [{ method: 'post',
+    path: '/v1/databases/remote_management/collections/enrollment_tokens/attributes/datetime',
+    body: { key: 'revoked_at', required: false } }]);
+});
+
+test('full Appwrite 1.7 post-apply inventory plans 104 unchanged resources and zero writes', async (t) => {
   const fixture = JSON.parse(await readFile(new URL('./testing/appwrite-1.7-numeric-attributes.json', import.meta.url), 'utf8'));
   const indexFixture = JSON.parse(await readFile(new URL('./testing/appwrite-1.7-indexes.json', import.meta.url), 'utf8'));
   const created = new FakeGateway();
@@ -157,7 +169,7 @@ test('full Appwrite 1.7 post-apply inventory plans 103 unchanged resources and z
   });
   const gateway = createAppwriteGateway(environment);
   const plan = buildProvisionPlan(await inspectSchema(gateway));
-  assert.equal(plan.actions.length, 103);
+  assert.equal(plan.actions.length, 104);
   assert.equal(plan.actions.filter((action) => action.resource === 'index').length, 27);
   assert.deepEqual(plan.actions.filter((action) => action.outcome !== 'unchanged'), []);
   await applyProvisionPlan(gateway, plan);

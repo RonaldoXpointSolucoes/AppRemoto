@@ -12,19 +12,21 @@ export interface EnrollmentToken extends EnrollmentData {
   max_uses: number;
   use_count: number;
   active: boolean;
+  revoked_at: string | null;
 }
 export interface EnrollmentRepository {
   findToken(hash: string): Promise<EnrollmentToken | null>;
   organizationActive(id: string): Promise<boolean>;
   pendingReceipts(tokenId: string): Promise<EnrollmentData[]>;
   snapshot(kind: EnrollmentKind, id: string): Promise<EnrollmentData | null>;
+  freezeToken(id: string, hash: string): Promise<EnrollmentData | null>;
   write(kind: EnrollmentKind, id: string, data: EnrollmentData, previous: EnrollmentData | null): Promise<void>;
   restore(kind: EnrollmentKind, id: string, previous: EnrollmentData | null, expected: EnrollmentData): Promise<void>;
 }
 
 const database = 'remote_management';
 const fields: Record<EnrollmentKind, string[]> = {
-  enrollment_tokens: ['organization_id', 'token_hash', 'expires_at', 'max_uses', 'use_count', 'active', 'created_by_user_id'],
+  enrollment_tokens: ['organization_id', 'token_hash', 'expires_at', 'max_uses', 'use_count', 'active', 'created_by_user_id', 'revoked_at'],
   enrollment_receipts: ['organization_id', 'enrollment_token_id', 'device_id', 'device_uuid', 'status', 'token_use_consumed',
     'expected_use_count', 'recovery_frozen'],
   devices: ['organization_id', 'device_uuid', 'display_name', 'hostname', 'rustdesk_id', 'operating_system', 'os_version',
@@ -38,7 +40,7 @@ export function enrollmentId(...parts: string[]): string {
 }
 
 function project(kind: EnrollmentKind, document: object): EnrollmentData {
-  const record = document as EnrollmentData;
+  const record = (kind === 'enrollment_tokens' ? { revoked_at: null, ...document } : document) as EnrollmentData;
   return Object.fromEntries(fields[kind].filter((field) => record[field] !== undefined).map((field) => {
     const value = record[field]!;
     return [field, ['expires_at', 'last_seen_at', 'last_used_at', 'revoked_at'].includes(field) &&
@@ -71,7 +73,8 @@ export function createEnrollmentRepository(databases: Databases): EnrollmentRepo
     try {
       if (previous) {
         const desired = project(kind, data); const old = project(kind, previous);
-        const changes = Object.fromEntries(Object.entries(desired).filter(([key, value]) => !isDeepStrictEqual(value, old[key])));
+        const changes = Object.fromEntries(Object.entries(desired).filter(([key, value]) =>
+          !(kind === 'enrollment_tokens' && key === 'revoked_at') && !isDeepStrictEqual(value, old[key])));
         if (Object.keys(changes).length) await databases.updateDocument(database, kind, id, changes);
       }
       else await databases.createDocument(database, kind, id, project(kind, data), []);
@@ -118,6 +121,17 @@ export function createEnrollmentRepository(databases: Databases): EnrollmentRepo
       } catch { throw unavailable(); }
     },
     snapshot, write,
+    async freezeToken(id, hash) {
+      try {
+        // No CAS: repeat the authoritative precondition, and preserve independent admin revocation evidence.
+        for (let read = 0; read < 2; read++) {
+          const current = await snapshot('enrollment_tokens', id);
+          if (!current || current.token_hash !== hash || current.active !== true || current.revoked_at !== null) return null;
+        }
+        const response = await databases.updateDocument(database, 'enrollment_tokens', id, { active: false });
+        return project('enrollment_tokens', response);
+      } catch { throw unavailable(); }
+    },
     async restore(kind, id, previous, expected) {
       try {
         const current = await snapshot(kind, id);
