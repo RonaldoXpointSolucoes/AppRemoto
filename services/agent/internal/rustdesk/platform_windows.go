@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
 
 const dangerousExecutableAccess = windows.GENERIC_WRITE | windows.GENERIC_ALL |
@@ -34,9 +35,9 @@ func knownInstallRoots() (string, string, string, string, error) {
 	if err != nil {
 		return "", "", "", "", err
 	}
-	programFilesX64, err := windows.KnownFolderPath(windows.FOLDERID_ProgramFilesX64, 0)
+	programFilesX64, err := resolveProgramFilesX64(readProgramFilesX64Registry)
 	if err != nil {
-		programFilesX64 = ""
+		return "", "", "", "", err
 	}
 	programFilesX86, err := windows.KnownFolderPath(windows.FOLDERID_ProgramFilesX86, 0)
 	if err != nil {
@@ -46,8 +47,56 @@ func knownInstallRoots() (string, string, string, string, error) {
 	if err != nil {
 		return "", "", "", "", err
 	}
-	return cleanOptionalPath(programFiles), cleanOptionalPath(programFilesX64),
-		cleanOptionalPath(programFilesX86), cleanOptionalPath(localAppData), nil
+	roots := []string{programFiles, programFilesX64, programFilesX86, localAppData}
+	for i, root := range roots {
+		roots[i] = cleanOptionalPath(root)
+		if roots[i] == "" {
+			continue
+		}
+		if validateLocalAbsolutePath(roots[i]) != nil || validatePlatformLocalPath(roots[i]) != nil {
+			return "", "", "", "", errors.New("Windows installation root is not a canonical fixed local path")
+		}
+	}
+	return roots[0], roots[1], roots[2], roots[3], nil
+}
+
+func resolveProgramFilesX64(readRegistry func() (string, error)) (string, error) {
+	var path string
+	var err error
+	if runtime.GOARCH == "386" {
+		var wow64 bool
+		if err := windows.IsWow64Process(windows.CurrentProcess(), &wow64); err != nil {
+			return "", err
+		}
+		if !wow64 {
+			return "", nil
+		}
+		path, err = readRegistry()
+	} else {
+		path, err = windows.KnownFolderPath(windows.FOLDERID_ProgramFilesX64, 0)
+	}
+	if err != nil {
+		return "", err
+	}
+	path = cleanOptionalPath(path)
+	if validateLocalAbsolutePath(path) != nil || validatePlatformLocalPath(path) != nil {
+		return "", errors.New("64-bit Program Files root is not a canonical fixed local path")
+	}
+	return path, nil
+}
+
+func readProgramFilesX64Registry() (string, error) {
+	key, err := registry.OpenKey(registry.LOCAL_MACHINE,
+		`SOFTWARE\Microsoft\Windows\CurrentVersion`, registry.QUERY_VALUE|registry.WOW64_64KEY)
+	if err != nil {
+		return "", err
+	}
+	defer key.Close()
+	path, _, err := key.GetStringValue("ProgramW6432Dir")
+	if err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func cleanOptionalPath(path string) string {
