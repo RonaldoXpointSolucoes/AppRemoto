@@ -9,7 +9,7 @@ const fields: Record<string, readonly (readonly [string, string, number | null, 
   ],
   technician_profiles: [
     ['user_id', 'string', 36, true, null], ['display_name', 'string', 128, true, null],
-    ['global_role', 'enum', null, true, ['super_admin']], ['active', 'boolean', null, true, null],
+    ['global_role', 'enum', null, false, ['super_admin']], ['active', 'boolean', null, true, null],
   ],
   organization_members: [
     ['organization_id', 'string', 36, true, null], ['user_id', 'string', 36, true, null],

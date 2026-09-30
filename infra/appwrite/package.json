@@ -9,6 +9,7 @@
   "scripts": {
     "test": "node --experimental-strip-types --test src/*.test.ts",
     "provision": "node --experimental-strip-types src/cli.ts",
+    "migrate:global-role": "node --experimental-strip-types src/migrate-global-role.ts",
     "apply:fake": "node --experimental-strip-types src/testing/apply-fake.ts",
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "schema:check": "node --experimental-strip-types src/generate-schema.ts --check",

@@ -30,7 +30,7 @@ export type RemoteManagementSchema = {
 };
 
 const string = (key: string, size: number, required = true) => ({ key, type: 'string' as const, size, required });
-const enumeration = (key: string, elements: readonly string[]) => ({ key, type: 'enum' as const, elements, required: true });
+const enumeration = (key: string, elements: readonly string[], required = true) => ({ key, type: 'enum' as const, elements, required });
 const integer = (key: string) => ({ key, type: 'integer' as const, required: true });
 const boolean = (key: string) => ({ key, type: 'boolean' as const, required: true });
 const datetime = (key: string, required = true) => ({ key, type: 'datetime' as const, required });
@@ -60,7 +60,7 @@ export const REMOTE_MANAGEMENT_SCHEMA: RemoteManagementSchema = deepFreeze({
     ], [unique('slug')]),
     collection('technician_profiles', [
       string('user_id', 36), string('display_name', 128),
-      enumeration('global_role', ['super_admin']), boolean('active'),
+      enumeration('global_role', ['super_admin'], false), boolean('active'),
     ], [unique('user_id')]),
     collection('organization_members', [
       string('organization_id', 36), string('user_id', 36), string('role', 64),

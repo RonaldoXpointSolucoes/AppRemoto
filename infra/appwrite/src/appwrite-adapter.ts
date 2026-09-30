@@ -1,6 +1,6 @@
 import { Client, Databases, Users, Query, IndexType } from 'node-appwrite';
 import type { Models } from 'node-appwrite';
-import type { AdministratorGateway, AdminProfile, AppwriteAttribute, ProvisioningGateway } from './gateway.ts';
+import type { AdministratorGateway, AdminProfile, AppwriteAttribute, GlobalRoleMigrationGateway, ProvisioningGateway } from './gateway.ts';
 import type { SchemaAttribute } from './schema.ts';
 import { requireTargetProject } from './safety.ts';
 
@@ -36,7 +36,7 @@ type ProfileDocument = Models.Document & Omit<AdminProfile, 'id'>;
 const profileFrom = (doc: ProfileDocument): AdminProfile => ({ id: doc.$id, user_id: doc.user_id,
   display_name: doc.display_name, global_role: doc.global_role, active: doc.active });
 
-export function createAppwriteGateway(environment: NodeJS.ProcessEnv): ProvisioningGateway & AdministratorGateway {
+export function createAppwriteGateway(environment: NodeJS.ProcessEnv): ProvisioningGateway & AdministratorGateway & GlobalRoleMigrationGateway {
   const { projectId, endpoint, apiKey } = readAppwriteEnvironment(environment);
   const client = new Client().setEndpoint(endpoint).setProject(projectId).setKey(apiKey);
   const databases = new Databases(client);
@@ -107,6 +107,10 @@ export function createAppwriteGateway(environment: NodeJS.ProcessEnv): Provision
       const attribute = await databases.getAttribute(database, collection, key) as { status?: unknown };
       if (typeof attribute.status !== 'string') throw new Error('Missing attribute status');
       return attribute.status;
+    }),
+    updateGlobalRoleEnum: () => safe(async () => {
+      // The pinned SDK requires xdefault at runtime even though its declaration marks it optional.
+      await databases.updateEnumAttribute(db, profiles, 'global_role', ['super_admin'], false, null as unknown as string);
     }),
     createIndex: (database, collection, index) => safe(async () => {
       await databases.createIndex(database, collection, index.id, index.type === 'unique' ? IndexType.Unique : IndexType.Key,

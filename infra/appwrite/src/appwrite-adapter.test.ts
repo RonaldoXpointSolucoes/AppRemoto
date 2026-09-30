@@ -117,6 +117,18 @@ test('SDK failure cannot expose raw response or key in serialized error', async 
   });
 });
 
+test('SDK adapter sends only the scoped enum update with a null default', async (t) => {
+  const requests: { method: string; path: string; body: Payload }[] = [];
+  t.mock.method(Client.prototype, 'call', async (method: string, url: URL, _headers: unknown, body: Payload) => {
+    requests.push({ method, path: url.pathname, body });
+    return {};
+  });
+  await createAppwriteGateway(environment).updateGlobalRoleEnum();
+  assert.deepEqual(requests, [{ method: 'patch',
+    path: '/v1/databases/remote_management/collections/technician_profiles/attributes/enum/global_role',
+    body: { elements: ['super_admin'], required: false, default: null } }]);
+});
+
 test('full Appwrite 1.7 post-apply inventory plans 90 unchanged resources and zero writes', async (t) => {
   const fixture = JSON.parse(await readFile(new URL('./testing/appwrite-1.7-numeric-attributes.json', import.meta.url), 'utf8'));
   const indexFixture = JSON.parse(await readFile(new URL('./testing/appwrite-1.7-indexes.json', import.meta.url), 'utf8'));

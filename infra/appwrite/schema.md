@@ -34,7 +34,7 @@ empty collection permissions and document security disabled (server-only access)
 | --- | --- | ---: | :---: | --- |
 | `user_id` | string | 36 | yes | - |
 | `display_name` | string | 128 | yes | - |
-| `global_role` | enum | - | yes | `super_admin` |
+| `global_role` | enum | - | no | `super_admin` |
 | `active` | boolean | - | yes | - |
 
 | Index ID | Type | Attributes |

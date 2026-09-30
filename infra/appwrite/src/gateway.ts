@@ -44,6 +44,12 @@ export interface ProvisioningGateway extends AppwriteGateway {
   getIndexStatus(databaseId: string, collectionId: string, key: string): Promise<string>;
 }
 
+export interface GlobalRoleMigrationGateway extends Pick<AppwriteGateway, 'listDatabases' | 'listCollections' | 'listAttributes'> {
+  readonly projectId: string;
+  getAttributeStatus(databaseId: string, collectionId: string, key: string): Promise<string>;
+  updateGlobalRoleEnum(): Promise<void>;
+}
+
 export type AdminIdentity = { readonly id: string; readonly email: string };
 export type AdminProfile = {
   readonly id: string; readonly user_id: string; readonly display_name: string;
