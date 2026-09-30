@@ -3,13 +3,13 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Organization, OrganizationRepository } from '../repositories/organizations.ts';
 import type { TechnicianRepository } from '../repositories/technicians.ts';
 
-export interface SessionVerifier {
-  verify(session: string): Promise<{ userId: string } | null>;
+export interface JwtVerifier {
+  verify(jwt: string): Promise<{ userId: string } | null>;
 }
 
 export interface TechnicianServices {
   projectId: string;
-  sessionVerifier: SessionVerifier;
+  jwtVerifier: JwtVerifier;
   technicians: TechnicianRepository;
   organizations: OrganizationRepository;
 }
@@ -40,40 +40,40 @@ const unauthenticated = { error: { code: 'UNAUTHENTICATED', message: 'Authentica
 const disabled = { error: { code: 'TECHNICIAN_DISABLED', message: 'Access denied' } };
 const unavailable = { error: { code: 'AUTHORIZATION_UNAVAILABLE', message: 'Access unavailable' } };
 
-function sessionFromRequest(request: FastifyRequest, projectId: string): string | null {
-  const headerValues: string[] = [];
-  const cookieValues: string[] = [];
+function jwtFromRequest(request: FastifyRequest, projectId: string): string | null {
+  const authorizationValues: string[] = [];
   const cookieName = `a_session_${projectId}`;
+  let legacyCredential = false;
 
   for (let index = 0; index < request.raw.rawHeaders.length; index += 2) {
     const name = request.raw.rawHeaders[index]?.toLowerCase();
     const value = request.raw.rawHeaders[index + 1] ?? '';
-    if (name === 'x-appwrite-session') headerValues.push(value);
+    if (name === 'authorization') authorizationValues.push(value);
+    if (name === 'x-appwrite-session') legacyCredential = true;
     if (name === 'cookie') {
       for (const part of value.split(';')) {
         const separator = part.indexOf('=');
-        if (separator < 0 || part.slice(0, separator).trim() !== cookieName) continue;
-        try { cookieValues.push(decodeURIComponent(part.slice(separator + 1).trim())); }
-        catch { return null; }
+        if (separator >= 0 && part.slice(0, separator).trim() === cookieName) legacyCredential = true;
       }
     }
   }
 
-  if (headerValues.length + cookieValues.length !== 1) return null;
-  const session = (headerValues[0] ?? cookieValues[0]).trim();
-  if (!session || session.length > 4096 || /[\s,;]/.test(session)) return null;
-  return session;
+  if (legacyCredential || authorizationValues.length !== 1) return null;
+  const authorization = authorizationValues[0];
+  if (authorization.length > 8199) return null;
+  const match = /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/i.exec(authorization);
+  return match?.[1] ?? null;
 }
 
 export function registerTechnicianAuth(app: FastifyInstance, services: TechnicianServices) {
   app.decorateRequest('technician', null);
   return async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = sessionFromRequest(request, services.projectId);
-    if (!session) return reply.code(401).send(unauthenticated);
+    const jwt = jwtFromRequest(request, services.projectId);
+    if (!jwt) return reply.code(401).send(unauthenticated);
 
     let identity: { userId: string } | null;
-    try { identity = await services.sessionVerifier.verify(session); }
-    catch { identity = null; }
+    try { identity = await services.jwtVerifier.verify(jwt); }
+    catch { return reply.code(503).send(unavailable); }
     if (!identity?.userId) return reply.code(401).send(unauthenticated);
 
     try {

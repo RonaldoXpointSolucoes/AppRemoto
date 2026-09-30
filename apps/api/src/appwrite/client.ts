@@ -1,4 +1,4 @@
-import { Account, Client, Databases } from 'node-appwrite';
+import { Account, AppwriteException, Client, Databases } from 'node-appwrite';
 
 import type { ApiConfig } from '../config.ts';
 import type { TechnicianServices } from '../plugins/technician-auth.ts';
@@ -12,12 +12,17 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
 
   return {
     projectId: config.appwriteProjectId,
-    sessionVerifier: {
-      async verify(session) {
-        const sessionClient = new Client().setEndpoint(config.appwriteEndpoint)
-          .setProject(config.appwriteProjectId).setSession(session);
-        const account = await new Account(sessionClient).get();
-        return account.$id ? { userId: account.$id } : null;
+    jwtVerifier: {
+      async verify(jwt) {
+        const jwtClient = new Client().setEndpoint(config.appwriteEndpoint)
+          .setProject(config.appwriteProjectId).setJWT(jwt);
+        try {
+          const account = await new Account(jwtClient).get();
+          return account.$id && account.status ? { userId: account.$id } : null;
+        } catch (error) {
+          if (error instanceof AppwriteException && error.code === 401) return null;
+          throw new Error('Authentication service unavailable');
+        }
       },
     },
     technicians: createTechnicianRepository(databases),

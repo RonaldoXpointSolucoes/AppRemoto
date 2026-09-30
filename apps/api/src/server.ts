@@ -3,7 +3,7 @@ import { createAppwriteServices } from './appwrite/client.ts';
 import { readApiConfig } from './config.ts';
 
 const config = readApiConfig();
-const app = buildApp({ logger: true }, createAppwriteServices(config));
+const app = buildApp({ logger: true }, createAppwriteServices(config), config.allowedOrigins);
 
 try {
   await app.listen({ host: '0.0.0.0', port: config.port });

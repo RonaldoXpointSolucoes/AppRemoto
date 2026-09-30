@@ -13,7 +13,7 @@ const organizations = [
 function services(overrides: Partial<TechnicianServices> = {}): TechnicianServices {
   return {
     projectId: 'test-project',
-    sessionVerifier: { verify: async (session) => session === 'valid-session' ? { userId: 'user-1' } : null },
+    jwtVerifier: { verify: async (jwt) => jwt === 'valid.jwt.value' ? { userId: 'user-1' } : null },
     technicians: {
       findByUserId: async () => ({ userId: 'user-1', displayName: 'Technician', globalRole: 'super_admin', active: true }),
       listMemberships: async () => [],
@@ -30,7 +30,7 @@ async function request(path: string, dependencies: TechnicianServices, headers: 
 }
 
 test('super admin sees only active organizations with safe projections', async () => {
-  const headers = { 'x-appwrite-session': 'valid-session' };
+  const headers = { authorization: 'Bearer valid.jwt.value' };
   const me = await request('/v1/me', services(), headers);
   const list = await request('/v1/organizations', services(), headers);
   assert.equal(me.statusCode, 200);
@@ -44,7 +44,29 @@ test('super admin sees only active organizations with safe projections', async (
   ] });
 });
 
-test('member sees only active can_view memberships regardless of client organization ID', async () => {
+test('Web SDK JWT reaches the technician routes as a Bearer token', async () => {
+  const response = await request('/v1/me', services(), { authorization: 'Bearer valid.jwt.value' });
+  assert.equal(response.statusCode, 200);
+});
+
+test('malformed, repeated, and mixed technician credentials are rejected', async () => {
+  const invalidHeaders: Record<string, string | string[]>[] = [
+    { authorization: '' },
+    { authorization: 'Bearer' },
+    { authorization: 'Basic valid.jwt.value' },
+    { authorization: 'Bearer valid.jwt.value, Bearer valid.jwt.value' },
+    { authorization: ['Bearer valid.jwt.value', 'Bearer valid.jwt.value'] },
+    { authorization: 'Bearer valid.jwt.value', 'x-appwrite-session': 'legacy-secret' },
+    { authorization: 'Bearer valid.jwt.value', cookie: 'a_session_test-project=legacy-secret' },
+  ];
+  for (const headers of invalidHeaders) {
+    const response = await request('/v1/me', services(), headers);
+    assert.equal(response.statusCode, 401);
+    assert.deepEqual(response.json(), { error: { code: 'UNAUTHENTICATED', message: 'Authentication required' } });
+  }
+});
+
+test('member sees only active can_view memberships', async () => {
   const dependencies = services({ technicians: {
     findByUserId: async () => ({ userId: 'user-1', displayName: 'Member', active: true }),
     listMemberships: async () => [
@@ -54,9 +76,9 @@ test('member sees only active can_view memberships regardless of client organiza
       { organizationId: 'org-other', userId: 'different-user', role: 'operator', canView: true, canConnect: true, canManageDevices: true },
     ],
   } });
-  const headers = { 'x-appwrite-session': 'valid-session' };
-  const me = await request('/v1/me?organizationId=org-other', dependencies, headers);
-  const list = await request('/v1/organizations?organizationId=org-other', dependencies, headers);
+  const headers = { authorization: 'Bearer valid.jwt.value' };
+  const me = await request('/v1/me', dependencies, headers);
+  const list = await request('/v1/organizations', dependencies, headers);
   assert.equal(me.statusCode, 200);
   assert.deepEqual(me.json(), { id: 'user-1', displayName: 'Member', globalRole: null, authorization: [
     { organizationId: 'org-active', role: 'operator', canView: true, canConnect: false, canManageDevices: false },
@@ -65,11 +87,11 @@ test('member sees only active can_view memberships regardless of client organiza
   assert.deepEqual(list.json(), { organizations: [{ id: 'org-active', name: 'Active', slug: 'active' }] });
 });
 
-test('expired session has a generic stable authentication error', async () => {
-  const response = await request('/v1/me', services(), { 'x-appwrite-session': 'expired-session' });
+test('expired JWT has a generic stable authentication error', async () => {
+  const response = await request('/v1/me', services(), { authorization: 'Bearer expired.jwt.value' });
   assert.equal(response.statusCode, 401);
   assert.deepEqual(response.json(), { error: { code: 'UNAUTHENTICATED', message: 'Authentication required' } });
-  assert.ok(!response.body.includes('expired-session'));
+  assert.ok(!response.body.includes('expired.jwt.value'));
 });
 
 test('disabled profile has a generic stable authorization error', async () => {
@@ -77,19 +99,19 @@ test('disabled profile has a generic stable authorization error', async () => {
     findByUserId: async () => ({ userId: 'user-1', displayName: 'Disabled', globalRole: 'super_admin', active: false }),
     listMemberships: async () => [],
   } });
-  const response = await request('/v1/organizations', dependencies, { 'x-appwrite-session': 'valid-session' });
+  const response = await request('/v1/organizations', dependencies, { authorization: 'Bearer valid.jwt.value' });
   assert.equal(response.statusCode, 403);
   assert.deepEqual(response.json(), { error: { code: 'TECHNICIAN_DISABLED', message: 'Access denied' } });
   assert.ok(!response.body.includes('Disabled'));
 });
 
-test('missing, empty, multiple, and ambiguous transports never authenticate', async () => {
+test('missing and legacy session transports never authenticate', async () => {
   const invalidHeaders: Record<string, string | string[]>[] = [
     {}, { 'x-appwrite-session': '' },
-    { 'x-appwrite-session': 'valid-session, valid-session' },
-    { 'x-appwrite-session': ['valid-session', 'valid-session'] },
-    { 'x-appwrite-session': 'valid-session', cookie: 'a_session_test-project=valid-session' },
-    { cookie: 'a_session_test-project=valid-session; a_session_test-project=valid-session' },
+    { 'x-appwrite-session': 'legacy-secret' },
+    { 'x-appwrite-session': ['legacy-secret', 'legacy-secret'] },
+    { cookie: 'a_session_test-project=legacy-secret' },
+    { cookie: 'a_session_test-project=%ZZ' },
     { cookie: 'a_session_test-project=' },
   ];
   for (const headers of invalidHeaders) {
@@ -99,20 +121,8 @@ test('missing, empty, multiple, and ambiguous transports never authenticate', as
   }
 });
 
-test('project session cookie authenticates when it is the only credential', async () => {
-  const response = await request('/v1/me', services(), { cookie: 'a_session_test-project=valid-session' });
-  assert.equal(response.statusCode, 200);
-});
-
-test('session verifier failure and missing profile do not reveal identity details', async () => {
-  const headers = { 'x-appwrite-session': 'valid-session' };
-  const unavailable = await request('/v1/me', services({
-    sessionVerifier: { verify: async () => { throw new Error('private session detail'); } },
-  }), headers);
-  assert.equal(unavailable.statusCode, 401);
-  assert.deepEqual(unavailable.json(), { error: { code: 'UNAUTHENTICATED', message: 'Authentication required' } });
-  assert.ok(!unavailable.body.includes('private session detail'));
-
+test('missing profile does not reveal identity details', async () => {
+  const headers = { authorization: 'Bearer valid.jwt.value' };
   const missing = await request('/v1/me', services({ technicians: {
     findByUserId: async () => null, listMemberships: async () => [],
   } }), headers);
@@ -124,8 +134,35 @@ test('authorization store errors have a stable response without internal details
   const response = await request('/v1/me', services({ technicians: {
     findByUserId: async () => { throw new Error('internal database identifier'); },
     listMemberships: async () => [],
-  } }), { 'x-appwrite-session': 'valid-session' });
+  } }), { authorization: 'Bearer valid.jwt.value' });
   assert.equal(response.statusCode, 503);
   assert.deepEqual(response.json(), { error: { code: 'AUTHORIZATION_UNAVAILABLE', message: 'Access unavailable' } });
   assert.ok(!response.body.includes('internal database identifier'));
+});
+
+test('verifier outage returns a generic recoverable error', async () => {
+  const response = await request('/v1/me', services({
+    jwtVerifier: { verify: async () => { throw new Error('upstream timeout details'); } },
+  }), { authorization: 'Bearer valid.jwt.value' });
+  assert.equal(response.statusCode, 503);
+  assert.deepEqual(response.json(), { error: { code: 'AUTHORIZATION_UNAVAILABLE', message: 'Access unavailable' } });
+  assert.ok(!response.body.includes('upstream timeout details'));
+});
+
+test('technician routes reject unknown query fields', async () => {
+  for (const path of ['/v1/me?organizationId=org-other', '/v1/organizations?organizationId=org-other']) {
+    const response = await request(path, services(), { authorization: 'Bearer valid.jwt.value' });
+    assert.equal(response.statusCode, 400);
+  }
+});
+
+test('device Bearer on an agent route does not enter technician authentication', async () => {
+  const app = buildApp({ logger: false }, services());
+  app.get('/v1/agent/test', async () => ({ status: 'agent-route' }));
+  try {
+    const response = await app.inject({ method: 'GET', url: '/v1/agent/test',
+      headers: { authorization: 'Bearer synthetic-device-token' } });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json(), { status: 'agent-route' });
+  } finally { await app.close(); }
 });
