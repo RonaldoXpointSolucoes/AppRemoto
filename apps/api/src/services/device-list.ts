@@ -34,8 +34,9 @@ function viewOf(record: DeviceRecord, organizationName: string, snapshotTime: st
   const seen = validSeenAt(record.lastSeenAt);
   const snapshotAt = Date.parse(snapshotTime);
   const snapshotAge = snapshotAt - seen;
+  const currentAge = currentRequestTime.getTime() - seen;
   const online = record.enabled && Number.isFinite(seen) && seen <= currentRequestTime.getTime() &&
-    (seen > snapshotAt || (snapshotAge >= 0 && snapshotAge <= 90_000));
+    (seen > snapshotAt ? currentAge <= 90_000 : snapshotAge >= 0 && snapshotAge <= 90_000);
   return DeviceViewSchema.parse({
     id: record.id, organizationId: record.organizationId, organizationName,
     deviceUuid: record.deviceUuid, displayName: record.displayName, hostname: record.hostname,

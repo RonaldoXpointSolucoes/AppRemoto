@@ -216,6 +216,21 @@ test('legitimate heartbeat after page one keeps the next device online', async (
   assert.equal(second.json().nextCursor, null);
 });
 
+test('post-snapshot heartbeat is offline when an old cursor resumes more than 90 seconds later', async () => {
+  const records = [device('a', 'a', { lastSeenAt: '2026-09-30T11:59:30.000Z' }),
+    device('b', 'a', { lastSeenAt: '2026-09-30T11:59:30.000Z' })];
+  const dependencies = services(records, []);
+  let clock = now;
+  dependencies.now = () => clock;
+  const first = await get('/v1/devices?limit=1&status=ONLINE', dependencies);
+  records[1]!.lastSeenAt = '2026-09-30T12:00:05.000Z';
+  clock = new Date('2026-09-30T12:02:00.001Z');
+  const second = await get(`/v1/devices?limit=1&status=ONLINE&cursor=${encodeURIComponent(first.json().nextCursor)}`, dependencies);
+  assert.equal(second.statusCode, 200);
+  assert.deepEqual(second.json().devices, []);
+  assert.equal(second.json().nextCursor, null);
+});
+
 test('heartbeat later than the current request remains offline on a continuation', async () => {
   const records = [device('a', 'a'), device('b', 'a', { lastSeenAt: '2026-09-30T12:00:20.000Z' })];
   const dependencies = services(records, []);
