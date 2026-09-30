@@ -39,6 +39,12 @@ const fields: Record<string, readonly (readonly [string, string, number | null, 
     ['use_count', 'integer', null, true, null], ['active', 'boolean', null, true, null],
     ['created_by_user_id', 'string', 36, true, null],
   ],
+  enrollment_receipts: [
+    ['organization_id', 'string', 36, true, null], ['enrollment_token_id', 'string', 36, true, null],
+    ['device_id', 'string', 36, true, null], ['device_uuid', 'string', 36, true, null],
+    ['status', 'enum', null, true, ['pending', 'committed']],
+    ['token_use_consumed', 'boolean', null, true, null],
+  ],
   connection_sessions: [
     ['organization_id', 'string', 36, true, null], ['device_id', 'string', 36, true, null],
     ['technician_user_id', 'string', 36, true, null], ['connect_token_hash', 'string', 64, true, null],
@@ -71,6 +77,11 @@ const indexes: Record<string, readonly (readonly [string, string, readonly strin
   device_tokens: [['u_token_hash', 'unique', ['token_hash']], ['q_device_id', 'key', ['device_id']]],
   device_credentials: [['u_device_id', 'unique', ['device_id']]],
   enrollment_tokens: [['u_token_hash', 'unique', ['token_hash']], ['q_organization_id', 'key', ['organization_id']]],
+  enrollment_receipts: [
+    ['u_enrollment_token_id_device_uuid', 'unique', ['enrollment_token_id', 'device_uuid']],
+    ['q_organization_id', 'key', ['organization_id']], ['q_device_id', 'key', ['device_id']],
+    ['q_status', 'key', ['status']],
+  ],
   connection_sessions: [
     ['u_connect_token_hash', 'unique', ['connect_token_hash']],
     ['q_organization_id', 'key', ['organization_id']], ['q_device_id', 'key', ['device_id']],

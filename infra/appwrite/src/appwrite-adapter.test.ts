@@ -129,7 +129,7 @@ test('SDK adapter sends only the scoped enum update with a null default', async 
     body: { elements: ['super_admin'], required: false, default: null } }]);
 });
 
-test('full Appwrite 1.7 post-apply inventory plans 90 unchanged resources and zero writes', async (t) => {
+test('full Appwrite 1.7 post-apply inventory plans 101 unchanged resources and zero writes', async (t) => {
   const fixture = JSON.parse(await readFile(new URL('./testing/appwrite-1.7-numeric-attributes.json', import.meta.url), 'utf8'));
   const indexFixture = JSON.parse(await readFile(new URL('./testing/appwrite-1.7-indexes.json', import.meta.url), 'utf8'));
   const created = new FakeGateway();
@@ -157,8 +157,8 @@ test('full Appwrite 1.7 post-apply inventory plans 90 unchanged resources and ze
   });
   const gateway = createAppwriteGateway(environment);
   const plan = buildProvisionPlan(await inspectSchema(gateway));
-  assert.equal(plan.actions.length, 90);
-  assert.equal(plan.actions.filter((action) => action.resource === 'index').length, 23);
+  assert.equal(plan.actions.length, 101);
+  assert.equal(plan.actions.filter((action) => action.resource === 'index').length, 27);
   assert.deepEqual(plan.actions.filter((action) => action.outcome !== 'unchanged'), []);
   await applyProvisionPlan(gateway, plan);
   assert.equal(postCount, 0);

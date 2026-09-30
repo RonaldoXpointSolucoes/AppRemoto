@@ -149,6 +149,28 @@ empty collection permissions and document security disabled (server-only access)
 | `u_token_hash` | unique | `token_hash` |
 | `q_organization_id` | key | `organization_id` |
 
+## `enrollment_receipts`
+
+- Name: `enrollment_receipts`
+- Permissions: `[]`
+- Document security: `false`
+
+| Attribute | Type | Size | Required | Enum elements |
+| --- | --- | ---: | :---: | --- |
+| `organization_id` | string | 36 | yes | - |
+| `enrollment_token_id` | string | 36 | yes | - |
+| `device_id` | string | 36 | yes | - |
+| `device_uuid` | string | 36 | yes | - |
+| `status` | enum | - | yes | `pending`, `committed` |
+| `token_use_consumed` | boolean | - | yes | - |
+
+| Index ID | Type | Attributes |
+| --- | --- | --- |
+| `u_enrollment_token_id_device_uuid` | unique | `enrollment_token_id`, `device_uuid` |
+| `q_organization_id` | key | `organization_id` |
+| `q_device_id` | key | `device_id` |
+| `q_status` | key | `status` |
+
 ## `connection_sessions`
 
 - Name: `connection_sessions`

@@ -3,9 +3,62 @@ import { test } from 'node:test';
 import { applyProvisionPlan } from './apply.ts';
 import { inspectSchema } from './inspect.ts';
 import { buildProvisionPlan } from './plan.ts';
+import { REMOTE_MANAGEMENT_SCHEMA } from './schema.ts';
 import { FakeGateway, desiredResourceCount } from './testing/fake-gateway.ts';
 
 const planFor = async (gateway: FakeGateway) => buildProvisionPlan(await inspectSchema(gateway));
+
+function priorNinetyResourceGateway(): FakeGateway {
+  const gateway = new FakeGateway();
+  gateway.database = { $id: 'remote_management', name: 'remote_management' };
+  for (const collection of REMOTE_MANAGEMENT_SCHEMA.collections.filter((item) => item.id !== 'enrollment_receipts')) {
+    gateway.collections.set(collection.id, collection);
+    gateway.attributes.set(collection.id, [...collection.attributes]);
+    gateway.indexes.set(collection.id, [...collection.indexes]);
+  }
+  return gateway;
+}
+
+test('prior 90-resource inventory plans only 11 receipt creates and fake apply converges', async () => {
+  const gateway = priorNinetyResourceGateway();
+  const first = await planFor(gateway);
+  assert.equal(first.actions.length, 101);
+  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 90);
+  assert.deepEqual(first.actions.filter((action) => action.outcome === 'create').map(({ resource, id }) => [resource, id]), [
+    ['collection', 'enrollment_receipts'],
+    ['attribute', 'enrollment_receipts/organization_id'],
+    ['attribute', 'enrollment_receipts/enrollment_token_id'],
+    ['attribute', 'enrollment_receipts/device_id'],
+    ['attribute', 'enrollment_receipts/device_uuid'],
+    ['attribute', 'enrollment_receipts/status'],
+    ['attribute', 'enrollment_receipts/token_use_consumed'],
+    ['index', 'enrollment_receipts/u_enrollment_token_id_device_uuid'],
+    ['index', 'enrollment_receipts/q_organization_id'],
+    ['index', 'enrollment_receipts/q_device_id'],
+    ['index', 'enrollment_receipts/q_status'],
+  ]);
+  await applyProvisionPlan(gateway, first);
+  assert.equal(gateway.writes, 11);
+  const second = await planFor(gateway);
+  assert.equal(second.actions.length, 101);
+  assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
+  await applyProvisionPlan(gateway, second);
+  assert.equal(gateway.writes, 11);
+});
+
+test('incompatible preexisting receipt field blocks the whole generic apply', async () => {
+  const gateway = priorNinetyResourceGateway();
+  gateway.collections.set('enrollment_receipts', { id: 'enrollment_receipts', name: 'enrollment_receipts',
+    permissions: [], documentSecurity: false, attributes: [], indexes: [] });
+  gateway.attributes.set('enrollment_receipts', [{ key: 'status', type: 'enum', required: true,
+    elements: ['pending', 'committed', 'failed'] }]);
+  const plan = await planFor(gateway);
+  assert.deepEqual(plan.actions.filter((action) => action.outcome === 'conflict'), [
+    { resource: 'attribute', id: 'enrollment_receipts/status', outcome: 'conflict', reason: 'definition_mismatch' },
+  ]);
+  await assert.rejects(applyProvisionPlan(gateway, plan), /conflict/i);
+  assert.equal(gateway.writes, 0);
+});
 
 test('apply creates in dependency order and observes attributes before indexes', async () => {
   const gateway = new FakeGateway();
