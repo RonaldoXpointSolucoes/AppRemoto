@@ -82,13 +82,15 @@ test('enrollment persists hashes, authenticated envelope, linkage and consumed u
     'write:enrollment_tokens', 'write:enrollment_receipts', 'audit:success']);
 });
 
-test('sequential committed retry returns identical credentials without any writes', async () => {
+test('sequential committed retry never returns plaintext credentials again', async () => {
   const f = fixture(); const first = await f.enroll(request, '127.0.0.1');
-  f.calls.length = 0; const before = structuredClone([...f.rows]);
-  const second = await f.enroll(request, '127.0.0.1');
-  assert.deepEqual(second, first); assert.deepEqual(f.calls, []); assert.deepEqual([...f.rows], before);
+  f.calls.length = 0; f.events.clear(); const before = structuredClone([...f.rows]);
+  await assert.rejects(f.enroll(request, '127.0.0.1'),
+    (error: unknown) => error instanceof EnrollmentError && error.code === 'ENROLLMENT_DENIED');
+  assert.deepEqual([...f.rows], before);
   assert.equal(f.rows.get('enrollment_tokens/enroll-1')!.use_count, 1);
-  assert.equal(f.rows.get(`device_tokens/${second.deviceId}`)!.token_hash, hashToken(second.deviceToken));
+  assert.equal(f.rows.get(`device_tokens/${first.deviceId}`)!.token_hash, hashToken(first.deviceToken));
+  assert.equal([...f.events.values()][0]!.reason, 'already_enrolled');
 });
 
 test('concurrent identical calls share one promise and one usable response', async () => {
@@ -239,10 +241,12 @@ for (const point of ['enrollment_receipts', 'devices', 'device_tokens', 'device_
   });
 }
 
-test('committed replay does not depend on writable storage or audit availability', async () => {
+test('committed replay stays denied even when denial audit is unavailable', async () => {
   const f = fixture(); const first = await f.enroll(request, '127.0.0.1'); const before = structuredClone([...f.rows]);
-  f.failAt('audit', true); assert.deepEqual(await f.enroll(request, '127.0.0.1'), first);
+  f.failAt('audit'); await assert.rejects(f.enroll(request, '127.0.0.1'),
+    (error: unknown) => error instanceof EnrollmentError && error.code === 'ENROLLMENT_DENIED');
   assert.deepEqual([...f.rows], before);
+  assert.ok(first.deviceToken);
 });
 
 for (const artifact of ['hash', 'revoked', 'ciphertext', 'keyVersion']) test(`read-only replay rejects invalid ${artifact}`, async () => {

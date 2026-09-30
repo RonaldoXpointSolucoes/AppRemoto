@@ -9,7 +9,7 @@ export interface EnrollmentAudit {
   retry: boolean;
   recoveryRequired: boolean;
   reason?: 'token_inactive' | 'token_expired' | 'token_invalid' | 'organization_inactive' | 'token_exhausted' |
-    'identity_mismatch' | 'pending_recovery' | 'storage_failure';
+    'identity_mismatch' | 'pending_recovery' | 'storage_failure' | 'already_enrolled';
 }
 export interface AuditRepository {
   record(id: string, event: EnrollmentAudit): Promise<void>;

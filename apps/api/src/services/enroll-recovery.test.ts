@@ -135,19 +135,22 @@ for (const restart of [false, true]) test(`late consumption remains recoverable 
     .every((u) => Object.keys(u.data).length === 1));
 });
 
-test('committed retry never submits a credential rotation, even when its PATCH would time out', async () => {
+test('committed retry is denied without credential rotation, even when its PATCH would time out', async () => {
   const f = fixture(); const enroll = f.newService(); const first = await enroll(input, '127.0.0.1');
-  f.delay('device_credentials'); const before = structuredClone([...f.rows]); const writes = f.updates.length;
-  assert.deepEqual(await enroll(input, '127.0.0.1'), first);
-  assert.deepEqual(await f.newService()(input, '127.0.0.1'), first);
-  assert.equal(f.updates.length, writes); assert.deepEqual([...f.rows], before);
+  f.delay('device_credentials'); const before = structuredClone([...f.rows].filter(([path]) => !path.startsWith('audit_logs/')));
+  const writes = f.updates.length;
+  await assert.rejects(enroll(input, '127.0.0.1'), EnrollmentError);
+  await assert.rejects(f.newService()(input, '127.0.0.1'), EnrollmentError);
+  assert.equal(f.updates.length, writes);
+  assert.deepEqual([...f.rows].filter(([path]) => !path.startsWith('audit_logs/')), before);
+  assert.ok(first.deviceToken);
 });
 
-test('read-only retry cannot submit a late committed-to-pending update', async () => {
-  const f = fixture(); const first = await f.newService()(input, '127.0.0.1'); f.delay('enrollment_receipts');
+test('committed denial cannot submit a late committed-to-pending update', async () => {
+  const f = fixture(); await f.newService()(input, '127.0.0.1'); f.delay('enrollment_receipts');
   const writes = f.updates.length;
-  assert.deepEqual(await f.newService()(input, '127.0.0.1'), first);
-  assert.deepEqual(await f.newService()(input, '127.0.0.1'), first);
+  await assert.rejects(f.newService()(input, '127.0.0.1'), EnrollmentError);
+  await assert.rejects(f.newService()(input, '127.0.0.1'), EnrollmentError);
   assert.equal(f.updates.length, writes); assert.equal(f.rows.get(`enrollment_receipts/${receiptId}`)!.status, 'committed');
 });
 
@@ -198,22 +201,23 @@ test('committed receipt target cannot be greater than the observed token count',
   await assert.rejects(enroll(input, '127.0.0.1'), EnrollmentError);
 });
 
-for (const restart of [false, true]) test(`lost frozen recovery response remains retriable; restart=${restart}`, async () => {
+for (const restart of [false, true]) test(`frozen recovery returns once then denies replay; restart=${restart}`, async () => {
   const f = fixture(); let enroll = f.newService(); f.delay('enrollment_tokens');
   await assert.rejects(enroll(input, '127.0.0.1'), EnrollmentError); f.complete();
   const first = await enroll(input, '127.0.0.1');
   assert.equal(f.rows.get(`enrollment_receipts/${receiptId}`)!.recovery_frozen, true);
   if (restart) enroll = f.newService();
-  const before = structuredClone([...f.rows]); const writes = f.updates.length;
-  const retried = await enroll(input, '127.0.0.1');
-  assert.deepEqual(retried, first);
-  assert.equal(f.updates.length, writes); assert.deepEqual([...f.rows], before);
+  const before = structuredClone([...f.rows].filter(([path]) => !path.startsWith('audit_logs/')));
+  const writes = f.updates.length;
+  await assert.rejects(enroll(input, '127.0.0.1'), EnrollmentError);
+  assert.equal(f.updates.length, writes);
+  assert.deepEqual([...f.rows].filter(([path]) => !path.startsWith('audit_logs/')), before);
   assert.equal(f.rows.get('enrollment_tokens/token')!.use_count, 1);
   assert.equal(f.rows.get('enrollment_tokens/token')!.active, false);
-  assert.equal(f.rows.get(`device_tokens/${deviceId}`)!.token_hash, hashToken(retried.deviceToken));
+  assert.equal(f.rows.get(`device_tokens/${deviceId}`)!.token_hash, hashToken(first.deviceToken));
   const credential = f.rows.get(`device_credentials/${deviceId}`)!;
   assert.equal(decryptPassword({ passwordCiphertext: credential.password_ciphertext, passwordNonce: credential.password_nonce,
-    passwordTag: credential.password_tag, keyVersion: credential.key_version }, key), retried.rustdeskPassword);
+    passwordTag: credential.password_tag, keyVersion: credential.key_version }, key), first.rustdeskPassword);
 });
 
 for (const status of ['pending', 'committed']) test(`administratively disabled ${status} receipt does not acquire recovery provenance`, async () => {

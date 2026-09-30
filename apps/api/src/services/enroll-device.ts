@@ -102,14 +102,15 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
         receipt.device_id === deviceId && receipt.device_uuid === request.deviceUuid;
       const uncertain = uncertainWrites.get(tokenHash);
       const recovering = Boolean(linked && receipt.status === 'pending');
-      const retry = Boolean(linked && receipt.status === 'committed' && receipt.token_use_consumed === true);
-      event.retry = retry || recovering;
+      const committed = Boolean(linked && receipt.status === 'committed' && receipt.token_use_consumed === true);
+      event.retry = committed || recovering;
       const expectedCount = receipt?.expected_use_count;
       if (receipt && (!linked || !Number.isSafeInteger(expectedCount) || (expectedCount as number) < 1 ||
           (expectedCount as number) > token.max_uses || typeof receipt.recovery_frozen !== 'boolean')) return deny('identity_mismatch');
       const recoveryFrozen = receipt?.recovery_frozen === true;
       if (!token.active && !recoveryFrozen) return deny('token_inactive');
       if (recoveryFrozen && (token.active !== false || token.use_count !== expectedCount)) return deny('pending_recovery');
+      if (committed) return deny('already_enrolled');
       if (recovering) {
         if (uncertain && !recoveryFrozen) return deny('pending_recovery');
         if (token.use_count !== expectedCount || (!uncertain && receipt!.token_use_consumed !== false)) return deny('pending_recovery');
@@ -118,7 +119,7 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
           return deny('pending_recovery');
         }
       }
-      if (retry || recovering) {
+      if (recovering) {
         if (!device || device.organization_id !== token.organization_id || device.device_uuid !== request.deviceUuid ||
             device.enabled !== true || !deviceToken || deviceToken.device_id !== deviceId || !credential ||
             credential.device_id !== deviceId || token.use_count < (expectedCount as number)) return deny('identity_mismatch');
@@ -128,7 +129,7 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
       }
       const deviceTokenPlaintext = deriveDeviceToken(encryptionKey, { organizationId: token.organization_id,
         enrollmentTokenId: token.id, deviceId, deviceUuid: request.deviceUuid, receiptId });
-      if (retry || recovering) {
+      if (recovering) {
         let response: EnrollResponse;
         try {
           const storedHash = deviceToken!.token_hash;

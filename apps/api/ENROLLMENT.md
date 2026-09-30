@@ -2,7 +2,7 @@
 
 `POST /v1/agent/enroll` accepts the strict contracts package request. The enrollment
 token is supplied only as `enrollmentToken` in the JSON body. Organization identity
-comes exclusively from the stored token hash lookup. Responses contain replayable
+comes exclusively from the stored token hash lookup. A response contains one-time
 plaintext credentials and must not be cached or logged. Persisted device tokens
 are SHA-256 hashes; RustDesk passwords use the versioned AES-GCM envelope.
 
@@ -40,18 +40,18 @@ requests share one promise/response. A secondary device lock prevents different
 enrollment tokens racing over the same organization/device identity. Document IDs
 are deterministic hashes of nonsecret identity tuples.
 
-A committed receipt binds token, organization, UUID and device ID. With an active,
-unexpired token, enabled matching device and existing credentials, it allows a
-read-only retry returning the original credentials without consuming another use,
-including at max uses. Device tokens are canonical 43-character base64url HMAC-SHA256
+A committed receipt binds token, organization, UUID and device ID and is terminal:
+a later POST is denied and never returns the device token or RustDesk password again.
+Identical concurrent calls may share the one in-flight response, but sequential
+retries do not. Device tokens are canonical 43-character base64url HMAC-SHA256
 values derived from the master key, the domain `appremoto:enrollment-device-token:v1`
 with a NUL terminator, and the JSON tuple [organization ID, enrollment token ID,
 device ID, device UUID, receipt ID]. Only the SHA-256 token hash is stored.
-Replay derives and constant-time verifies that hash, rejects revoked device tokens,
-decrypts the existing authenticated password envelope and validates the response.
-It never updates device metadata, token, credentials, receipt, or success audit.
-The random RustDesk password is generated once during initial enrollment.
-Existence of a device alone does not authorize this operation.
+Only recovery of a still-pending indeterminate operation derives and constant-time
+verifies that hash, rejects revoked device tokens, decrypts the authenticated password
+envelope, commits the receipt and returns the response once. The random RustDesk
+password is generated once during initial enrollment. Existence of a device alone
+does not authorize enrollment or credential recovery.
 
 Every new receipt starts with required `recovery_frozen=false`. Only the live
 handler of an indeterminate write may set it true, after this operation changes an
@@ -104,10 +104,9 @@ count increment and preserving the marker. No committed-to-pending transition is
 submitted on retry, so no late retry PATCH can demote a finalized receipt.
 The token remains permanently inactive for manual review, sacrificing remaining
 capacity so a late count-only write cannot affect later uses or reactivate it.
-A committed recovery receipt remains retriable, even after restart or response
-loss, only with recovery_frozen=true, exact target count, consumed flag, and all
-identity/device/credential checks. This exception never applies to an ordinary
-inactive token. Disable the bound device to stop further recovery retries.
+After recovery commits the receipt, later requests are denied even after restart or
+response loss. This preserves the one-time response boundary; operators must reconcile
+a device whose recovery response was lost rather than re-expose its plaintext secrets.
 
 For other indeterminate initial artifact writes, the same process must first
 observe the exact attempted artifact. A pending consumed receipt without that
@@ -121,3 +120,10 @@ change the stable denial response. Unknown tokens have no trusted organization;
 they do not write organization audit rows and emit only a generic application log.
 The global application logger omits raw URLs/queries and exception messages on
 POST, OPTIONS, unsupported methods, not-found and error responses.
+
+Technician authentication failures follow the same trust boundary. Every 401, 403
+and authentication-related 503 emits a structured application audit with action,
+result and a fixed reason code. These events are marked `scope=unscoped` and contain
+no user, credential or organization identifier. Authentication happens before an
+organization is authorized, so the API does not invent an `organization_id`, query
+memberships for a denied identity, or insert an invalid organization audit row.
