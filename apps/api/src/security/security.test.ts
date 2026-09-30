@@ -118,7 +118,8 @@ test('redactLogData recursively hides normalized sensitive fields in objects and
     ],
   };
   const snapshot = structuredClone(input);
-  assert.deepEqual(redactLogData(input), {
+  const result = redactLogData(input);
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
     event: 'device.enrolled', deviceId: 'device-1',
     headers: { AUTHORIZATION: '[REDACTED]', 'Set-Cookie': '[REDACTED]', 'x-api-key': '[REDACTED]' },
     nested: [
@@ -129,7 +130,10 @@ test('redactLogData recursively hides normalized sensitive fields in objects and
     ],
   });
   assert.deepEqual(input, snapshot);
-  assert.notEqual(redactLogData(input), input);
+  assert.notEqual(result, input);
+  assert.equal(Object.getPrototypeOf(result), null);
+  assert.equal(Object.getPrototypeOf(result.nested), null);
+  assert.equal(Object.getPrototypeOf(result.nested[0]), null);
 });
 
 test('redactLogData safely handles cyclic data without leaking sensitive fields', () => {
@@ -137,17 +141,104 @@ test('redactLogData safely handles cyclic data without leaking sensitive fields'
     label: 'safe', Authorization: 'private',
   };
   input.self = input;
-  assert.deepEqual(redactLogData(input), {
+  assert.deepEqual(JSON.parse(JSON.stringify(redactLogData(input))), {
     label: 'safe', Authorization: '[REDACTED]', self: '[Circular]',
   });
   assert.equal(input.Authorization, 'private');
   assert.equal(input.self, input);
 });
 
-test('redactLogData preserves an own __proto__ field without changing the output prototype', () => {
+test('redactLogData preserves an own __proto__ field on an inert output object', () => {
   const input = JSON.parse('{"__proto__":"safe","password":"private"}') as Record<string, string>;
   const result = redactLogData(input);
-  assert.equal(Object.getPrototypeOf(result), Object.prototype);
+  assert.equal(Object.getPrototypeOf(result), null);
   assert.equal(Object.getOwnPropertyDescriptor(result, '__proto__')?.value, 'safe');
   assert.equal(result.password, '[REDACTED]');
+});
+
+test('redactLogData returns inert data even when an input serializer or callable contains a secret', () => {
+  const sentinel = 'SYNTHETIC_SENTINEL_1';
+  const input = {
+    password: sentinel,
+    toJSON() { return { password: sentinel }; },
+    nested: { callback: () => sentinel, value: 'safe' },
+  };
+  const result = redactLogData(input);
+  assert.equal(JSON.stringify(result).includes(sentinel), false);
+  assert.equal(typeof (result as { toJSON?: unknown }).toJSON, 'undefined');
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    password: '[REDACTED]', nested: { callback: '[REDACTED]', value: 'safe' },
+  });
+});
+
+test('redactLogData covers case and separator variants of key material and cookies', () => {
+  const sentinel = 'SYNTHETIC_SENTINEL_2';
+  const input = {
+    PRIVATEKEY: sentinel, privateKey: sentinel, private_key: sentinel, 'private-key': sentinel,
+    ENCRYPTIONKEY: sentinel, encryptionKey: sentinel, 'api-key': sentinel,
+    cookies: sentinel, COOKIES: sentinel, setCookie: sentinel, SETCOOKIE: sentinel,
+    keyboard: 'safe',
+  };
+  const result = redactLogData(input);
+  assert.equal(JSON.stringify(result).includes(sentinel), false);
+  assert.equal(result.keyboard, 'safe');
+});
+
+test('redactLogData traverses arrays without invoking overridden methods or index getters', () => {
+  const sentinel = 'SYNTHETIC_SENTINEL_3';
+  const input: unknown[] = [{ password: sentinel }];
+  Object.defineProperty(input, 'map', { value() { return input; }, configurable: true });
+  let getterCalls = 0;
+  Object.defineProperty(input, 1, {
+    enumerable: true, configurable: true,
+    get() { getterCalls += 1; return sentinel; },
+  });
+  const result = redactLogData(input);
+  assert.equal(getterCalls, 0);
+  assert.equal(JSON.stringify(result).includes(sentinel), false);
+  assert.deepEqual(JSON.parse(JSON.stringify(result)),
+    [{ password: '[REDACTED]' }, '[REDACTED]']);
+  assert.equal(Object.getPrototypeOf(result), null);
+  assert.equal(input.map instanceof Function, true);
+});
+
+test('redactLogData uses built-in Date access and contains exotic failures', () => {
+  const sentinel = 'SYNTHETIC_SENTINEL_4';
+  const date = new Date('2026-09-30T12:00:00.000Z');
+  Object.defineProperty(date, 'getTime', { value() { throw new Error(sentinel); } });
+  assert.equal(JSON.stringify(redactLogData({ date })),
+    '{"date":"2026-09-30T12:00:00.000Z"}');
+  const exotic = Object.create(Date.prototype) as Date;
+  assert.equal(JSON.stringify(redactLogData({ exotic })).includes(sentinel), false);
+  const target = { password: sentinel };
+  const proxy = new Proxy(target, { ownKeys() { throw new Error(sentinel); } });
+  assert.equal(JSON.stringify(redactLogData({ proxy })), '{"proxy":"[REDACTED]"}');
+});
+
+test('redactLogData masks rawHeaders and tuple header values in serialized output', () => {
+  const sentinel = 'SYNTHETIC_SENTINEL_5';
+  const input = {
+    rawHeaders: ['Authorization', `Bearer ${sentinel}`, 'Cookie', sentinel,
+      'Set-Cookie', `sid=${sentinel}`],
+    headers: [['Authorization', `Bearer ${sentinel}`], ['Cookie', sentinel],
+      ['Set-Cookie', sentinel], ['X-Trace', 'safe-trace']],
+  };
+  const result = redactLogData(input);
+  assert.equal(JSON.stringify(result).includes(sentinel), false);
+  assert.equal(input.rawHeaders[1], `Bearer ${sentinel}`);
+});
+
+test('encryptPassword preserves BOM and valid Unicode at password boundaries', () => {
+  for (const password of ['\uFEFF', '\uFEFFabc', '🔐'.repeat(64), 'x'.repeat(128)]) {
+    assert.equal(decryptPassword(encryptPassword(password, masterKey), masterKey), password);
+  }
+  assert.throws(() => encryptPassword('x'.repeat(129), masterKey),
+    { message: 'Invalid encryption parameters' });
+});
+
+test('encryptPassword rejects ill-formed UTF-16 without leaking plaintext', () => {
+  for (const password of ['\uD800', '\uDC00', 'prefix\uD800suffix', '\uD800A']) {
+    assert.throws(() => encryptPassword(password, masterKey),
+      { message: 'Invalid encryption parameters' });
+  }
 });

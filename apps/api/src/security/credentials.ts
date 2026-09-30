@@ -20,6 +20,20 @@ function validVersion(version: number): boolean {
   return Number.isInteger(version) && version >= 1 && version <= maxKeyVersion;
 }
 
+function wellFormedUtf16(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!Number.isInteger(next) || next < 0xdc00 || next > 0xdfff) return false;
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function aad(version: number): Buffer {
   return Buffer.from(`appremoto:device-credentials:password:v1:key-version:${version}`, 'utf8');
 }
@@ -36,7 +50,7 @@ function decodeCanonical(value: unknown, minBytes: number, maxBytes: number): Bu
 export function encryptPassword(password: string, key: Buffer,
   keyVersion = defaultKeyVersion): PasswordEnvelope {
   if (typeof password !== 'string' || password.length < 1 || password.length > maxPasswordLength ||
-    !validKey(key) || !validVersion(keyVersion)) {
+    !wellFormedUtf16(password) || !validKey(key) || !validVersion(keyVersion)) {
     throw new Error('Invalid encryption parameters');
   }
   const nonce = randomBytes(12);
@@ -76,7 +90,7 @@ export function decryptPassword(envelope: unknown, key: Buffer,
     decipher.setAAD(aad(value.keyVersion));
     decipher.setAuthTag(tag);
     const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-    const password = new TextDecoder('utf-8', { fatal: true }).decode(plaintext);
+    const password = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(plaintext);
     if (password.length < 1 || password.length > maxPasswordLength) throw new Error(decryptError);
     return password;
   } catch {
