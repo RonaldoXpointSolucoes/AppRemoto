@@ -48,7 +48,8 @@ func PrepareIdentityDirectory(path string) error {
 }
 
 func isKnownIdentityArtifact(name string) bool {
-	if name == "identity.json" {
+	if name == "identity.json" || name == "enrollment-pending.json" ||
+		name == "enrollment-credentials.json" || name == "rustdesk-configured.json" {
 		return true
 	}
 	if !strings.HasPrefix(name, ".identity-") || !strings.HasSuffix(name, ".tmp") {
@@ -66,6 +67,92 @@ func isKnownIdentityArtifact(name string) bool {
 		}
 	}
 	return true
+}
+
+// PublishArtifact atomically publishes one append-only agent-state artifact in
+// a prepared identity directory. Existing artifacts are never replaced.
+func PublishArtifact(directory, name string, data []byte) error {
+	if !isKnownIdentityArtifact(name) || name == "identity.json" || strings.HasPrefix(name, ".") {
+		return errors.New("invalid agent state artifact name")
+	}
+	canonicalDirectory, err := filepath.Abs(directory)
+	if err != nil {
+		return errors.New("resolve agent state directory")
+	}
+	canonicalDirectory = filepath.Clean(canonicalDirectory)
+	directoryHandle, err := openIdentityDirectory(canonicalDirectory)
+	if err != nil {
+		return fmt.Errorf("open agent state directory: %w", err)
+	}
+	defer directoryHandle.Close()
+
+	temporary, temporaryPath, err := createRestrictedIdentityTemp(canonicalDirectory)
+	if err != nil {
+		return fmt.Errorf("create temporary agent state: %w", err)
+	}
+	defer os.Remove(temporaryPath)
+	defer temporary.Close()
+	if _, err := temporary.Write(data); err != nil {
+		return errors.New("write temporary agent state")
+	}
+	if err := temporary.Sync(); err != nil {
+		return errors.New("sync temporary agent state")
+	}
+	if err := validateRestrictedIdentityHandle(temporary); err != nil {
+		return errors.New("validate temporary agent state")
+	}
+	target := filepath.Join(canonicalDirectory, name)
+	if err := validateIdentityPath(target); err != nil {
+		return errors.New("validate agent state path")
+	}
+	if err := os.Link(temporaryPath, target); err != nil {
+		return fmt.Errorf("publish agent state: %w", err)
+	}
+	published, err := openValidatedIdentity(target)
+	if err != nil {
+		return errors.New("verify published agent state")
+	}
+	defer published.Close()
+	if err := verifySameIdentityFile(temporary, published); err != nil {
+		return errors.New("verify published agent state")
+	}
+	if err := directoryHandle.Sync(); err != nil {
+		return errors.New("sync agent state directory")
+	}
+	return nil
+}
+
+// LoadArtifact reads one restricted agent-state artifact through the same ACL
+// and reparse-point checks used for identity persistence.
+func LoadArtifact(directory, name string, maximum int64) ([]byte, error) {
+	if !isKnownIdentityArtifact(name) || name == "identity.json" || strings.HasPrefix(name, ".") || maximum <= 0 {
+		return nil, errors.New("invalid agent state artifact request")
+	}
+	canonicalDirectory, err := filepath.Abs(directory)
+	if err != nil {
+		return nil, errors.New("resolve agent state directory")
+	}
+	canonicalDirectory = filepath.Clean(canonicalDirectory)
+	directoryHandle, err := openIdentityDirectory(canonicalDirectory)
+	if err != nil {
+		return nil, errors.New("open agent state directory")
+	}
+	defer directoryHandle.Close()
+	path := filepath.Join(canonicalDirectory, name)
+	file, err := openValidatedIdentity(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maximum+1))
+	if err != nil {
+		return nil, errors.New("read agent state artifact")
+	}
+	if int64(len(data)) > maximum {
+		clear(data)
+		return nil, errors.New("agent state artifact exceeds size limit")
+	}
+	return data, nil
 }
 
 // LoadOrCreateIdentity loads an existing identity or atomically creates one.
