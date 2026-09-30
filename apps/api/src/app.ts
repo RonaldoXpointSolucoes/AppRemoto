@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import { registerTechnicianAuth, type TechnicianServices } from './plugins/technician-auth.ts';
 import { registerMeRoute } from './routes/me.ts';
 import { registerOrganizationsRoute } from './routes/organizations.ts';
+import { registerDevicesRoute } from './routes/devices.ts';
 
 export function buildApp(options: FastifyServerOptions = {}, services?: TechnicianServices,
   allowedOrigins?: string[]): FastifyInstance {
@@ -20,6 +21,7 @@ export function buildApp(options: FastifyServerOptions = {}, services?: Technici
     const authenticate = registerTechnicianAuth(app, services);
     registerMeRoute(app, authenticate);
     registerOrganizationsRoute(app, authenticate);
+    if (services.devices) registerDevicesRoute(app, authenticate, services.devices, services.now);
   }
 
   return app;

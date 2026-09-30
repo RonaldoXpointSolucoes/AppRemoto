@@ -4,6 +4,7 @@ import type { ApiConfig } from '../config.ts';
 import type { TechnicianServices } from '../plugins/technician-auth.ts';
 import { createOrganizationRepository } from '../repositories/organizations.ts';
 import { createTechnicianRepository } from '../repositories/technicians.ts';
+import { createDeviceRepository } from '../repositories/devices.ts';
 
 export function createAppwriteServices(config: ApiConfig): TechnicianServices {
   const dataClient = new Client().setEndpoint(config.appwriteEndpoint)
@@ -27,5 +28,6 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
     },
     technicians: createTechnicianRepository(databases),
     organizations: createOrganizationRepository(databases),
+    devices: createDeviceRepository(databases),
   };
 }

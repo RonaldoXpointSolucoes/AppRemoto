@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import type { Organization, OrganizationRepository } from '../repositories/organizations.ts';
 import type { TechnicianRepository } from '../repositories/technicians.ts';
+import type { DeviceRepository } from '../repositories/devices.ts';
 
 export interface JwtVerifier {
   verify(jwt: string): Promise<{ userId: string } | null>;
@@ -12,6 +13,8 @@ export interface TechnicianServices {
   jwtVerifier: JwtVerifier;
   technicians: TechnicianRepository;
   organizations: OrganizationRepository;
+  devices?: DeviceRepository;
+  now?: () => Date;
 }
 
 export interface OrganizationAuthorization {
