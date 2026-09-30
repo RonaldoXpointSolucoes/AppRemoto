@@ -226,11 +226,29 @@ func TestPrepareIdentityDirectoryRejectsJunctionParentBeforeCreating(t *testing.
 	junction := filepath.Join(root, "junction")
 	createJunction(t, junction, realParent)
 
-	if err := PrepareIdentityDirectory(filepath.Join(junction, "agent-state")); err == nil {
-		t.Fatal("PrepareIdentityDirectory() error = nil, want junction rejection")
+	if err := PrepareIdentityDirectory(filepath.Join(junction, "agent-state")); err == nil ||
+		!strings.Contains(err.Error(), "identity directory is not a trusted directory") {
+		t.Fatalf("PrepareIdentityDirectory() = %v, want final-parent reparse rejection", err)
 	}
 	if _, err := os.Lstat(filepath.Join(realParent, "agent-state")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("directory was created behind junction, Lstat() error = %v", err)
+	}
+}
+
+func TestPrepareIdentityDirectoryRejectsJunctionAncestorBeforeCreating(t *testing.T) {
+	root := t.TempDir()
+	realParent := filepath.Join(root, "real", "parent")
+	if err := os.MkdirAll(realParent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	junction := filepath.Join(root, "junction")
+	createJunction(t, junction, filepath.Dir(realParent))
+	if err := PrepareIdentityDirectory(filepath.Join(junction, "parent", "agent-state")); err == nil ||
+		!strings.Contains(err.Error(), "identity parent final path does not match requested path") {
+		t.Fatalf("PrepareIdentityDirectory() = %v, want resolved-parent mismatch", err)
+	}
+	if _, err := os.Lstat(filepath.Join(realParent, "agent-state")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("directory was created behind ancestor junction: %v", err)
 	}
 }
 

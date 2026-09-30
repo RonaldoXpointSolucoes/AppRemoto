@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -78,18 +79,16 @@ func (directory *identityDirectory) Close() error {
 }
 
 type pinnedIdentityParent struct {
-	handles []windows.Handle
-	leaf    string
+	directory windows.Handle
+	leaf      string
 }
 
 func (parent *pinnedIdentityParent) handle() windows.Handle {
-	return parent.handles[len(parent.handles)-1]
+	return parent.directory
 }
 
 func (parent *pinnedIdentityParent) Close() {
-	for index := len(parent.handles) - 1; index >= 0; index-- {
-		windows.CloseHandle(parent.handles[index])
-	}
+	windows.CloseHandle(parent.directory)
 }
 
 func prepareIdentityDirectory(path string) error {
@@ -146,51 +145,27 @@ func prepareIdentityDirectory(path string) error {
 }
 
 func pinIdentityParent(path string) (*pinnedIdentityParent, error) {
-	volume := filepath.VolumeName(path)
-	if volume == "" {
-		return nil, errors.New("identity directory has no Windows volume")
-	}
 	parentPath := filepath.Dir(path)
-	components := splitPathComponents(stringsTrimLeadingSeparator(parentPath[len(volume):]))
-	rootAccess := uint32(directoryTraverseAccess)
-	if len(components) == 0 {
-		rootAccess |= windows.READ_CONTROL | fileAddSubdirectory
-	}
-	rootPath := volume + string(os.PathSeparator)
-	pointer, err := windows.UTF16PtrFromString(rootPath)
+	pointer, err := windows.UTF16PtrFromString(parentPath)
 	if err != nil {
 		return nil, err
 	}
-	rootShare := uint32(windows.FILE_SHARE_READ | windows.FILE_SHARE_WRITE | windows.FILE_SHARE_DELETE)
-	if len(components) == 0 {
-		rootShare &^= windows.FILE_SHARE_DELETE
-	}
-	root, err := windows.CreateFile(pointer, rootAccess,
-		rootShare, nil, windows.OPEN_EXISTING,
+	handle, err := windows.CreateFile(pointer, directoryTraverseAccess|windows.READ_CONTROL|fileAddSubdirectory,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING,
 		windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
 	if err != nil {
-		return nil, fmt.Errorf("pin identity volume root: %w", err)
+		return nil, fmt.Errorf("pin identity parent: %w", err)
 	}
-	pinned := &pinnedIdentityParent{handles: []windows.Handle{root}, leaf: filepath.Base(path)}
-	if err := validateIdentityDirectoryHandle(root); err != nil {
+	pinned := &pinnedIdentityParent{directory: handle, leaf: filepath.Base(path)}
+	if err := validateIdentityDirectoryHandle(handle); err != nil {
 		pinned.Close()
 		return nil, err
 	}
-	current := root
-	for index, component := range components {
-		access := uint32(directoryTraverseAccess)
-		if index == len(components)-1 {
-			access |= windows.READ_CONTROL | fileAddSubdirectory
-		}
-		next, err := openRelativeDirectory(current, component, access)
-		if err != nil {
-			pinned.Close()
-			return nil, fmt.Errorf("pin identity parent component %q: %w", component, err)
-		}
-		pinned.handles = append(pinned.handles, next)
-		current = next
+	if err := verifyIdentityParentPath(handle, parentPath); err != nil {
+		pinned.Close()
+		return nil, err
 	}
-	descriptor, err := windows.GetSecurityInfo(current, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
+	descriptor, err := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
 	if err != nil {
 		pinned.Close()
 		return nil, err
@@ -200,6 +175,34 @@ func pinIdentityParent(path string) (*pinnedIdentityParent, error) {
 		return nil, err
 	}
 	return pinned, nil
+}
+
+func verifyIdentityParentPath(handle windows.Handle, requested string) error {
+	// FILE_NAME_OPENED preserves 8.3 spelling without querying every ancestor;
+	// the final handle path still resolves junction redirection.
+	const fileNameOpened = 0x8
+	actual := make([]uint16, 32768)
+	n, err := windows.GetFinalPathNameByHandle(handle, &actual[0], uint32(len(actual)), fileNameOpened)
+	if err != nil {
+		return fmt.Errorf("read pinned identity parent path: %w", err)
+	}
+	if n == 0 || n >= uint32(len(actual)) {
+		return errors.New("pinned identity parent path exceeds supported length")
+	}
+	if !strings.EqualFold(normalizeIdentityWindowsPath(requested),
+		normalizeIdentityWindowsPath(windows.UTF16ToString(actual))) {
+		return errors.New("identity parent final path does not match requested path")
+	}
+	return nil
+}
+
+func normalizeIdentityWindowsPath(path string) string {
+	if strings.HasPrefix(path, `\\?\UNC\`) {
+		path = `\\` + path[len(`\\?\UNC\`):]
+	} else {
+		path = strings.TrimPrefix(path, `\\?\`)
+	}
+	return filepath.Clean(path)
 }
 
 func openRelativeDirectory(parent windows.Handle, name string, access uint32) (windows.Handle, error) {
