@@ -1,11 +1,13 @@
 'use client';
 
 import { AppwriteException } from 'appwrite';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { createApiClient, ApiClientError } from '../../lib/api';
 import { createAppwriteSessionClient } from '../../lib/appwrite';
 import { getPublicConfig } from '../../lib/config';
+import { expireSession, sessionEpoch } from './session-cache';
 
 export interface LoginService {
   createSession(email: string, password: string): Promise<void>;
@@ -19,7 +21,7 @@ export type SessionState =
   | { status: 'expired' }
   | { status: 'recoverable-error'; message: string };
 
-function isExpiredSession(error: unknown): boolean {
+export function isExpiredSession(error: unknown): boolean {
   return (error instanceof AppwriteException && error.code === 401)
     || (error instanceof ApiClientError && error.status === 401);
 }
@@ -51,7 +53,7 @@ export function createLoginService(): LoginService {
   };
 }
 
-export async function checkSession(service: LoginService): Promise<SessionState> {
+export async function checkSession(service: LoginService, expire?: () => Promise<boolean>): Promise<SessionState> {
   try {
     await service.verifyProfile();
     return { status: 'authenticated' };
@@ -59,20 +61,26 @@ export async function checkSession(service: LoginService): Promise<SessionState>
     if (!isTerminalSession(error)) {
       return { status: 'recoverable-error', message: 'Nao foi possivel verificar sua sessao.' };
     }
-    try { await service.removeSession(); } catch { /* The local session is already unusable. */ }
+    if (expire) {
+      if (!await expire()) return { status: 'checking' };
+    } else {
+      try { await service.removeSession(); } catch { /* The local session is already unusable. */ }
+    }
     return { status: 'expired' };
   }
 }
 
 export function useSessionBoundary(serviceOverride?: LoginService) {
+  const queryClient = useQueryClient();
   const service = useMemo(() => serviceOverride ?? createLoginService(), [serviceOverride]);
   const [state, setState] = useState<SessionState>({ status: 'checking' });
   const started = useRef(false);
 
   const verify = useCallback(async () => {
+    const epoch = sessionEpoch(queryClient);
     setState({ status: 'checking' });
-    setState(await checkSession(service));
-  }, [service]);
+    setState(await checkSession(service, () => expireSession(queryClient, epoch, () => service.removeSession())));
+  }, [queryClient, service]);
 
   useEffect(() => {
     if (started.current) return;

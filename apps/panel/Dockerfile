@@ -24,6 +24,7 @@ COPY . .
 RUN pnpm --filter @appremoto/panel build
 
 FROM node:24-alpine AS runner
+RUN apk add --no-cache curl
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
@@ -31,5 +32,6 @@ WORKDIR /app
 COPY --from=builder --chown=node:node /app/apps/panel/.next/standalone ./
 COPY --from=builder --chown=node:node /app/apps/panel/.next/static ./apps/panel/.next/static
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD curl --fail --silent --show-error http://127.0.0.1:3000/health || exit 1
 USER node
 CMD ["node", "apps/panel/server.js"]

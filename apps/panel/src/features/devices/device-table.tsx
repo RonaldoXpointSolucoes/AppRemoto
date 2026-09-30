@@ -3,6 +3,8 @@
 import type { DeviceView } from '@appremoto/contracts';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { expireSession, sessionEpoch } from '../auth/session-cache';
 
 import { DeviceFilters } from './device-filters';
 import { DeviceRecord, DeviceStatus, formatLastSeen, type DeviceStatusState } from './device-record';
@@ -28,6 +30,8 @@ function DeviceRows({ devices, statusState }: { devices: DeviceView[]; statusSta
 }
 
 export function DeviceDirectory({ service, onSessionExpired }: { service: DeviceDirectoryService; onSessionExpired(): void }) {
+  const queryClient = useQueryClient();
+  const [epoch] = useState(() => sessionEpoch(queryClient));
   const [filters, setFilters] = useState<DeviceFiltersValue>({ organizationId: '', status: '', search: '' });
   const query = useDevices(service, filters);
   const handledExpiry = useRef(false);
@@ -36,8 +40,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   useEffect(() => {
     if (!unauthorized || handledExpiry.current) return;
     handledExpiry.current = true;
-    void service.expireSession().catch(() => undefined).finally(onSessionExpired);
-  }, [onSessionExpired, service, unauthorized]);
+    void expireSession(queryClient, epoch, () => service.expireSession()).then((expired) => {
+      if (expired) onSessionExpired();
+    });
+  }, [epoch, onSessionExpired, queryClient, service, unauthorized]);
 
   const organizations = query.organizations.data ?? [];
   const hasFilter = Boolean(filters.organizationId || filters.status || filters.search);
@@ -61,8 +67,8 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
         : query.rows.length === 0 ? <section className="device-state">{emptyMessage}</section>
           : <DeviceRows devices={query.rows} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} />}
       {!query.isPageLoading && (query.hasPreviousPage || query.hasNextPage) && <nav className="pagination" aria-label="Paginacao de dispositivos">
-        {query.hasPreviousPage && <button className="command-button" type="button" aria-label="Pagina anterior" onClick={query.previousPage}><ChevronLeft aria-hidden="true" size={18} />Anterior</button>}
-        {query.hasNextPage && <button className="command-button" type="button" aria-label="Proxima pagina" onClick={query.nextPage}>Proxima<ChevronRight aria-hidden="true" size={18} /></button>}
+        {query.hasPreviousPage && <button className="command-button" type="button" aria-label="Pagina anterior" disabled={query.isRefreshing || Boolean(query.backgroundError)} onClick={query.previousPage}><ChevronLeft aria-hidden="true" size={18} />Anterior</button>}
+        {query.hasNextPage && <button className="command-button" type="button" aria-label="Proxima pagina" disabled={query.isRefreshing || Boolean(query.backgroundError)} onClick={query.nextPage}>Proxima<ChevronRight aria-hidden="true" size={18} /></button>}
       </nav>}
     </>}
   </main>;

@@ -1,8 +1,10 @@
 'use client';
 
 import { useRef, useState, type FormEvent } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
-import { isDisabledProfile, isInvalidCredentials, type LoginService } from './session';
+import { isDisabledProfile, isExpiredSession, isInvalidCredentials, type LoginService } from './session';
+import { beginSession, expireSession, sessionEpoch } from './session-cache';
 
 export type { LoginService } from './session';
 
@@ -17,6 +19,8 @@ interface FieldErrors {
 }
 
 export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
+  const queryClient = useQueryClient();
+  const epoch = useRef(sessionEpoch(queryClient));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -46,6 +50,7 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
     let sessionEstablished = step === 'profile-retry';
     try {
       if (!sessionEstablished) {
+        epoch.current = await beginSession(queryClient);
         await service.createSession(email.trim(), password);
         sessionEstablished = true;
         setStep('profile-retry');
@@ -56,10 +61,10 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
     } catch (error) {
       if (!sessionEstablished && isInvalidCredentials(error)) {
         setFormError('E-mail ou senha invalidos.');
-      } else if (isDisabledProfile(error)) {
-        try { await service.removeSession(); } catch { /* Do not expose provider cleanup details. */ }
+      } else if (isDisabledProfile(error) || (sessionEstablished && isExpiredSession(error))) {
+        await expireSession(queryClient, epoch.current, () => service.removeSession());
         setStep('credentials');
-        setFormError('Seu acesso esta desabilitado.');
+        setFormError(isDisabledProfile(error) ? 'Seu acesso esta desabilitado.' : 'Sessao expirada. Entre novamente.');
       } else if (sessionEstablished) {
         setFormError('Nao foi possivel verificar seu acesso.');
       } else {

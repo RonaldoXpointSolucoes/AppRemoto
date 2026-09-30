@@ -1,12 +1,18 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render as renderComponent, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 import { AppwriteException } from 'appwrite';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiClientError } from '../../lib/api';
 import { LoginForm, type LoginService } from './login-form';
+
+function render(ui: ReactNode) {
+  return renderComponent(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>);
+}
 
 function service(overrides: Partial<LoginService> = {}): LoginService {
   return {
@@ -18,6 +24,28 @@ function service(overrides: Partial<LoginService> = {}): LoginService {
 }
 
 describe('LoginForm', () => {
+  it.each([
+    new AppwriteException('expired', 401),
+    new ApiClientError({ code: 'UNAUTHENTICATED', message: 'expired', status: 401 }),
+  ])('returns to credentials and clears protected cache when profile retry expires: %s', async (failure) => {
+    const client = new QueryClient();
+    const auth = service({ verifyProfile: vi.fn()
+      .mockRejectedValueOnce(new Error('temporary'))
+      .mockRejectedValueOnce(failure) });
+    render(<QueryClientProvider client={client}><LoginForm service={auth} onAuthenticated={vi.fn()} /></QueryClientProvider>);
+    await userEvent.type(screen.getByLabelText('E-mail'), 'tecnico@example.com');
+    await userEvent.type(screen.getByLabelText('Senha'), 'test-password');
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar' }));
+    await screen.findByRole('button', { name: 'Tentar novamente' });
+    client.setQueryData(['devices'], { privateSessionData: true });
+    await userEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sessao expirada. Entre novamente.');
+    expect(screen.getByLabelText('E-mail')).toBeEnabled();
+    expect(screen.getByLabelText('Senha')).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Entrar' })).toBeEnabled();
+    expect(auth.removeSession).toHaveBeenCalledTimes(1);
+    expect(client.getQueryCache().getAll()).toHaveLength(0);
+  });
   it('shows accessible validation and keeps focus on the first invalid field', async () => {
     const auth = service();
     render(<LoginForm service={auth} onAuthenticated={vi.fn()} />);

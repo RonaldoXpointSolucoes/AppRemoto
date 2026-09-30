@@ -10,7 +10,7 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: 'pnpm dev --hostname 127.0.0.1 --port 3100',
+    command: 'pnpm build && node scripts/start-e2e.mjs',
     env: {
       NEXT_PUBLIC_APPWRITE_ENDPOINT: 'https://appwrite.example.test/v1',
       NEXT_PUBLIC_APPWRITE_PROJECT_ID: 'panel-test',

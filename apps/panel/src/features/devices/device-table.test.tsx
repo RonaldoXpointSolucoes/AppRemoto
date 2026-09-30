@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { DeviceView } from '@appremoto/contracts';
 import { describe, expect, it, vi } from 'vitest';
@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { OrganizationView } from '../../lib/api';
 import { ApiClientError } from '../../lib/api';
 import { DeviceDirectory, type DeviceDirectoryService } from './device-table';
+import { LoginForm } from '../auth/login-form';
 
 const organizations: OrganizationView[] = [
   { id: 'org-a', name: 'Operacao Norte', slug: 'operacao-norte' },
@@ -41,6 +42,81 @@ function renderDirectory(directoryService: DeviceDirectoryService, onSessionExpi
 }
 
 describe('DeviceDirectory', () => {
+  it('starts a fresh snapshot without the old cursor when refreshing a filtered second page', async () => {
+    const getDevices = vi.fn().mockImplementation(async (query) => ({
+      devices: [device({ displayName: query.cursor ? 'Pagina dois antiga' : 'Snapshot novo' })],
+      nextCursor: query.cursor ? null : 'snapshot-old-page-2',
+    }));
+    renderDirectory(service({ getDevices }));
+    await userEvent.selectOptions(await screen.findByLabelText('Organizacao'), 'org-b');
+    await userEvent.click(await screen.findByRole('button', { name: 'Proxima pagina' }));
+    await screen.findAllByText('Pagina dois antiga');
+    await userEvent.click(screen.getByRole('button', { name: 'Atualizar dispositivos' }));
+    await waitFor(() => expect(getDevices).toHaveBeenLastCalledWith({ organizationId: 'org-b', limit: 25 }));
+    expect(await screen.findAllByText('Snapshot novo')).not.toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Pagina anterior' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Organizacao')).toHaveValue('org-b');
+  });
+
+  it('polls fresh snapshots through five minutes, masks failures and recovers without overlapping requests', async () => {
+    const getDevices = vi.fn().mockResolvedValue({ devices: [device()], nextCursor: 'old-cursor' });
+    vi.useFakeTimers();
+    try {
+      renderDirectory(service({ getDevices }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      expect(screen.getAllByText('ONLINE')).not.toHaveLength(0);
+      for (let tick = 1; tick <= 10; tick += 1) {
+        getDevices.mockResolvedValue({ devices: [device({ status: tick >= 4 ? 'OFFLINE' : 'ONLINE' })], nextCursor: null });
+        await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+        expect(getDevices).toHaveBeenCalledTimes(tick + 1);
+        expect(getDevices).toHaveBeenLastCalledWith({ limit: 25 });
+      }
+      expect(screen.getAllByText('OFFLINE')).not.toHaveLength(0);
+      let rejectSlow!: (reason: Error) => void;
+      getDevices.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSlow = reject; }));
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+      expect(screen.queryByText('OFFLINE')).not.toBeInTheDocument();
+      await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+      expect(getDevices).toHaveBeenCalledTimes(12);
+      await act(async () => { rejectSlow(new Error('temporary')); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      expect(screen.getAllByText('Indisponivel')).not.toHaveLength(0);
+      getDevices.mockResolvedValue({ devices: [device()], nextCursor: null });
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      expect(screen.getAllByText('ONLINE')).not.toHaveLength(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it.each(['cached', 'deferred'])('does not let a %s session A 401 expire session B after login', async (kind) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const expired = new ApiClientError({ status: 401, code: 'UNAUTHENTICATED', message: 'expired A' });
+    let rejectOld!: (error: Error) => void;
+    const oldService = service({ getOrganizations: vi.fn(() => new Promise<OrganizationView[]>((_resolve, reject) => { rejectOld = reject; })) });
+    const removed = vi.fn();
+    const old = render(<QueryClientProvider client={client}><DeviceDirectory service={oldService} onSessionExpired={removed} /></QueryClientProvider>);
+    if (kind === 'cached') {
+      await act(async () => rejectOld(expired));
+      await waitFor(() => expect(removed).toHaveBeenCalledOnce());
+    }
+    old.unmount();
+    const auth = { createSession: vi.fn().mockResolvedValue(undefined), verifyProfile: vi.fn().mockResolvedValue(undefined), removeSession: vi.fn() };
+    const signedIn = vi.fn();
+    const login = render(<QueryClientProvider client={client}><LoginForm service={auth} onAuthenticated={signedIn} /></QueryClientProvider>);
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'b@example.com' } });
+    fireEvent.change(screen.getByLabelText('Senha'), { target: { value: 'password-b' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar' }));
+    await waitFor(() => expect(signedIn).toHaveBeenCalledOnce());
+    login.unmount();
+    const newService = service({ getDevices: vi.fn().mockResolvedValue({ devices: [device({ displayName: 'Sessao B' })], nextCursor: null }) });
+    render(<QueryClientProvider client={client}><DeviceDirectory service={newService} onSessionExpired={vi.fn()} /></QueryClientProvider>);
+    if (kind === 'deferred') await act(async () => rejectOld(expired));
+    expect(await screen.findAllByText('Sessao B')).not.toHaveLength(0);
+    expect(newService.expireSession).not.toHaveBeenCalled();
+    expect(oldService.expireSession).toHaveBeenCalledTimes(kind === 'cached' ? 1 : 0);
+  });
   it('renders only the safe device projection in the desktop hierarchy', async () => {
     renderDirectory(service());
     const table = await screen.findByRole('table', { name: 'Dispositivos remotos' });
