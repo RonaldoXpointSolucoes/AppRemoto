@@ -29,9 +29,13 @@ function validSeenAt(value: string | null): number {
   return Date.parse(value);
 }
 
-function viewOf(record: DeviceRecord, organizationName: string, snapshotTime: string): DeviceView {
+function viewOf(record: DeviceRecord, organizationName: string, snapshotTime: string,
+  currentRequestTime: Date): DeviceView {
   const seen = validSeenAt(record.lastSeenAt);
-  const age = Date.parse(snapshotTime) - seen;
+  const snapshotAt = Date.parse(snapshotTime);
+  const snapshotAge = snapshotAt - seen;
+  const online = record.enabled && Number.isFinite(seen) && seen <= currentRequestTime.getTime() &&
+    (seen > snapshotAt || (snapshotAge >= 0 && snapshotAge <= 90_000));
   return DeviceViewSchema.parse({
     id: record.id, organizationId: record.organizationId, organizationName,
     deviceUuid: record.deviceUuid, displayName: record.displayName, hostname: record.hostname,
@@ -40,7 +44,7 @@ function viewOf(record: DeviceRecord, organizationName: string, snapshotTime: st
     rustdeskVersion: record.rustdeskVersion,
     lastSeenAt: Number.isFinite(seen) ? new Date(seen).toISOString() : null,
     enabled: record.enabled,
-    status: record.enabled && age >= 0 && age <= 90_000 ? 'ONLINE' : 'OFFLINE',
+    status: online ? 'ONLINE' : 'OFFLINE',
   });
 }
 
@@ -125,7 +129,7 @@ export async function listDevices(technician: AuthenticatedTechnician, query: De
           (state.k !== null && record.id <= state.k)) throw new Error('Invalid device scan record');
       state.k = record.id;
       scanned++;
-      const view = viewOf(record, visible.get(record.organizationId)!.name, state.t);
+      const view = viewOf(record, visible.get(record.organizationId)!.name, state.t, now);
       if ((!query.status || view.status === query.status) &&
           (!search || [view.displayName, view.hostname, view.rustdeskId]
             .some((value) => value.toLocaleLowerCase().includes(search)))) devices.push(view);

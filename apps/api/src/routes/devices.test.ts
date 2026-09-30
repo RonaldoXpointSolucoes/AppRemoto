@@ -198,6 +198,53 @@ test('online status uses page-one snapshot even when wall clock ages between pag
   assert.deepEqual(second.json().devices.map((row: { id: string }) => row.id), ['b']);
 });
 
+test('legitimate heartbeat after page one keeps the next device online', async () => {
+  const records = [device('a', 'a', { lastSeenAt: '2026-09-30T11:59:30.000Z' }),
+    device('b', 'a', { lastSeenAt: '2026-09-30T11:59:30.000Z' })];
+  const dependencies = services(records, []);
+  let clock = now;
+  dependencies.now = () => clock;
+  const first = await get('/v1/devices?limit=1&status=ONLINE', dependencies);
+  assert.equal(first.statusCode, 200);
+  assert.deepEqual(first.json().devices.map((row: { id: string }) => row.id), ['a']);
+  records[1]!.lastSeenAt = '2026-09-30T12:00:05.000Z';
+  clock = new Date('2026-09-30T12:00:10.000Z');
+  const second = await get(`/v1/devices?limit=1&status=ONLINE&cursor=${encodeURIComponent(first.json().nextCursor)}`, dependencies);
+  assert.equal(second.statusCode, 200);
+  assert.deepEqual(second.json().devices.map((row: { id: string; status: string }) => [row.id, row.status]),
+    [['b', 'ONLINE']]);
+  assert.equal(second.json().nextCursor, null);
+});
+
+test('heartbeat later than the current request remains offline on a continuation', async () => {
+  const records = [device('a', 'a'), device('b', 'a', { lastSeenAt: '2026-09-30T12:00:20.000Z' })];
+  const dependencies = services(records, []);
+  let clock = now;
+  dependencies.now = () => clock;
+  const first = await get('/v1/devices?limit=1', dependencies);
+  clock = new Date('2026-09-30T12:00:10.000Z');
+  const second = await get(`/v1/devices?limit=1&cursor=${encodeURIComponent(first.json().nextCursor)}`, dependencies);
+  assert.equal(second.statusCode, 200);
+  assert.deepEqual(second.json().devices.map((row: { id: string; status: string }) => [row.id, row.status]),
+    [['b', 'OFFLINE']]);
+});
+
+test('offline-to-online heartbeat between pages advances the raw key without duplicates', async () => {
+  const records = [device('a', 'a', { lastSeenAt: null }),
+    device('b', 'a', { lastSeenAt: null }), device('c', 'a', { lastSeenAt: null })];
+  const dependencies = services(records, []);
+  let clock = now;
+  dependencies.now = () => clock;
+  const first = await get('/v1/devices?limit=1&status=OFFLINE', dependencies);
+  assert.deepEqual(first.json().devices.map((row: { id: string }) => row.id), ['a']);
+  records[1]!.lastSeenAt = '2026-09-30T12:00:05.000Z';
+  clock = new Date('2026-09-30T12:00:10.000Z');
+  const second = await get(`/v1/devices?limit=1&status=OFFLINE&cursor=${encodeURIComponent(first.json().nextCursor)}`, dependencies);
+  assert.equal(second.statusCode, 200);
+  assert.deepEqual(second.json().devices.map((row: { id: string }) => row.id), ['c']);
+  assert.equal(second.json().nextCursor, null);
+});
+
 test('HMAC cursor rejects tampering, version change, and another signing key', async () => {
   const records = [device('a', 'a'), device('b', 'a')];
   const dependencies = services(records, []);
