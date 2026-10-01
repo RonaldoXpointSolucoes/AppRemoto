@@ -123,11 +123,34 @@ button, a, input, select { outline-offset: 3px; }
 }
 
 .session-state p { margin: 0; }
+.session-state .primary-button { min-height: 48px; }
 
 .devices-shell { width: min(100%, 1440px); min-height: 100vh; margin: 0 auto; padding: 24px; }
 .devices-header { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .devices-header .product-name { margin-bottom: 4px; }
 .devices-header h1 { margin: 0; font-size: 1.5rem; line-height: 1.2; }
+.devices-header { flex-wrap: wrap; }
+.devices-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.guide-link { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; height: auto; padding: 10px 14px; text-decoration: none; text-align: center; }
+.devices-header-actions .icon-button { width: 48px; height: 48px; }
+.setup-shell { width: min(100%, 960px); margin: 0 auto; padding: 24px; }
+.setup-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.setup-header .product-name { margin: 0; }
+.setup-article { min-width: 0; padding: clamp(18px, 4vw, 40px); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.guide-markdown { min-width: 0; font-size: 1rem; line-height: 1.7; overflow-wrap: anywhere; }
+.guide-markdown h1 { margin: 0 0 20px; font-size: clamp(1.65rem, 4vw, 2.1rem); line-height: 1.25; }
+.guide-markdown h2 { margin: 36px 0 12px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 1.25rem; line-height: 1.35; }
+.guide-markdown p { margin: 12px 0; }
+.guide-markdown ul, .guide-markdown ol { padding-left: 24px; }
+.guide-markdown li + li { margin-top: 10px; }
+.guide-markdown a { display: inline-flex; align-items: center; min-height: 48px; max-width: 100%; padding: 8px 0; color: var(--primary); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.guide-markdown pre { max-width: 100%; margin: 20px 0; padding: 16px; background: #edf2f4; border: 1px solid var(--border); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.875rem; line-height: 1.65; }
+.guide-markdown pre code { white-space: inherit; }
+.setup-footer { display: flex; justify-content: flex-end; margin-top: 20px; }
+@media (max-width: 480px) {
+  .setup-shell { padding: 16px; }
+  .setup-header .guide-link, .setup-footer .guide-link { width: 100%; }
+}
 .device-filters { display: grid; grid-template-columns: minmax(150px, 220px) minmax(130px, 170px) minmax(220px, 1fr) auto 44px; gap: 10px; align-items: end; margin-bottom: 14px; }
 .filter-control { display: grid; min-width: 0; gap: 5px; color: var(--text-muted); font-size: 0.8125rem; font-weight: 600; }
 .filter-control input, .filter-control select { width: 100%; min-width: 0; height: 44px; padding: 7px 10px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }

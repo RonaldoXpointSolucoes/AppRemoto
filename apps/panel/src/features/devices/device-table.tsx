@@ -1,7 +1,8 @@
 'use client';
 
 import type { DeviceView } from '@appremoto/contracts';
-import { ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CircleHelp, LogOut } from 'lucide-react';
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { expireSession, logoutSession, sessionEpoch } from '../auth/session-cache';
@@ -81,9 +82,12 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   return <main className="devices-shell">
     <header className="devices-header">
       <div><p className="product-name">AppRemoto</p><h1>Dispositivos</h1></div>
-      <button className="icon-button" type="button" title="Sair da conta" aria-label="Sair da conta" aria-busy={logoutPending} disabled={logoutPending} onClick={() => void handleLogout()}>
-        <LogOut aria-hidden="true" size={19} />
-      </button>
+      <div className="devices-header-actions">
+        <Link className="command-button guide-link" href="/setup"><CircleHelp aria-hidden="true" size={19} />Como Configurar?</Link>
+        <button className="icon-button" type="button" title="Sair da conta" aria-label="Sair da conta" aria-busy={logoutPending} disabled={logoutPending} onClick={() => void handleLogout()}>
+          <LogOut aria-hidden="true" size={19} />
+        </button>
+      </div>
     </header>
     {logoutError && <p className="logout-error" role="alert">Nao foi possivel sair. Tente novamente.</p>}
     {query.isOrganizationLoading && <section className="device-state" role="status">Carregando dispositivos...</section>}

@@ -25,7 +25,13 @@ https://qyrjepou8xchzlfirsbrhwr9.179.199.142.157.sslip.io
 
 ## Enroll
 
-Open PowerShell as the intended Windows user. The token is read from standard input and is not accepted as a command-line argument:
+Open PowerShell with **Run as administrator** as the intended Windows user.
+RustDesk must be installed: its unattended password command requires elevated
+privileges, and the agent inherits the shell's token without requesting UAC.
+If UAC asks for another account's credentials, agree on the owning account
+before enrollment. The same account/profile and state directory must be used
+for subsequent heartbeats because DPAPI is scoped to that user.
+The token is read from standard input and is not accepted as a command-line argument:
 
 ```powershell
 $Agent = 'C:\path\to\remote-agent.exe'

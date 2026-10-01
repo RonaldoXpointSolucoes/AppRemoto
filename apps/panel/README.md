@@ -15,3 +15,18 @@ The device header includes an accessible logout command. It awaits deletion of t
 `GET /health` returns `{ "status": "ok" }` without authentication. The container includes curl and checks this route on port 3000 while running the standalone server as the non-root `node` user.
 
 `pnpm --filter @appremoto/panel test:e2e` builds with synthetic public configuration and starts the generated standalone server, including its static assets. Chromium covers desktop/mobile layouts, session transitions, snapshot refresh, and five minutes of polling with a controlled clock. API/Appwrite responses are intercepted; these tests do not replace production enrollment or RustDesk acceptance.
+
+## Guia manual de setup
+
+O botao `Como Configurar?` em `/devices` abre `/setup`, protegido pelo mesmo
+`SessionBoundary` do painel. O conteudo Markdown fica em
+`src/features/setup/setup-guide.ts` e utiliza `NEXT_PUBLIC_API_BASE_URL` para
+os comandos PowerShell. A renderizacao usa `react-markdown` sem HTML bruto.
+
+O guia documenta o agente manual existente; nao emite enrollment tokens,
+instala RustDesk, registra servico Windows nem inicia conexoes. O binario e
+o token continuam sendo fornecidos pela equipe pelo fluxo autorizado.
+
+Validacao focada: `pnpm --filter @appremoto/panel test:e2e setup.spec.ts devices.spec.ts`.
+Os testes de navegador usam respostas sinteticas de Appwrite/API. Eles nao
+substituem a homologacao com RustDesk, token valido e dispositivo Windows real.

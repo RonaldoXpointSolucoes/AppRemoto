@@ -111,6 +111,7 @@ O Appwrite Console e o Coolify sao consoles administrativos, nao telas alternati
 - Bootstrap de administrador tecnico com artefato DPAPI local.
 - API Fastify com autenticacao de tecnico, listagem de organizacoes/dispositivos, enrollment e heartbeat.
 - Painel Next.js com login, listagem responsiva, filtros, busca, paginacao, polling e logout com revogacao de sessao.
+- Guia manual autenticado em `/setup`, acessivel por `Como Configurar?`, com preparo do RustDesk, enrollment e heartbeat. A URL dos comandos vem da configuracao publica do painel; isso nao confirma deploy nem homologacao Windows.
 - Agente Windows manual com identidade estavel, DPAPI, discovery do RustDesk, configuracao de senha unattended, enrollment e heartbeat resiliente.
 - Protecoes de recuperacao para escritas de enrollment/heartbeat incertas.
 - MCP local `appwrite-xpoint` com perfis separados e credenciais DPAPI.
@@ -126,7 +127,7 @@ O Appwrite Console e o Coolify sao consoles administrativos, nao telas alternati
 
 ### Ainda nao implementado ou nao homologado
 
-- Rota/pagina `Setup` no painel.
+- Wizard operacional de `Setup` (o guia manual ja existe; geracao de token e instalacao automatica continuam pendentes).
 - Endpoint de operador para criar enrollment token.
 - Instalador ou servico Windows automatico para o agente.
 - Configuracao automatica completa do servidor RustDesk no cliente.
