@@ -82,6 +82,6 @@ On 2026-09-30, deployment `nf1uxzd8reb5oorpeisk2kb1` was healthy on commit `f877
 
 The public HTTPS health check returned HTTP 200 with exact body `{"status":"ok"}`, and inspected logs were clean. The production smoke test passed organization setup, token creation, enrollment, heartbeat, persistence verification, `use_count=1`, and a retry returning HTTP 403 without credentials. Test-data identifiers and all secret values were intentionally omitted.
 
-Later on 2026-09-30, `ALLOWED_ORIGINS` was set to the exact production panel HTTPS origin using the mandatory stop/zero-instance/start procedure. Browser acceptance then returned HTTP 200 for the authorized profile, organizations, and devices requests. Auto-deploy remained disabled and no wildcard origin was introduced.
+Later on 2026-09-30, `ALLOWED_ORIGINS` was set to the exact production panel HTTPS origin using the mandatory stop/zero-instance/start procedure. The private production verifier then completed Appwrite `GET /account`, Appwrite `POST /account/jwts`, authenticated API `GET /v1/devices` with HTTP 200, and Appwrite `DELETE /account/sessions/current`; its redacted evidence recorded `session_deleted=true`. No successful interactive browser login is claimed. Auto-deploy remained disabled and no wildcard origin was introduced.
 
 This record is dated evidence, not permission to skip the mandatory change procedure on a later deployment.

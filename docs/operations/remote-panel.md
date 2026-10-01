@@ -54,24 +54,10 @@ Do not replace it with `*`, add HTTP variants, or add unrelated origins. Any API
 6. Deploy the reviewed commit and wait for Coolify to report a finished, healthy application. Verify that the resolved deployment commit is the intended commit.
 7. Request `GET /health` over public HTTPS and require HTTP 200 with exact body `{"status":"ok"}`. Also confirm the container health probe reports healthy.
 8. Inspect build, startup, and request logs for errors, crash loops, secret material, authorization headers, cookies, passwords, tokens, or keys. Treat any exposure as an incident and rotate the affected credential.
-9. Run the browser acceptance sequence below. Keep credentials and session material out of screenshots, console output, reports, and documentation.
+9. Run the private production verifier below. It is the only authorized authentication acceptance path while the panel has no logout control.
 10. Confirm auto-deploy remains off after validation.
 
-## Browser acceptance
-
-Use the dedicated authorized technician account through the public HTTPS endpoint. Never place its password in a command line, URL, report, or source-controlled fixture.
-
-1. Open `/login` and authenticate through the Appwrite Web SDK.
-2. Confirm profile verification succeeds through `GET /v1/me` and the panel reaches `/devices`.
-3. Confirm the organizations and devices requests return HTTP 200 through the production API.
-4. Verify the desktop table and mobile records expose only the safe device projection. They must not render tokens, passwords, API keys, ciphertext, cookies, internal IP data, or sensitive audit metadata.
-5. Exercise organization, status, and search filters together, then refresh and confirm the filters remain selected.
-6. Verify session expiry removes the local Appwrite session once and returns to `/login` without a redirect or refresh loop.
-7. End the acceptance session through one of the verified procedures below. Do not preserve browser storage as evidence.
-
-Record only timestamps, pass/fail results, HTTP status codes, non-secret counts, commit/deployment identifiers, and redacted screenshots.
-
-### Preferred private verification
+## Production authentication acceptance
 
 The authorized production verifier is `.local/remote-platform/verify-production-panel-auth.ps1`. It loads the existing DPAPI-protected local bootstrap credential without printing it, creates the Appwrite session, verifies the Appwrite account, creates a JWT, calls the production devices API, and deletes `account/sessions/current` in the same process. The script writes only redacted status evidence to `.local/remote-platform/production-panel-auth.json`; both files remain outside Git.
 
@@ -92,23 +78,22 @@ $evidence | Select-Object status, account_verified, jwt_created, devices_status,
 
 Success requires `status=PASS`, `account_verified=true`, `jwt_created=true`, `devices_status=200`, `session_deleted=true`, and a successful script exit. A missing/false deletion flag or an interrupted cleanup is a failed acceptance run: do not claim cleanup, do not copy cookies or credentials for diagnosis, and revoke the session through the Appwrite Console before retrying.
 
-### Future interactive UI verification
+The verifier's exact sequence is Appwrite `GET /account`, Appwrite `POST /account/jwts`, authenticated API `GET /v1/devices`, and Appwrite `DELETE /account/sessions/current` in one process. It does not prove an interactive browser login and must not be described as one. Record only the redacted evidence fields above, timestamps, commit/deployment identifiers, and non-secret counts.
 
-The current production panel does not expose a logout command. When a reviewed logout control is added, its safe acceptance procedure is:
+## Interactive UI acceptance gate
 
-1. Activate the logout control and require it to await Appwrite `account.deleteSession('current')` successfully before clearing any browser state or navigating away. Local-only cleanup is not evidence of server-side revocation.
-2. Confirm the UI returns to `/login`. Reopening `/devices` must redirect to `/login`, and authenticated profile/organization/device requests must no longer return HTTP 200.
-3. In browser site-data settings, clear cookies, storage, service workers, and cache for the exact panel origin. Clear residual site data for `appwrite.xpointsolucoes.com.br` through the browser's site-data settings as well; do not inspect, copy, or screenshot cookie values.
-4. Close every acceptance tab, reopen `/devices` in a new tab, and require another redirect to `/login`. Record only the redirect/result and non-secret HTTP statuses.
+Interactive production login is blocked as an acceptance path until a reviewed logout control is implemented and verified to await Appwrite `account.deleteSession('current')` before clearing browser state or navigating away. Do not attempt or prescribe a production browser login before that gate is satisfied.
 
-If the logout control reports failure, keep the tab open, revoke the current session through the authorized Appwrite Console, then perform steps 2-4. Never treat closing a tab, clearing cache, or deleting local storage alone as session revocation.
+After logout exists, a separate reviewed acceptance procedure must require server-side deletion, clear cookies/storage/service workers/cache for the exact panel origin and residual Appwrite site data, close all acceptance tabs, and prove that reopening `/devices` starts unauthenticated. Clearing local site data or closing a tab alone must never count as session revocation.
+
+The earlier attempt with the commercial email did not authenticate successfully and its tab was closed. It created no accepted technical browser session (session A), so no browser-session cleanup is claimed or required for that attempt. The successful evidence is only the verifier's self-contained session (session B), which recorded `session_deleted=true`.
 
 ## Rollback
 
 1. Select the last known-good reviewed commit without changing public configuration.
 2. Deploy that commit explicitly and verify the resolved deployment commit.
 3. Require healthy container state and the exact public HTTPS health response.
-4. Repeat the complete browser acceptance sequence, including session cleanup.
+4. Repeat the private production verifier and require `session_deleted=true`.
 5. If rollback does not restore authentication or device reads, keep the current evidence, inspect Appwrite hostname and API CORS alignment, and escalate for reviewed recovery. Do not broaden origin rules, delete production data, or copy server credentials into the panel.
 
 A panel source rollback does not roll back Appwrite sessions, documents, API state, or agent state.
@@ -117,6 +102,6 @@ A panel source rollback does not roll back Appwrite sessions, documents, API sta
 
 On 2026-09-30, deployment `wtmjwdxjyo3pp2g2ouk1cfbi` finished healthy from commit `58ab8e0d22d19ecad25254865c9c2b3fc4c5c60b`. Coolify built the panel from `/apps/panel/Dockerfile`, exposed port `3000`, and served the public HTTPS endpoint with the `/health` probe passing.
 
-The Appwrite Web platform hostname was registered and the API CORS allowlist was set to the exact HTTPS panel origin. Production acceptance used the private verifier to create and remove the Appwrite session in one process, verified JWT-backed API access plus profile/organizations/devices responses with HTTP 200, and recorded `session_deleted=true` in the private redacted evidence. No credentials or session material were retained in this record.
+The Appwrite Web platform hostname was registered and the API CORS allowlist was set to the exact HTTPS panel origin. Production acceptance used the private verifier to execute Appwrite `GET /account`, Appwrite `POST /account/jwts`, authenticated API `GET /v1/devices` with HTTP 200, and Appwrite `DELETE /account/sessions/current` in one process. Private redacted evidence recorded `session_deleted=true`; no credentials or session material were retained in this record. No successful interactive browser login is claimed.
 
 This record is dated evidence, not permission to skip fresh verification on a later deployment.
