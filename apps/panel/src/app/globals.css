@@ -197,7 +197,7 @@ button, a, input, select { outline-offset: 3px; }
 .field-hint { margin: 0; }
 .technician-note { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border); }
 .technician-note p { margin: 6px 0 0; }
-.technician-note a { display: inline-flex; min-height: 48px; align-items: center; color: var(--primary); }
+.automatic-setup p a { display: inline-flex; min-height: 48px; align-items: center; color: var(--primary); }
 .installation-progress { margin-top: 28px; }
 .installation-progress h2 { font-size: 1.25rem; }
 .installation-progress > .command-button, .installation-progress > .guide-link { margin: 10px 12px 0 0; min-height: 48px; }

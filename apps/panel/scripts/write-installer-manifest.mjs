@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 
-const version = '1.0.0';
+const version = '1.0.1';
 const directory = new URL('../public/installers/', import.meta.url);
 const filename = `xpoint-setup-${version}.exe`;
 const bytes = readFileSync(new URL(filename, directory));

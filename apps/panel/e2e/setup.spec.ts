@@ -21,7 +21,7 @@ test('technician can open the setup guide and return to devices at desktop, tabl
     expect((await help.boundingBox())?.height).toBeGreaterThanOrEqual(48);
     await help.click();
     await expect(page).toHaveURL(/\/setup$/);
-    await expect(page.getByRole('heading', { name: 'Instale. O computador aparece aqui.' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Configure. O computador aparece aqui.' })).toBeVisible();
     await page.getByText('Guia manual e solução de problemas', { exact: true }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Guia de Setup do XPoint Remote e RustDesk' })).toBeVisible();
     await expect(page.locator('article pre')).toHaveCount(3);

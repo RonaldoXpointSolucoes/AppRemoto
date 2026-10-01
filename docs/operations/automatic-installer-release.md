@@ -6,7 +6,7 @@ Scope: existing Remote Platform production API and panel, no schema expansion, n
 
 - Panel: choose permitted customer/name, verify SHA256 of the base EXE, create a single-use 30-minute token, append the bounded overlay and download with a fixed nonsecret filename.
 - Monitor the exact enrollment receipt and first heartbeat. Mask stale online indications on failed checks, recover monitoring after provisioning expiry for committed devices, clear state on terminal session errors.
-- Windows: normal UAC, pinned official RustDesk installation, unattended configuration, SYSTEM enrollment/DPAPI, automatic service/recovery, fresh heartbeat before success. Preserve identities on uncertain retries.
+- Windows 1.0.1: normal UAC, preinstalled trusted RustDesk/service validation, unattended configuration, SYSTEM enrollment/DPAPI, automatic service/recovery, fresh heartbeat before success. Six visible stages and adjacent sanitized log. Preserve identities on uncertain retries.
 - API: authenticated token creation and status routes, existing schema, current organization permissions, no-store responses and generic errors.
 
 ## Remaining release gates
@@ -19,6 +19,8 @@ Scope: existing Remote Platform production API and panel, no schema expansion, n
 
 ## Distribution notes
 
-The executable has no Authenticode certificate. Windows can display an unknown-publisher/SmartScreen prompt. The pinned RustDesk executable is fetched during installation, so internet access is required. Each customer computer needs a fresh personalized package. A browser download or API heartbeat by itself is not proof that remote control works.
+The executable has no Authenticode certificate. Windows can display an unknown-publisher/SmartScreen prompt. RustDesk must already be installed as an automatic LocalSystem service; the configurator does not fetch or install it. Internet is required for enrollment and presence. Each customer computer needs a fresh personalized package. Replacing an expired, unused attempt requires the same organization/name; confirmed credentials preserve the original identity. Uncertain enrollment is never replayed. A browser download or API heartbeat by itself is not proof that remote control works.
+
+For the 1.0.1 correction, deploy the panel only: its Docker build produces the Windows executable and manifest. No API/schema/RustDesk server changes are required. Verify version, byte length and SHA256 from the public manifest after deployment. On the client, obtain the `.log` beside the executed EXE (same basename), including all run boundaries/PIDs. `BUSY` specifically means another setup holds the global handle; `LOCK_ACCESS` contains the numeric access failure. Do not infer the exact cause of the earlier 1.0.0 screenshot without its diagnostics.
 
 The supported RustDesk password command briefly exposes the unique password in a protected SYSTEM child process argument. Only privileged local administrators can inspect that process; no enrollment/device token enters arguments, and command/output material is not logged. See [native setup details](../../services/agent/SETUP.md).

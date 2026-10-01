@@ -21,9 +21,30 @@ func main() {
 		setup.Message("Argumentos invalidos.")
 		os.Exit(2)
 	}
+	if uninstall && !setup.Elevated() {
+		if setup.Elevate(true) != nil {
+			setup.Message("A remocao requer aprovacao de administrador. Codigo: UAC")
+			os.Exit(1)
+		}
+		return
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		setup.Message("Nao foi possivel localizar o executavel. Codigo: LOG_PATH")
+		os.Exit(1)
+	}
+	report, err := setup.OpenReport(exe)
+	if err != nil {
+		setup.Message("Nao foi possivel criar o arquivo .log ao lado deste executavel. Copie o instalador para uma pasta local gravavel, como Downloads, e execute novamente. Codigo: LOG_OPEN")
+		os.Exit(1)
+	}
+	defer report.Close()
 	if !setup.Elevated() {
-		if setup.Elevate(uninstall) != nil {
-			setup.Message("A instalacao requer aprovacao de administrador. Codigo: UAC")
+		report.Record(1, "UAC", "START", nil)
+		if err := setup.Elevate(uninstall); err != nil {
+			report.Record(1, "UAC", "ERROR", err)
+			report.Close()
+			setup.Message("A configuracao requer aprovacao de administrador. Codigo: UAC. Log: " + report.Path())
 			os.Exit(1)
 		}
 		return
@@ -38,16 +59,28 @@ func main() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
-	stopProgress, err := setup.ShowProgress()
+	report.Record(1, "ADMINISTRATOR", "OK", nil)
+	stopProgress, err := setup.ShowProgress(report)
 	if err != nil {
-		setup.Message("Nao foi possivel abrir o instalador. Codigo: UI")
+		report.Record(1, "PROGRESS_WINDOW", "ERROR", err)
+		report.Close()
+		setup.Message("Nao foi possivel abrir o instalador. Codigo: UI. Log: " + report.Path())
 		os.Exit(1)
 	}
-	code := setup.Install(ctx)
+	code := setup.Install(ctx, report)
 	stopProgress()
 	if code != "" {
-		setup.Message("Instalacao nao confirmada. Codigo: " + code + ". O estado de recuperacao foi preservado. Informe este codigo ao tecnico.")
+		report.Record(0, code, "ERROR", nil)
+		report.Close()
+		setup.Message(setup.FailureMessage(code) + "\n\nCodigo: " + code + "\nLog: " + report.Path())
 		os.Exit(1)
 	}
-	setup.Message("Instalacao concluida. O computador enviou presenca a API e esta disponivel no painel XPoint.")
+	report.Record(0, "SETUP_COMPLETE", "OK", nil)
+	if report.Err() != nil {
+		report.Close()
+		setup.Message("A comunicacao foi confirmada, mas houve falha ao gravar o log. Codigo: LOG_WRITE. Log: " + report.Path())
+		os.Exit(1)
+	}
+	report.Close()
+	setup.Message("Configuracao concluida. O computador esta disponivel na lista Dispositivos do painel XPoint.\n\nLog: " + report.Path())
 }
