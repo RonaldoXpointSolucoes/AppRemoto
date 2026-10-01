@@ -136,7 +136,29 @@ button, a, input, select { outline-offset: 3px; }
 .setup-shell { width: min(100%, 960px); margin: 0 auto; padding: 24px; }
 .setup-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
 .setup-header .product-name { margin: 0; }
-.setup-article { min-width: 0; padding: clamp(18px, 4vw, 40px); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.setup-introduction h1 { margin: 0; font-size: clamp(1.65rem, 4vw, 2.1rem); line-height: 1.25; }
+.setup-introduction p { color: var(--text-muted); font-size: 1rem; }
+.setup-progress { margin: 24px 0; padding: 20px; background: #e8f3ef; border: 1px solid #a9cfc4; border-radius: 8px; }
+.setup-progress-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.setup-progress-heading strong { font-size: 1.125rem; }
+.setup-progress-heading p { margin: 4px 0 0; color: var(--text-muted); }
+.setup-progress progress { display: block; width: 100%; height: 12px; margin: 18px 0 12px; accent-color: var(--primary); }
+.setup-progress-note { margin: 0; color: var(--text-muted); font-size: 0.875rem; }
+.setup-checklist { display: grid; gap: 20px; }
+.setup-step { min-width: 0; padding: clamp(16px, 3vw, 28px); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.setup-step-complete { border-color: #7bbba8; }
+.setup-step-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.setup-step-heading h2 { min-width: 0; flex: 1; margin: 0; font-size: 1.2rem; line-height: 1.35; overflow-wrap: anywhere; }
+.setup-step-number { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 36px; height: 36px; border-radius: 50%; background: var(--surface-muted); color: var(--primary); font-weight: 800; }
+.setup-step-complete .setup-step-number { background: var(--primary); color: white; }
+.setup-step-count { flex: 0 0 auto; color: var(--text-muted); font-size: 0.875rem; }
+.setup-tasks { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.setup-tasks li { position: relative; min-width: 0; border: 1px solid var(--surface-muted); border-radius: 6px; }
+.setup-tasks input { position: absolute; top: 15px; left: 12px; margin: 0; width: 20px; height: 20px; accent-color: var(--primary); cursor: pointer; }
+.setup-tasks label { display: block; min-height: 52px; padding: 12px 12px 12px 44px; cursor: pointer; }
+.setup-tasks li:has(input:checked) { background: #f0f8f4; border-color: #b7d9cb; }
+.setup-tasks li:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.setup-step-details { margin-top: 20px; padding-top: 4px; border-top: 1px solid var(--surface-muted); }
 .guide-markdown { min-width: 0; font-size: 1rem; line-height: 1.7; overflow-wrap: anywhere; }
 .guide-markdown h1 { margin: 0 0 20px; font-size: clamp(1.65rem, 4vw, 2.1rem); line-height: 1.25; }
 .guide-markdown h2 { margin: 36px 0 12px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 1.25rem; line-height: 1.35; }

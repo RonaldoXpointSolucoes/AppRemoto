@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test('an unauthenticated devices visit redirects to login without looping', async ({ page }) => {
   let jwtRequests = 0;
+  await page.route('**/account/sessions/current', (route) => route.fulfill({ status: 204 }));
   await page.route('**/account/jwts', async (route) => {
     jwtRequests += 1;
     await route.fulfill({

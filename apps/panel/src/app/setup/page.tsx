@@ -3,13 +3,12 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 
-import { MarkdownRenderer } from '../../components/markdown-renderer';
 import { SessionBoundary } from '../../features/auth/session-boundary';
-import { setupGuideMarkdown } from '../../features/setup/setup-guide';
+import { SetupChecklist } from '../../features/setup/setup-checklist';
 import { getPublicConfig } from '../../lib/config';
 
 export default function SetupPage() {
-  const content = setupGuideMarkdown(getPublicConfig().apiBaseUrl);
+  const { apiBaseUrl } = getPublicConfig();
   return (
     <SessionBoundary>
       <main className="setup-shell">
@@ -19,7 +18,7 @@ export default function SetupPage() {
             <ArrowLeft aria-hidden="true" size={18} />Voltar para dispositivos
           </Link>
         </header>
-        <article className="setup-article"><MarkdownRenderer content={content} /></article>
+        <SetupChecklist apiBaseUrl={apiBaseUrl} />
         <footer className="setup-footer">
           <Link className="primary-button guide-link" href="/devices">Voltar para dispositivos</Link>
         </footer>

@@ -23,6 +23,12 @@ O botao `Como Configurar?` em `/devices` abre `/setup`, protegido pelo mesmo
 `src/features/setup/setup-guide.ts` e utiliza `NEXT_PUBLIC_API_BASE_URL` para
 os comandos PowerShell. A renderizacao usa `react-markdown` sem HTML bruto.
 
+Cada uma das seis etapas tem itens marcaveis (20 no total), contagem propria e
+progresso geral. As marcacoes ficam em `sessionStorage` na aba atual e sao
+limpas ao trocar/iniciar sessao, expirar a sessao ou sair da conta. O botao
+`Comecar outro dispositivo` reinicia o checklist. Sem esse armazenamento, as
+marcacoes funcionam em memoria. Marcar um item nao executa nem verifica o setup.
+
 O guia documenta o agente manual existente; nao emite enrollment tokens,
 instala RustDesk, registra servico Windows nem inicia conexoes. O binario e
 o token continuam sendo fornecidos pela equipe pelo fluxo autorizado.

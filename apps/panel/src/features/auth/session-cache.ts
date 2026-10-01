@@ -1,4 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
+import { clearSetupProgress } from '../../lib/setup-progress';
 
 interface SessionScope {
   epoch: number;
@@ -25,6 +26,7 @@ function clearSession(client: QueryClient): number {
   const next = ++scope(client).epoch;
   // clear destroys and cancels queries synchronously, before another identity can mount.
   client.clear();
+  clearSetupProgress();
   return next;
 }
 

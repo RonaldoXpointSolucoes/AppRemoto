@@ -27,14 +27,56 @@ test('technician can open the setup guide and return to devices at desktop, tabl
       expect(await code.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-    for (const link of await page.locator('main a').all()) {
-      expect((await link.boundingBox())?.height).toBeGreaterThanOrEqual(48);
+    for (const target of await page.locator('main a, main button, .setup-tasks label').all()) {
+      expect((await target.boundingBox())?.height).toBeGreaterThanOrEqual(48);
     }
     await page.screenshot({ path: testInfo.outputPath(`setup-${width}.png`), fullPage: true });
     await page.getByRole('link', { name: 'Voltar para dispositivos' }).first().click();
     await expect(page).toHaveURL(/\/devices$/);
     await expect(page.getByRole('heading', { name: 'Dispositivos', exact: true })).toBeVisible();
   }
+});
+
+test('technician can track every setup stage, resume after reload and start another device', async ({ page }, testInfo) => {
+  await authenticate(page);
+  await page.route('**/account/sessions/current', (route) => route.fulfill({ status: 204 }));
+  await page.goto('/setup');
+  await expect(page.getByRole('checkbox')).toHaveCount(20);
+  const progress = page.getByRole('progressbar', { name: 'Progresso da configuração' });
+  await expect(progress).toHaveAttribute('aria-valuenow', '0');
+  await page.getByRole('checkbox').first().check();
+  await expect(progress).toHaveAttribute('aria-valuenow', '1');
+  await page.reload();
+  await expect(page.getByRole('checkbox').first()).toBeChecked();
+  for (const checkbox of await page.getByRole('checkbox').all()) await checkbox.check();
+  await expect(progress).toHaveAttribute('aria-valuenow', '20');
+  await expect(page.getByText('6 de 6 etapas concluídas', { exact: true })).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: testInfo.outputPath('checklist-complete.png'), fullPage: false });
+  await page.getByRole('button', { name: 'Começar outro dispositivo' }).click();
+  await expect(progress).toHaveAttribute('aria-valuenow', '0');
+  await page.getByRole('checkbox').first().check();
+  await page.getByRole('link', { name: 'Voltar para dispositivos' }).first().click();
+  await page.getByRole('button', { name: 'Sair da conta' }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.goto('/setup');
+  await expect(page.getByRole('checkbox').first()).not.toBeChecked();
+});
+
+test('checklist remains usable when browser storage is unavailable', async ({ page }) => {
+  await page.addInitScript(() => {
+    for (const method of ['getItem', 'setItem', 'removeItem'] as const) {
+      Object.defineProperty(window.sessionStorage, method, {
+        value: () => { throw new Error('storage unavailable'); },
+      });
+    }
+  });
+  await authenticate(page);
+  await page.goto('/setup');
+  await page.getByRole('checkbox').first().check();
+  await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
+  await page.getByRole('button', { name: 'Começar outro dispositivo' }).click();
+  await expect(page.getByRole('checkbox').first()).not.toBeChecked();
 });
 
 test('direct setup navigation requires an authenticated session', async ({ page }) => {
