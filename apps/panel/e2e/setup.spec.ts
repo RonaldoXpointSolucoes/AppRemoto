@@ -16,11 +16,13 @@ test('technician can open the setup guide and return to devices at desktop, tabl
   for (const width of [1440, 768, 360, 320]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/devices');
-    const help = page.getByRole('link', { name: 'Como Configurar?' });
+    const help = page.getByRole('link', { name: 'Instalar no cliente' });
     await expect(help).toBeVisible();
     expect((await help.boundingBox())?.height).toBeGreaterThanOrEqual(48);
     await help.click();
     await expect(page).toHaveURL(/\/setup$/);
+    await expect(page.getByRole('heading', { name: 'Instale. O computador aparece aqui.' })).toBeVisible();
+    await page.getByText('Guia manual e solução de problemas', { exact: true }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Guia de Setup do XPoint Remote e RustDesk' })).toBeVisible();
     await expect(page.locator('article pre')).toHaveCount(3);
     for (const code of await page.locator('article pre').all()) {
@@ -41,12 +43,14 @@ test('technician can track every setup stage, resume after reload and start anot
   await authenticate(page);
   await page.route('**/account/sessions/current', (route) => route.fulfill({ status: 204 }));
   await page.goto('/setup');
+  await page.getByText('Guia manual e solução de problemas', { exact: true }).click();
   await expect(page.getByRole('checkbox')).toHaveCount(20);
   const progress = page.getByRole('progressbar', { name: 'Progresso da configuração' });
   await expect(progress).toHaveAttribute('aria-valuenow', '0');
   await page.getByRole('checkbox').first().check();
   await expect(progress).toHaveAttribute('aria-valuenow', '1');
   await page.reload();
+  await page.getByText('Guia manual e solução de problemas', { exact: true }).click();
   await expect(page.getByRole('checkbox').first()).toBeChecked();
   for (const checkbox of await page.getByRole('checkbox').all()) await checkbox.check();
   await expect(progress).toHaveAttribute('aria-valuenow', '20');
@@ -60,6 +64,7 @@ test('technician can track every setup stage, resume after reload and start anot
   await page.getByRole('button', { name: 'Sair da conta' }).click();
   await expect(page).toHaveURL(/\/login$/);
   await page.goto('/setup');
+  await page.getByText('Guia manual e solução de problemas', { exact: true }).click();
   await expect(page.getByRole('checkbox').first()).not.toBeChecked();
 });
 
@@ -73,6 +78,7 @@ test('checklist remains usable when browser storage is unavailable', async ({ pa
   });
   await authenticate(page);
   await page.goto('/setup');
+  await page.getByText('Guia manual e solução de problemas', { exact: true }).click();
   await page.getByRole('checkbox').first().check();
   await expect(page.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
   await page.getByRole('button', { name: 'Começar outro dispositivo' }).click();
@@ -91,6 +97,7 @@ test('technician can copy the supplied XPoint server settings without requesting
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await authenticate(page);
   await page.goto('/setup');
+  await page.getByText('Guia manual e solução de problemas', { exact: true }).click();
   for (const [label, value] of [
     ['ID Server', '179.199.142.157:21116'],
     ['Relay Server', '179.199.142.157:21117'],
@@ -111,6 +118,7 @@ test('blocked clipboard leaves server values available for manual copying', asyn
   });
   await authenticate(page);
   await page.goto('/setup');
+  await page.getByText('Guia manual e solução de problemas', { exact: true }).click();
   await page.getByRole('button', { name: 'Copiar Relay Server' }).click();
   await expect(page.getByRole('status')).toContainText('Não foi possível copiar Relay Server.');
   const relay = page.getByLabel('Relay Server', { exact: true });

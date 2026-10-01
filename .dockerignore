@@ -17,5 +17,7 @@ coverage
 docs
 tests
 infra
-services
+services/**/.local
+services/**/*.exe
+apps/panel/public/installers
 **/*.test.ts

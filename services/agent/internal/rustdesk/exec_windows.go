@@ -17,6 +17,7 @@ const processCleanupTimeout = time.Second
 
 type windowsExecRunner struct {
 	maxOutputBytes int
+	waitInstaller  bool
 }
 
 type pipeCapture struct {
@@ -178,6 +179,14 @@ func (r *windowsExecRunner) run(ctx context.Context, executable string, requireT
 		case <-time.After(processCleanupTimeout):
 			closeCaptureFiles(stdoutFile, stderrFile)
 			return CommandResult{}, ctx.Err()
+		}
+	}
+	if r.waitInstaller && !cancelled && waited.err == nil && waited.exitCode == 0 {
+		if err := waitInstallerChildren(ctx, job, process.ProcessId); err != nil {
+			_ = windows.TerminateJobObject(job, 1)
+			closeJob()
+			closeCaptureFiles(stdoutFile, stderrFile)
+			return CommandResult{}, err
 		}
 	}
 	closeJob()

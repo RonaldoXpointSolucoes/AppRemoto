@@ -1,4 +1,5 @@
 import type { DeviceView } from '@appremoto/contracts';
+import type { ReactNode } from 'react';
 
 export function formatLastSeen(value: string | null): string {
   if (!value) return 'Nunca';
@@ -13,7 +14,7 @@ export function DeviceStatus({ device, state }: { device: DeviceView; state: Dev
   return <span className={`device-status ${className}`}>{label}</span>;
 }
 
-export function DeviceRecord({ device, statusState }: { device: DeviceView; statusState: DeviceStatusState }) {
+export function DeviceRecord({ device, statusState, action }: { device: DeviceView; statusState: DeviceStatusState; action?: ReactNode }) {
   const fields = [
     ['Organizacao', device.organizationName],
     ['Hostname', device.hostname],
@@ -28,6 +29,7 @@ export function DeviceRecord({ device, statusState }: { device: DeviceView; stat
         <div><dt>Status</dt><dd><DeviceStatus device={device} state={statusState} /></dd></div>
         <div><dt>Ultima atividade</dt><dd className="device-value">{formatLastSeen(device.lastSeenAt)}</dd></div>
       </dl>
+      {action && <div className="device-record-action">{action}</div>}
     </article>
   );
 }

@@ -1,4 +1,5 @@
 import { ApiErrorSchema, DeviceViewSchema, type DeviceListQuery, type DeviceView } from '@appremoto/contracts';
+import { CreateEnrollmentTokenResponseSchema, EnrollmentStatusResponseSchema, ConnectDeviceResponseSchema } from '@appremoto/contracts';
 import { AppwriteException } from 'appwrite';
 import { z, type ZodType } from 'zod';
 
@@ -117,7 +118,7 @@ async function responseBody(response: Response): Promise<unknown> {
 }
 
 export function createApiClient(options: ApiClientOptions) {
-  const request = async <T>(path: string, schema: ZodType<T>): Promise<T> => {
+  const request = async <T>(path: string, schema: ZodType<T>, payload?: unknown): Promise<T> => {
     let jwt: string;
     try {
       jwt = await options.getJwt();
@@ -139,8 +140,10 @@ export function createApiClient(options: ApiClientOptions) {
     let response: Response;
     try {
       response = await (options.fetch ?? globalThis.fetch)(`${options.baseUrl}${path}`, {
-        headers: { authorization: `Bearer ${jwt}`, accept: 'application/json' },
-        method: 'GET',
+        headers: { authorization: `Bearer ${jwt}`, accept: 'application/json', ...(payload !== undefined ? { 'content-type': 'application/json' } : {}) },
+        method: payload === undefined ? 'GET' : 'POST',
+        cache: 'no-store',
+        ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
       });
     } catch {
       throw new ApiClientError({
@@ -160,6 +163,9 @@ export function createApiClient(options: ApiClientOptions) {
   return {
     getMe: () => request('/v1/me', TechnicianViewSchema),
     getOrganizations: async () => (await request('/v1/organizations', OrganizationsResponseSchema)).organizations,
+    createEnrollmentToken: (organizationId: string, deviceDisplayName: string) => request('/v1/enrollment-tokens', CreateEnrollmentTokenResponseSchema, { organizationId, deviceDisplayName }),
+    getEnrollmentStatus: (enrollmentId: string) => request(`/v1/enrollment-tokens/${encodeURIComponent(enrollmentId)}/status`, EnrollmentStatusResponseSchema),
+    connectDevice: (deviceId: string) => request(`/v1/devices/${encodeURIComponent(deviceId)}/connect`, ConnectDeviceResponseSchema, {}),
     getDevices: (query: DeviceListQuery = { limit: 50 }) => {
       const params = new URLSearchParams();
       if (query.organizationId) params.set('organizationId', query.organizationId);

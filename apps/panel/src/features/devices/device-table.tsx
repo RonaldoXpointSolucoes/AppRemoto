@@ -1,32 +1,36 @@
 'use client';
 
 import type { DeviceView } from '@appremoto/contracts';
-import { ChevronLeft, ChevronRight, CircleHelp, LogOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, LogOut } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { expireSession, logoutSession, sessionEpoch } from '../auth/session-cache';
 
 import { DeviceFilters } from './device-filters';
+import { ConnectDevice } from './connect-device';
 import { DeviceRecord, DeviceStatus, formatLastSeen, type DeviceStatusState } from './device-record';
 import { isUnauthorized, useDevices, type DeviceDirectoryService, type DeviceFiltersValue } from './use-devices';
 
 export type { DeviceDirectoryService } from './use-devices';
 
-function DeviceRows({ devices, statusState }: { devices: DeviceView[]; statusState: DeviceStatusState }) {
+function DeviceRows({ devices, statusState, service, canConnect }: { devices: DeviceView[]; statusState: DeviceStatusState; service: DeviceDirectoryService; canConnect(organizationId: string): boolean }) {
+  const action = (device: DeviceView) => service.connectDevice && canConnect(device.organizationId)
+    ? <ConnectDevice deviceId={device.id} enabled={device.enabled && device.status === 'ONLINE' && statusState === 'current'} service={{ connectDevice: service.connectDevice }} /> : null;
   return <>
     <div className="device-table-wrap">
       <table className="device-table" aria-label="Dispositivos remotos">
-        <thead><tr>{['Dispositivo', 'Organizacao', 'Hostname', 'Sistema operacional', 'RustDesk ID', 'Status', 'Ultima atividade'].map((label) => <th key={label} scope="col">{label}</th>)}</tr></thead>
+        <thead><tr>{['Dispositivo', 'Organizacao', 'Hostname', 'Sistema operacional', 'RustDesk ID', 'Status', 'Ultima atividade', 'Acesso'].map((label) => <th key={label} scope="col">{label}</th>)}</tr></thead>
         <tbody>{devices.map((device) => <tr key={device.id}>
           <td className="device-value">{device.displayName}</td><td className="device-value">{device.organizationName}</td>
           <td className="device-value">{device.hostname}</td><td className="device-value">{device.operatingSystem} {device.osVersion}</td>
           <td className="device-value">{device.rustdeskId}</td><td><DeviceStatus device={device} state={statusState} /></td>
           <td className="device-value">{formatLastSeen(device.lastSeenAt)}</td>
+          <td>{action(device)}</td>
         </tr>)}</tbody>
       </table>
     </div>
-    <div className="device-records">{devices.map((device) => <DeviceRecord key={device.id} device={device} statusState={statusState} />)}</div>
+    <div className="device-records">{devices.map((device) => <DeviceRecord key={device.id} device={device} statusState={statusState} action={action(device)} />)}</div>
   </>;
 }
 
@@ -83,7 +87,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     <header className="devices-header">
       <div><p className="product-name">AppRemoto</p><h1>Dispositivos</h1></div>
       <div className="devices-header-actions">
-        <Link className="command-button guide-link" href="/setup"><CircleHelp aria-hidden="true" size={19} />Como Configurar?</Link>
+        <Link className="command-button guide-link" href="/setup"><Download aria-hidden="true" size={19} />Instalar no cliente</Link>
         <button className="icon-button" type="button" title="Sair da conta" aria-label="Sair da conta" aria-busy={logoutPending} disabled={logoutPending} onClick={() => void handleLogout()}>
           <LogOut aria-hidden="true" size={19} />
         </button>
@@ -101,7 +105,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       {query.backgroundError && <p className="refresh-error" role="alert">Nao foi possivel atualizar os dispositivos. Os status estao indisponiveis.</p>}
       {query.isPageLoading ? <section className="device-state" role="status">Carregando dispositivos...</section>
         : query.rows.length === 0 ? <section className="device-state">{emptyMessage}</section>
-          : <DeviceRows devices={query.rows} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} />}
+          : <DeviceRows devices={query.rows} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} />}
       {!query.isPageLoading && (query.hasPreviousPage || query.hasNextPage) && <nav className="pagination" aria-label="Paginacao de dispositivos">
         {query.hasPreviousPage && <button className="command-button" type="button" aria-label="Pagina anterior" disabled={query.isRefreshing || Boolean(query.backgroundError)} onClick={query.previousPage}><ChevronLeft aria-hidden="true" size={18} />Anterior</button>}
         {query.hasNextPage && <button className="command-button" type="button" aria-label="Proxima pagina" disabled={query.isRefreshing || Boolean(query.backgroundError)} onClick={query.nextPage}>Proxima<ChevronRight aria-hidden="true" size={18} /></button>}

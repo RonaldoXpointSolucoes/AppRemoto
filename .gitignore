@@ -6,6 +6,7 @@ playwright-report/
 test-results/
 .next/
 *.tsbuildinfo
+apps/panel/public/installers/
 .env
 .env.*
 !.env.example
