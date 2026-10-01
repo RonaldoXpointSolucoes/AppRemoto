@@ -1,7 +1,9 @@
 package enroll
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -76,7 +78,7 @@ func (store *fakeArtifacts) Publish(name string, value []byte) error {
 type fakeProtector struct{ failValue string }
 
 func (protector fakeProtector) Protect(value []byte) ([]byte, error) {
-	if string(value) == protector.failValue {
+	if protector.failValue != "" && bytes.HasSuffix(value, []byte(protector.failValue)) {
 		return nil, errors.New("DPAPI exposed " + string(value))
 	}
 	protected := append([]byte(nil), value...)
@@ -207,6 +209,90 @@ func TestIndeterminateHTTPResponseIsNeverRetried(t *testing.T) {
 	_, err = service.Run(context.Background(), []byte(testEnrollmentToken), validMetadata())
 	if !errors.Is(err, ErrManualReconciliation) || apiClient.calls != 1 {
 		t.Fatalf("indeterminate request retried: error=%v calls=%d", err, apiClient.calls)
+	}
+}
+
+func TestSwappedProtectedFieldsFailBeforeAPIOrRustDeskUse(t *testing.T) {
+	apiClient, rustDesk, artifacts := successfulAPI(), &fakeRustDesk{}, newFakeArtifacts()
+	service := newTestService(apiClient, rustDesk, artifacts, fakeProtector{})
+	if _, err := service.Run(context.Background(), []byte(testEnrollmentToken), validMetadata()); err != nil {
+		t.Fatal(err)
+	}
+	var credentials protectedCredentials
+	if err := json.Unmarshal(artifacts.values[credentialsArtifact], &credentials); err != nil {
+		t.Fatal(err)
+	}
+	credentials.DeviceToken, credentials.RustDeskPassword = credentials.RustDeskPassword, credentials.DeviceToken
+	swapped, err := json.Marshal(credentials)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifacts.values[credentialsArtifact] = swapped
+	delete(artifacts.values, configuredArtifact)
+	apiClient.calls = 0
+	rustDesk.discoverCalls = 0
+	rustDesk.passwordCalls = 0
+
+	_, err = service.Run(context.Background(), nil, validMetadata())
+	if !errors.Is(err, ErrManualReconciliation) {
+		t.Fatalf("swapped fields error = %v, want manual reconciliation", err)
+	}
+	if apiClient.calls != 0 || rustDesk.discoverCalls != 0 || rustDesk.passwordCalls != 0 {
+		t.Fatalf("swapped fields reached a consumer: api=%d discover=%d password=%d", apiClient.calls, rustDesk.discoverCalls, rustDesk.passwordCalls)
+	}
+}
+
+func TestProtectedFieldsAreCryptographicallyBoundToStableIdentity(t *testing.T) {
+	apiClient, rustDesk, artifacts := successfulAPI(), &fakeRustDesk{}, newFakeArtifacts()
+	service := newTestService(apiClient, rustDesk, artifacts, fakeProtector{})
+	if _, err := service.Run(context.Background(), []byte(testEnrollmentToken), validMetadata()); err != nil {
+		t.Fatal(err)
+	}
+	const otherUUID = "00000000-0000-4000-8000-000000000002"
+	service.loadIdentity = func(string) (state.Identity, error) { return state.Identity{DeviceUUID: otherUUID}, nil }
+	pending, err := json.Marshal(marker{Version: 1, DeviceUUID: otherUUID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifacts.values[pendingArtifact] = pending
+	apiClient.calls = 0
+	rustDesk.discoverCalls = 0
+	rustDesk.passwordCalls = 0
+
+	_, err = service.Run(context.Background(), nil, validMetadata())
+	if !errors.Is(err, ErrManualReconciliation) {
+		t.Fatalf("identity substitution error = %v", err)
+	}
+	if apiClient.calls != 0 || rustDesk.discoverCalls != 0 || rustDesk.passwordCalls != 0 {
+		t.Fatalf("identity substitution reached a consumer: api=%d discover=%d password=%d", apiClient.calls, rustDesk.discoverCalls, rustDesk.passwordCalls)
+	}
+}
+
+func TestLegacyUnboundCredentialStateFailsClosed(t *testing.T) {
+	apiClient, rustDesk, artifacts := successfulAPI(), &fakeRustDesk{}, newFakeArtifacts()
+	service := newTestService(apiClient, rustDesk, artifacts, fakeProtector{})
+	if _, err := service.Run(context.Background(), []byte(testEnrollmentToken), validMetadata()); err != nil {
+		t.Fatal(err)
+	}
+	var credentials protectedCredentials
+	if err := json.Unmarshal(artifacts.values[credentialsArtifact], &credentials); err != nil {
+		t.Fatal(err)
+	}
+	credentials.Version = 1
+	legacy, err := json.Marshal(credentials)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifacts.values[credentialsArtifact] = legacy
+	apiClient.calls = 0
+	rustDesk.discoverCalls = 0
+	rustDesk.passwordCalls = 0
+	_, err = service.Run(context.Background(), nil, validMetadata())
+	if !errors.Is(err, ErrManualReconciliation) {
+		t.Fatalf("legacy state error = %v", err)
+	}
+	if apiClient.calls != 0 || rustDesk.discoverCalls != 0 || rustDesk.passwordCalls != 0 {
+		t.Fatalf("legacy state reached a consumer: api=%d discover=%d password=%d", apiClient.calls, rustDesk.discoverCalls, rustDesk.passwordCalls)
 	}
 }
 

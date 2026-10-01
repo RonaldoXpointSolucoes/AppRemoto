@@ -16,10 +16,14 @@ import (
 )
 
 const (
-	pendingArtifact           = "enrollment-pending.json"
-	credentialsArtifact       = "enrollment-credentials.json"
-	configuredArtifact        = "rustdesk-configured.json"
-	maxArtifactBytes    int64 = 128 * 1024
+	pendingArtifact               = "enrollment-pending.json"
+	credentialsArtifact           = "enrollment-credentials.json"
+	configuredArtifact            = "rustdesk-configured.json"
+	maxArtifactBytes        int64 = 128 * 1024
+	credentialsVersion            = 2
+	deviceTokenPurpose            = "device-token"
+	rustDeskPasswordPurpose       = "rustdesk-password"
+	secretBindingMagic            = "appremoto-agent-secret-v1\x00"
 )
 
 var (
@@ -134,7 +138,7 @@ func (service *Service) Run(ctx context.Context, enrollmentToken []byte, metadat
 		if configuredExists && configured.Version != 1 {
 			return Result{}, ErrManualReconciliation
 		}
-		return service.resume(ctx, credentials, configuredExists)
+		return service.resume(ctx, identity.DeviceUUID, credentials, configuredExists)
 	}
 	if configuredExists || pendingExists {
 		return Result{}, ErrManualReconciliation
@@ -161,27 +165,29 @@ func (service *Service) Run(ctx context.Context, enrollmentToken []byte, metadat
 	if err != nil {
 		return Result{}, ErrManualReconciliation
 	}
-	return service.acceptResponse(ctx, response)
+	return service.acceptResponse(ctx, identity.DeviceUUID, response)
 }
 
-func (service *Service) acceptResponse(ctx context.Context, response api.EnrollResponse) (Result, error) {
+func (service *Service) acceptResponse(ctx context.Context, deviceUUID string, response api.EnrollResponse) (Result, error) {
 	deviceToken := []byte(response.DeviceToken)
 	password := []byte(response.RustDeskPassword)
 	response.DeviceToken, response.RustDeskPassword = "", ""
-	protectedToken, err := service.protector.Protect(deviceToken)
+	protectedToken, err := service.protectBound(deviceTokenPurpose, deviceUUID, deviceToken)
 	if err != nil {
+		clear(protectedToken)
 		clear(deviceToken)
 		clear(password)
 		return Result{}, ErrManualReconciliation
 	}
-	protectedPassword, err := service.protector.Protect(password)
+	protectedPassword, err := service.protectBound(rustDeskPasswordPurpose, deviceUUID, password)
 	if err != nil {
+		clear(protectedPassword)
 		clear(deviceToken)
 		clear(password)
 		clear(protectedToken)
 		return Result{}, ErrManualReconciliation
 	}
-	credentials := protectedCredentials{Version: 1, DeviceID: response.DeviceID, DeviceToken: protectedToken,
+	credentials := protectedCredentials{Version: credentialsVersion, DeviceID: response.DeviceID, DeviceToken: protectedToken,
 		RustDeskPassword: protectedPassword, HeartbeatIntervalSeconds: response.HeartbeatIntervalSeconds}
 	serialized, err := json.Marshal(credentials)
 	clear(protectedToken)
@@ -212,13 +218,15 @@ func (service *Service) acceptResponse(ctx context.Context, response api.EnrollR
 		HeartbeatIntervalSeconds: response.HeartbeatIntervalSeconds}, nil
 }
 
-func (service *Service) resume(ctx context.Context, credentials protectedCredentials, configured bool) (Result, error) {
-	deviceToken, err := service.protector.Unprotect(credentials.DeviceToken)
+func (service *Service) resume(ctx context.Context, deviceUUID string, credentials protectedCredentials, configured bool) (Result, error) {
+	defer clear(credentials.DeviceToken)
+	defer clear(credentials.RustDeskPassword)
+	deviceToken, err := service.unprotectBound(deviceTokenPurpose, deviceUUID, credentials.DeviceToken, 32, 512)
 	if err != nil {
 		return Result{}, ErrManualReconciliation
 	}
 	if !configured {
-		password, err := service.protector.Unprotect(credentials.RustDeskPassword)
+		password, err := service.unprotectBound(rustDeskPasswordPurpose, deviceUUID, credentials.RustDeskPassword, 8, 128)
 		if err != nil {
 			clear(deviceToken)
 			return Result{}, ErrManualReconciliation
@@ -236,6 +244,46 @@ func (service *Service) resume(ctx context.Context, credentials protectedCredent
 	}
 	return Result{DeviceID: credentials.DeviceID, DeviceToken: deviceToken,
 		HeartbeatIntervalSeconds: credentials.HeartbeatIntervalSeconds, Existing: true}, nil
+}
+
+func (service *Service) protectBound(purpose, deviceUUID string, plaintext []byte) ([]byte, error) {
+	prefix := secretBindingPrefix(purpose, deviceUUID)
+	bound := make([]byte, 0, len(prefix)+len(plaintext))
+	bound = append(bound, prefix...)
+	bound = append(bound, plaintext...)
+	clear(prefix)
+	protected, err := service.protector.Protect(bound)
+	clear(bound)
+	return protected, err
+}
+
+func (service *Service) unprotectBound(purpose, deviceUUID string, protected []byte, minimum, maximum int) ([]byte, error) {
+	bound, err := service.protector.Unprotect(protected)
+	if err != nil {
+		clear(bound)
+		return nil, err
+	}
+	defer clear(bound)
+	prefix := secretBindingPrefix(purpose, deviceUUID)
+	defer clear(prefix)
+	if !bytes.HasPrefix(bound, prefix) {
+		return nil, errors.New("protected secret binding mismatch")
+	}
+	plaintext := bound[len(prefix):]
+	if len(plaintext) < minimum || len(plaintext) > maximum {
+		return nil, errors.New("protected secret length is invalid")
+	}
+	return append([]byte(nil), plaintext...), nil
+}
+
+func secretBindingPrefix(purpose, deviceUUID string) []byte {
+	prefix := make([]byte, 0, len(secretBindingMagic)+len(purpose)+len(deviceUUID)+2)
+	prefix = append(prefix, secretBindingMagic...)
+	prefix = append(prefix, purpose...)
+	prefix = append(prefix, 0)
+	prefix = append(prefix, deviceUUID...)
+	prefix = append(prefix, 0)
+	return prefix
 }
 
 func (service *Service) publishConfigured() error {
@@ -270,7 +318,7 @@ func (service *Service) loadCredentials() (protectedCredentials, bool, error) {
 	}
 	defer clear(data)
 	var value protectedCredentials
-	if decodeStrict(data, &value) != nil || value.Version != 1 || value.DeviceID == "" || len(value.DeviceID) > 36 ||
+	if decodeStrict(data, &value) != nil || value.Version != credentialsVersion || value.DeviceID == "" || len(value.DeviceID) > 36 ||
 		len(value.DeviceToken) == 0 || len(value.RustDeskPassword) == 0 || value.HeartbeatIntervalSeconds < 10 || value.HeartbeatIntervalSeconds > 300 {
 		clear(value.DeviceToken)
 		clear(value.RustDeskPassword)
