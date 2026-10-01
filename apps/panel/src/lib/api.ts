@@ -61,7 +61,7 @@ const DevicePageSchema = z.object({
 
 interface ApiClientOptions {
   baseUrl: string;
-  getJwt: () => Promise<string>;
+  getJwt: (() => Promise<string>) & { refresh?: (rejectedJwt: string) => Promise<string> };
   fetch?: typeof globalThis.fetch;
 }
 
@@ -118,10 +118,10 @@ async function responseBody(response: Response): Promise<unknown> {
 }
 
 export function createApiClient(options: ApiClientOptions) {
-  const request = async <T>(path: string, schema: ZodType<T>, payload?: unknown): Promise<T> => {
-    let jwt: string;
+  const sessionJwt = async (rejectedJwt?: string): Promise<string> => {
     try {
-      jwt = await options.getJwt();
+      return await (rejectedJwt !== undefined && options.getJwt.refresh
+        ? options.getJwt.refresh(rejectedJwt) : options.getJwt());
     } catch (error) {
       if (error instanceof AppwriteException && error.code === 401) {
         throw new ApiClientError({
@@ -136,28 +136,40 @@ export function createApiClient(options: ApiClientOptions) {
         status: 0,
       });
     }
+  };
 
-    let response: Response;
-    try {
-      response = await (options.fetch ?? globalThis.fetch)(`${options.baseUrl}${path}`, {
-        headers: { authorization: `Bearer ${jwt}`, accept: 'application/json', ...(payload !== undefined ? { 'content-type': 'application/json' } : {}) },
-        method: payload === undefined ? 'GET' : 'POST',
-        cache: 'no-store',
-        ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
-      });
-    } catch {
-      throw new ApiClientError({
-        code: 'NETWORK_ERROR',
-        message: 'Nao foi possivel conectar ao servico.',
-        status: 0,
-      });
+  const request = async <T>(path: string, schema: ZodType<T>, payload?: unknown): Promise<T> => {
+    let jwt = await sessionJwt();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let response: Response;
+      try {
+        response = await (options.fetch ?? globalThis.fetch)(`${options.baseUrl}${path}`, {
+          headers: { authorization: `Bearer ${jwt}`, accept: 'application/json', ...(payload !== undefined ? { 'content-type': 'application/json' } : {}) },
+          method: payload === undefined ? 'GET' : 'POST',
+          cache: 'no-store',
+          ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
+        });
+      } catch {
+        throw new ApiClientError({
+          code: 'NETWORK_ERROR',
+          message: 'Nao foi possivel conectar ao servico.',
+          status: 0,
+        });
+      }
+
+      const body = await responseBody(response);
+      // Another tab may have replaced the shared Appwrite session cookie. Confirm
+      // it once before treating an old cached JWT's 401 as a terminal session.
+      if (response.status === 401 && attempt === 0 && options.getJwt.refresh) {
+        jwt = await sessionJwt(jwt);
+        continue;
+      }
+      if (!response.ok) throw normalizedError(body, response.status);
+      const parsed = schema.safeParse(body);
+      if (!parsed.success) throw invalidApiResponse();
+      return parsed.data;
     }
-
-    const body = await responseBody(response);
-    if (!response.ok) throw normalizedError(body, response.status);
-    const parsed = schema.safeParse(body);
-    if (!parsed.success) throw invalidApiResponse();
-    return parsed.data;
+    throw invalidApiResponse();
   };
 
   return {

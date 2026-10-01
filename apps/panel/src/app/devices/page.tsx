@@ -11,8 +11,8 @@ import { getPublicConfig } from '../../lib/config';
 
 function createDeviceDirectoryService(): DeviceDirectoryService {
   const config = getPublicConfig();
-  const { account } = createAppwriteSessionClient(config);
-  const api = createApiClient({ baseUrl: config.apiBaseUrl, getJwt: async () => (await account.createJWT()).jwt });
+  const { account, getJwt } = createAppwriteSessionClient(config);
+  const api = createApiClient({ baseUrl: config.apiBaseUrl, getJwt });
   return {
     getMe: api.getMe,
     connectDevice: api.connectDevice,

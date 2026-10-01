@@ -4,10 +4,12 @@ import 'client-only';
 import { Account, Client } from 'appwrite';
 
 import { getPublicConfig, type PublicConfig } from './config';
+import { createSessionJwtGetter, type SessionJwtGetter } from './session-jwt';
 
 export interface AppwriteSessionClient {
   client: Client;
   account: Account;
+  getJwt: SessionJwtGetter;
 }
 
 export function createAppwriteSessionClient(config: PublicConfig = getPublicConfig()): AppwriteSessionClient {
@@ -15,5 +17,7 @@ export function createAppwriteSessionClient(config: PublicConfig = getPublicConf
     .setEndpoint(config.appwriteEndpoint)
     .setProject(config.appwriteProjectId);
 
-  return { client, account: new Account(client) };
+  const account = new Account(client);
+  const getJwt = createSessionJwtGetter(JSON.stringify([config.appwriteEndpoint, config.appwriteProjectId]), () => account.createJWT());
+  return { client, account, getJwt };
 }

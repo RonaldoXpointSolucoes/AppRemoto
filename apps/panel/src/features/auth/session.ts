@@ -40,10 +40,10 @@ export function isDisabledProfile(error: unknown): boolean {
 
 export function createLoginService(): LoginService {
   const config = getPublicConfig();
-  const { account } = createAppwriteSessionClient(config);
+  const { account, getJwt } = createAppwriteSessionClient(config);
   const api = createApiClient({
     baseUrl: config.apiBaseUrl,
-    getJwt: async () => (await account.createJWT()).jwt,
+    getJwt,
   });
 
   return {
