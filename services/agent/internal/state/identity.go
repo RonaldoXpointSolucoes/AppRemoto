@@ -23,6 +23,8 @@ type Identity struct {
 
 var validUUIDV4 = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
+var ErrIdentityOwner = errors.New("identity owner is not current user or SYSTEM")
+
 const (
 	maxIdentityBytes = 1024
 	staleIdentityAge = 24 * time.Hour

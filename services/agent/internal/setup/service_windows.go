@@ -140,7 +140,8 @@ func runAgent(ctx context.Context) (err error) {
 	operation = "ENROLLMENT_STATE"
 	step = 5
 	r.Record(5, operation, "START", nil)
-	en, e := enroll.NewService(enroll.Options{StateDirectory: ps.Agent, API: reportedAPI{apiClient, r}, RustDesk: reportedRustDesk{rd, r}})
+	en, e := enroll.NewService(enroll.Options{StateDirectory: ps.Agent, API: reportedAPI{apiClient, r}, RustDesk: reportedRustDesk{rd, r},
+		Progress: func(op, result string, err error) { r.Record(5, op, result, err) }})
 	if e != nil {
 		return e
 	}
@@ -155,7 +156,10 @@ func runAgent(ctx context.Context) (err error) {
 	osver := fmt.Sprintf("%d.%d.%d", v.MajorVersion, v.MinorVersion, v.BuildNumber)
 	result, e := en.Run(ctx, token, enroll.Metadata{DisplayName: reg.DeviceDisplayName, Hostname: host, OperatingSystem: "Windows", OSVersion: osver, AgentVersion: Version})
 	if e != nil {
-		r.Record(5, operation, "ERROR", e)
+		var stage *enroll.StageError
+		if !errors.As(e, &stage) {
+			r.Record(5, operation, "ERROR", e)
+		}
 		return e
 	}
 	defer clear(result.DeviceToken)

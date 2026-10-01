@@ -6,7 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/RonaldoXpointSolucoes/AppRemoto/services/agent/internal/enroll"
 	"github.com/RonaldoXpointSolucoes/AppRemoto/services/agent/internal/rustdesk"
+	"github.com/RonaldoXpointSolucoes/AppRemoto/services/agent/internal/state"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 	"os"
@@ -15,6 +18,21 @@ import (
 	"testing"
 	"time"
 )
+
+func TestIdentityDiagnosticsRetainSafeCodesOnly(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want string
+	}{
+		{fmt.Errorf("secret path: %w", windows.NTStatus(0xc0000022)), "win32=5"},
+		{fmt.Errorf("secret path: %w", state.ErrIdentityOwner), "IDENTITY_OWNER_MISMATCH"},
+		{&enroll.StageError{Operation: "IDENTITY_LOAD_CREATE"}, "IDENTITY_LOAD_CREATE_FAILED"},
+	} {
+		if got := diagnostic(tc.err); got != tc.want || !safeDiagnostic(got) {
+			t.Fatalf("diagnostic = %q, want %q", got, tc.want)
+		}
+	}
+}
 
 func TestAdjacentLogAppendsAndRedacts(t *testing.T) {
 	exe := filepath.Join(t.TempDir(), "Cliente (2).exe")

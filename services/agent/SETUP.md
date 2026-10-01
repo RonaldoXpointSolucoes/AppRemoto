@@ -1,6 +1,6 @@
 # Native setup distribution interface
 
-Version: 1.0.1. Windows x64. Build from services/agent:
+Version: 1.0.2. Windows x64. Build from services/agent:
 
 ```sh
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -H=windowsgui" -o xpoint-setup-base.exe ./cmd/remote-setup
@@ -18,7 +18,7 @@ The XPoint service is automatic LocalSystem, dependent on RustDesk, with recover
 
 ## Adjacent log
 
-Executing `XPoint-Instalar-Cliente.exe` creates/appends `XPoint-Instalar-Cliente.log` in the same directory. Renamed executables get the corresponding basename, including the browser's numeric suffix. Each entry has timestamp, version, PID, stage, operation, result and sanitized diagnostic. It includes UAC denial, lock failure, each option write/readback, enrollment/password operations, service exits, heartbeat retries and the final result. No token, password, hostname, customer name, command arguments, stdout/stderr or raw error message is written. Win32 numbers, timeout classes and known API error codes are retained.
+Executing `XPoint-Instalar-Cliente.exe` creates/appends `XPoint-Instalar-Cliente.log` in the same directory. Renamed executables get the corresponding basename, including the browser's numeric suffix. Each entry has timestamp, version, PID, stage, operation, result and sanitized diagnostic. It includes UAC denial, lock failure, each option write/readback, enrollment/password operations, service exits, heartbeat retries and the final result. No token, password, hostname, customer name, command arguments, stdout/stderr or raw error message is written. Win32 numbers (including converted NTSTATUS), timeout classes and known API error codes are retained. Identity directory preparation, identity creation/loading, pending/credential/password-state reads and preflight publication each emit START/OK or ERROR. IDENTITY_OWNER_MISMATCH is explicit; no underlying arbitrary error text is logged.
 
 The log writer pins non-reparse ancestor directories, refuses redirected or multiply-linked log files, appends instead of truncating, and flushes each event. If the adjacent file cannot be opened, installation does not begin: copy the executable to a writable local folder. A private bounded `setup-status.json` journal lets the SYSTEM service report progress; setup copies only matching fresh events into the adjacent log. Atomic status replacement permits readers to retain a stable old handle without blocking publication.
 
@@ -48,4 +48,4 @@ Uninstall: the installed remote-agent.exe --uninstall requests UAC and removes o
 
 Windows Go tests cover actual named-mutex contention/release, same-directory append logs, hardlink refusal, diagnostic redaction, precise option timeout, service timeout rejection, receipt recovery/tenant isolation, fresh journal correlation and existing agent behavior. Go vet and GUI compilation are required. Browser tests cover prerequisite/log instructions, exact package overlay/integrity, receipt polling and permissions.
 
-The user's 1.0.0 client attempt failed. Tests and compilation of 1.0.1 do not establish real-client acceptance. Installation with UAC, SYSTEM/DPAPI, reboot and a real RustDesk session still require the client run. Publishing this correction is panel-only; API/schema/server configuration is unchanged.
+The user's 1.0.1 log stops at ENROLLMENT_STATE before discovery/API. A native SYSTEM regression reproduced an identity creation failure when the token defaults ownership to Administrators. Version 1.0.2 sets the actual service user as owner at creation, with a protected explicit ACL; it does not relax existing-file validation. Both SYSTEM default-owner variants now pass identity creation, real DPAPI persistence and resume with a synthetic API/RustDesk. A separate SYSTEM-to-administrator test covers recovery metadata inspection without reading credential bytes or changing their ACLs. Backup-read permission is scoped to a duplicated thread token and reverted immediately. These tests do not establish acceptance on the user's client, a reboot or a real RustDesk session. Publish the panel only; API/schema/server configuration is unchanged.

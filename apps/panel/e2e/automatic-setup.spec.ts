@@ -8,7 +8,7 @@ const enrolledDevice = {
   id: 'device-enrolled', organizationId: 'org-a', organizationName: 'Cliente A',
   deviceUuid: '00000000-0000-4000-8000-000000000099', displayName: 'Recepção',
   hostname: 'PC-CLIENTE', operatingSystem: 'Windows', osVersion: '11', rustdeskId: '123456789',
-  agentVersion: '1.0.1', rustdeskVersion: '1.4.9', lastSeenAt: new Date().toISOString(), enabled: true, status: 'ONLINE',
+  agentVersion: '1.0.2', rustdeskVersion: '1.4.9', lastSeenAt: new Date().toISOString(), enabled: true, status: 'ONLINE',
 };
 
 async function authenticate(page: Page, canManage = true) {
@@ -21,9 +21,9 @@ async function authenticate(page: Page, canManage = true) {
     organizations: [{ id: 'org-a', name: 'Cliente A', slug: 'cliente-a' }, { id: 'org-b', name: 'Cliente B', slug: 'cliente-b' }],
   } }));
   await page.route('**/installers/manifest.json', (route) => route.fulfill({ json: {
-    version: '1.0.1', path: '/installers/xpoint-setup-1.0.1.exe', sha256: createHash('sha256').update(base).digest('hex'), bytes: base.length,
+    version: '1.0.2', path: '/installers/xpoint-setup-1.0.2.exe', sha256: createHash('sha256').update(base).digest('hex'), bytes: base.length,
   } }));
-  await page.route('**/installers/xpoint-setup-1.0.1.exe', (route) => route.fulfill({ body: base, contentType: 'application/octet-stream' }));
+  await page.route('**/installers/xpoint-setup-1.0.2.exe', (route) => route.fulfill({ body: base, contentType: 'application/octet-stream' }));
 }
 
 test('download contains the exact single-use enrollment and monitors its receipt without exposing the token', async ({ page }, testInfo) => {
@@ -44,7 +44,7 @@ test('download contains the exact single-use enrollment and monitors its receipt
     : { status: 'waiting', expiresAt, device: null } }));
   await page.goto('/setup');
   await expect(page.getByText('Pré-requisito:', { exact: true })).toBeVisible();
-  await expect(page.getByText('Configurador 1.0.1 · Windows 64 bits')).toBeVisible();
+  await expect(page.getByText('Configurador 1.0.2 · Windows 64 bits')).toBeVisible();
   await expect(page.getByLabel('Cliente', { exact: true })).toHaveValue('org-a');
   await expect(page.getByRole('option', { name: 'Cliente B' })).toHaveCount(0);
   await expect(page.getByRole('checkbox')).toHaveCount(0);
@@ -80,7 +80,7 @@ test('download contains the exact single-use enrollment and monitors its receipt
 
 test('artifact integrity failure prevents issuing a provisioning token', async ({ page }) => {
   await authenticate(page);
-  await page.route('**/installers/xpoint-setup-1.0.1.exe', (route) => route.fulfill({ body: Buffer.from('bad') }));
+  await page.route('**/installers/xpoint-setup-1.0.2.exe', (route) => route.fulfill({ body: Buffer.from('bad') }));
   let issued = false;
   await page.route('**/v1/enrollment-tokens', (route) => { issued = true; return route.abort(); });
   await page.goto('/setup');
