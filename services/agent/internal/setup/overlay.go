@@ -15,10 +15,8 @@ import (
 
 const Marker = "XPOINT_SETUP_V1"
 const MaxOverlay = 16384
-const Version = "1.0.0"
+const Version = "1.0.1"
 const APIURL = "https://qyrjepou8xchzlfirsbrhwr9.179.199.142.157.sslip.io"
-const RustDeskURL = "https://github.com/rustdesk/rustdesk/releases/download/1.4.9/rustdesk-1.4.9-x86_64.exe"
-const RustDeskSHA256 = "eaedeb0088e687bf46f7c46a9c6ea5493ce51f3134dfd6acbedb47b5b9136274"
 const IDServer = "179.199.142.157:21116"
 const RelayServer = "179.199.142.157:21117"
 const PublicKey = "6qc86QUPst9+H4QjXyQvSLPbGU6ef25iO+ESoi3figk="

@@ -136,9 +136,10 @@ export function AutomaticSetup() {
   const currentlyOnline = status?.status === 'online' && !pollError;
   return <section className="automatic-setup" aria-labelledby="automatic-setup-title">
     <div className="setup-introduction">
-      <p className="eyebrow">Instalação automática · Windows 64 bits</p>
-      <h1 id="automatic-setup-title">Instale. O computador aparece aqui.</h1>
-      <p>Um único instalador configura os servidores, a senha permanente exclusiva e o serviço que inicia com o Windows.</p>
+      <p className="eyebrow">Configurador 1.0.1 · Windows 64 bits</p>
+      <h1 id="automatic-setup-title">Configure. O computador aparece aqui.</h1>
+      <p>Com o RustDesk já instalado no computador do cliente, este configurador prepara os servidores, a senha permanente exclusiva e o serviço que inicia com o Windows.</p>
+      <p><strong>Pré-requisito:</strong> instale o <a href="https://rustdesk.com/download" target="_blank" rel="noreferrer">RustDesk</a> com seu serviço do Windows. O configurador verifica essa instalação antes de continuar.</p>
     </div>
     {!installation && <form className="installer-form" onSubmit={(event) => void generate(event)}>
       {loading ? <p role="status">Carregando clientes...</p> : organizations.length === 0
@@ -161,10 +162,12 @@ export function AutomaticSetup() {
       <h2>{pollError ? 'Verificação de conexão indisponível' : currentlyOnline ? 'Computador conectado ao painel' : expired ? 'Prazo de instalação encerrado' : 'Agora, execute no computador do cliente'}</h2>
       <p className="device-value"><strong>{installation.deviceDisplayName}</strong> · {organizations.find((org) => org.id === installation.organizationId)?.name}</p>
       <ol className="automatic-steps">
-        <li><CheckCircle2 aria-hidden="true" size={20} /><div><strong>Instalador preparado</strong><p>Abra XPoint-Instalar-Cliente.exe no computador do cliente e aceite a solicitação de administrador do Windows.</p></div></li>
-        <li><span aria-hidden="true">{status?.device ? '✓' : '2'}</span><div><strong>{status?.device ? 'Computador cadastrado' : 'Aguardando instalação'}</strong><p>O instalador faz a configuração. Mantenha o computador ligado e com internet até a mensagem de conclusão.</p></div></li>
+        <li><CheckCircle2 aria-hidden="true" size={20} /><div><strong>Instalador preparado</strong><p>Com o RustDesk já instalado, abra XPoint-Instalar-Cliente.exe no computador do cliente e aceite a solicitação de administrador do Windows.</p></div></li>
+        <li><span aria-hidden="true">{status?.device ? '✓' : '2'}</span><div><strong>{status?.device ? 'Computador cadastrado' : 'Aguardando instalação'}</strong><p>A janela mostra as seis etapas da configuração. Mantenha o computador ligado e com internet até a mensagem de conclusão.</p></div></li>
         <li><span aria-hidden="true">{currentlyOnline ? '✓' : '3'}</span><div><strong>{currentlyOnline ? 'Comunicação recebida' : 'Aguardando comunicação do computador'}</strong><p>{status?.status === 'offline' ? 'O cadastro foi recebido. Aguardando o serviço ficar online.' : 'Esta tela confirma automaticamente quando o serviço começa a se comunicar.'}</p></div></li>
       </ol>
+      <p>Se ocorrer um erro, abra o arquivo <strong>XPoint-Instalar-Cliente.log</strong> na mesma pasta do executável. Se você renomear o executável, o log terá o mesmo nome. Ele registra a etapa e o erro sem gravar senhas ou tokens.</p>
+      <p>Para retomar uma tentativa vencida, gere um novo pacote para o mesmo cliente e nome do computador. Cadastros já confirmados são preservados e aparecem em <Link href="/devices">Dispositivos</Link>. Uma tentativa cujo envio ficou incerto exige conferir o log antes de tentar novamente.</p>
       {pollError && <p role="alert">Não foi possível consultar o progresso. Tentando novamente; não reinstale enquanto isso.</p>}
       {expired && <p role="status">Se a instalação já começou, confira a mensagem no computador antes de gerar outro pacote. O prazo limita novos cadastros, sem desligar computadores já cadastrados.</p>}
       {status?.device && connectOrganizations.includes(installation.organizationId) && <ConnectDevice deviceId={status.device.id} enabled={currentlyOnline && status.device.enabled} service={api} />}

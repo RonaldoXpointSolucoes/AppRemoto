@@ -31,7 +31,7 @@ type windowMessage struct {
 
 // ShowProgress keeps a modeless status window responsive during installation.
 // Closing only hides progress; installation and its final notification continue.
-func ShowProgress() (func(), error) {
+func ShowProgress(report *Report) (func(), error) {
 	ready := make(chan error, 1)
 	done := make(chan struct{})
 	closed := make(chan struct{})
@@ -64,13 +64,13 @@ func ShowProgress() (func(), error) {
 		screenX, _, _ := user.NewProc("GetSystemMetrics").Call(0)
 		screenY, _, _ := user.NewProc("GetSystemMetrics").Call(1)
 		create := user.NewProc("CreateWindowExW")
-		hwnd, _, _ := create.Call(0, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(ptr("XPoint Remote - Instalando"))), 0x10C80000, (screenX-560)/2, (screenY-180)/2, 560, 180, 0, 0, instance, 0)
+		hwnd, _, _ := create.Call(0, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(ptr("XPoint Remote - Configurando RustDesk"))), 0x10C80000, (screenX-700)/2, (screenY-420)/2, 700, 420, 0, 0, instance, 0)
 		if hwnd == 0 {
 			ready <- errors.New("progress window unavailable")
 			return
 		}
 		defer destroy.Call(hwnd)
-		label, _, _ = create.Call(0, uintptr(unsafe.Pointer(ptr("STATIC"))), uintptr(unsafe.Pointer(ptr("Preparando o acesso remoto e confirmando a conexao com o painel.\r\n\r\nVoce pode fechar esta janela. A instalacao continuara em segundo plano e avisara ao terminar."))), 0x50000000, 22, 25, 510, 95, hwnd, 0, instance, 0)
+		label, _, _ = create.Call(0, uintptr(unsafe.Pointer(ptr("STATIC"))), uintptr(unsafe.Pointer(ptr(report.ProgressText()))), 0x50000000, 22, 20, 650, 345, hwnd, 0, instance, 0)
 		if label == 0 {
 			ready <- errors.New("progress text unavailable")
 			return
@@ -80,11 +80,16 @@ func ShowProgress() (func(), error) {
 		peek := user.NewProc("PeekMessageW")
 		translate := user.NewProc("TranslateMessage")
 		dispatch := user.NewProc("DispatchMessageW")
+		lastText := ""
 		for {
 			select {
 			case <-done:
 				return
 			default:
+			}
+			if text := report.ProgressText(); text != lastText {
+				user.NewProc("SetWindowTextW").Call(label, uintptr(unsafe.Pointer(ptr(text))))
+				lastText = text
 			}
 			var m windowMessage
 			for {

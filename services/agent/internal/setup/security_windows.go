@@ -136,7 +136,7 @@ func writeNew(path string, b []byte, readable ...bool) error {
 	return f.Sync()
 }
 func readPrivate(path string, max int64, readable ...bool) ([]byte, error) {
-	h, e := windows.CreateFile(ptr(path), windows.GENERIC_READ|windows.READ_CONTROL|windows.FILE_READ_ATTRIBUTES, windows.FILE_SHARE_READ, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	h, e := windows.CreateFile(ptr(path), windows.GENERIC_READ|windows.READ_CONTROL|windows.FILE_READ_ATTRIBUTES, windows.FILE_SHARE_READ|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
 	if e != nil {
 		return nil, e
 	}

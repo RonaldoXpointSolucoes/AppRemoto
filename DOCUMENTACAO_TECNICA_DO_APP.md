@@ -115,7 +115,7 @@ O Appwrite Console e o Coolify sao consoles administrativos, nao telas alternati
 - Painel Next.js com login, listagem responsiva, filtros, busca, paginacao, polling e logout com revogacao de sessao.
 - `/setup` prepara um EXE Windows para cliente/nome selecionados e acompanha o receipt/heartbeat daquela instalacao. O checklist manual de 6 etapas e 20 itens fica recolhido para suporte.
 - Endpoint de operador cria enrollment token de 256 bits, uso unico e validade de 30 minutos; apenas hash e auditoria persistidos. Status correlaciona receipt committed e heartbeat confirmado, sem busca pelo nome. Nao exige alteracao de schema.
-- Instalador Windows x64 em `services/agent/cmd/remote-setup`: RustDesk oficial com SHA256 fixado, configuracao automatica, servico LocalSystem no boot e estado DPAPI. Distribuicao base gerada no Docker do painel; personalizacao em memoria no navegador com token de uso unico. Nao e um instalador assinado.
+- Configurador Windows x64 1.0.1 em `services/agent/cmd/remote-setup`: exige RustDesk ja instalado com servico automatico LocalSystem, verifica o executavel confiavel, configura acesso e cadastra o servico XPoint com estado DPAPI. Nao baixa nem instala RustDesk. Janela com seis etapas e log com mesmo nome/pasta do EXE, sem argumentos, tokens ou senhas. Distribuicao base gerada no Docker do painel; personalizacao em memoria no navegador com token de uso unico. Nao e um instalador assinado.
 - Agente Windows manual com identidade estavel, DPAPI, discovery do RustDesk, configuracao de senha unattended, enrollment e heartbeat resiliente.
 - Protecoes de recuperacao para escritas de enrollment/heartbeat incertas.
 - MCP local `appwrite-xpoint` com perfis separados e credenciais DPAPI.
@@ -132,6 +132,7 @@ O Appwrite Console e o Coolify sao consoles administrativos, nao telas alternati
 ### Ainda nao implementado ou nao homologado
 
 - Homologacao do instalador automatico em um Windows cliente real, incluindo UAC, SYSTEM/DPAPI, reboot e acesso remoto.
+- A tentativa real da versao 1.0.0 foi reportada pelo usuario com janela sem progresso e codigo BUSY. A versao 1.0.1 diferencia erro de bloqueio, registra operacoes do servico e permite substituir uma tentativa comprovadamente anterior ao envio do enrollment; credenciais salvas preservam o cadastro original. Enrollment pendente sem credenciais continua exigindo reconciliacao. Testes automatizados nao substituem repetir a instalacao no cliente.
 - Prova de abertura de sessao real pelo botao Conectar. A entrega transitoria de senha ao RustDesk foi autorizada explicitamente pelo usuario; o endpoint exige canConnect, organizacao ativa, dispositivo online e heartbeat confirmado antes de consultar a credencial. Descriptografia/validacao e auditoria confirmada precedem a resposta no-store. O painel nao exibe nem armazena a URI e descarta respostas de sessoes encerradas.
 - Gestao de organizacoes, tecnicos e RBAC pelo painel.
 - Rotacao completa de credenciais e historico de sessoes.

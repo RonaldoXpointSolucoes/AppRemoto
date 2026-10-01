@@ -116,7 +116,7 @@ Quando terminar de usar o agente, **Ctrl+C** encerra o envio de presença. O age
       tasks: [
         "Combinei com a equipe como realizar a conexão remota autorizada.",
       ],
-      details: `A conexão em um clique pelo painel, a geração de tokens na página Setup e a instalação automática ainda estão planejadas. Para uma sessão agora, siga o procedimento autorizado da equipe no cliente RustDesk. Este guia não inicia nem libera uma conexão remota.
+      details: `O configurador no início desta página prepara o RustDesk já instalado e cadastra o computador. Após a comunicação ser confirmada, o técnico autorizado pode usar **Conectar** no painel para abrir o RustDesk. O navegador pode solicitar confirmação para abrir o aplicativo. Este checklist manual serve para conferência e suporte.
 
 Se precisar de suporte, informe a etapa, a mensagem de erro e o nome do dispositivo. **Nunca envie tokens, senhas ou arquivos de credenciais.**`.replace('{{API_URL}}', api),
     },

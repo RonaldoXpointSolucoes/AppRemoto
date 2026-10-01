@@ -1,34 +1,51 @@
 # Native setup distribution interface
 
-Version: 1.0.0. Build from services/agent:
+Version: 1.0.1. Windows x64. Build from services/agent:
 
 ```sh
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -H=windowsgui" -o xpoint-setup-base.exe ./cmd/remote-setup
 ```
 
-Distribution manifest produced by the panel build must contain version, base EXE URL and SHA256 of those exact bytes. Do not claim Authenticode signing: no certificate is included.
+The panel build publishes the versioned base EXE and a manifest with the exact byte length and SHA256. No Authenticode certificate is included. The downloaded personalized EXE includes a one-use enrollment token; protect/delete that download after confirmed installation.
 
-Append UTF-8 JSON with exactly schemaVersion (1), enrollmentId, enrollmentToken, expiresAt (RFC3339), organizationId, deviceDisplayName; uint32 little-endian JSON byte length; ASCII XPOINT_SETUP_V1. Maximum JSON 16384 bytes. Reject unknown or duplicate fields, control characters, invalid IDs and expired packages. No runtime destinations come from the package. Enrollment tokens are present in the downloaded EXE; protect/delete that download after confirmed installation.
+## Prerequisite and workflow
 
-Double-click elevates with normal UAC. Approved installation writes only dedicated Program Files/XPointRemoteAgent and ProgramData/XPointRemoteAgent directories, installs official RustDesk if missing and creates XPointRemoteAgent as automatic LocalSystem, dependent on RustDesk. Recovery restarts after 30,60,120 seconds. It copies only the base executable bytes; provisioning data is not retained in the runtime. SYSTEM enrolls and runs so CurrentUser DPAPI has a consistent account. Bootstrap uses machine DPAPI and SYSTEM/Administrators-only ACLs and is removed after successful enrollment/password configuration. The original enrollment recovery markers and credentials remain immutable.
+RustDesk must already be installed with its automatic LocalSystem Windows service, in Program Files/RustDesk or Program Files (x86)/RustDesk. Portable copies are insufficient. The configurator does not download, install, reinstall or remove RustDesk. It validates the service path and the trusted executable, starts the existing service if necessary, and fails before writing XPoint registration when the prerequisite is absent.
 
-A preexisting XPoint receipt must match enrollment ID, organization and display name. Different packages cannot move an existing identity to another customer. Uncertain enrollment is deliberately not replayed. Re-running the same unexpired package resumes installation; a different runtime base reports VERSION_CONFLICT instead of overwriting a running binary. Existing managed upgrades, tenant moves and expired-package recovery require explicit support reconciliation.
+Double-click requests normal UAC. The window shows six stages: package/permission, installed RustDesk, XPoint service, server/access settings, enrollment/password, confirmed heartbeat. Closing the window hides progress without cancelling a service-owned operation. RustDesk commands have bounded timeouts; service startup has a 30-second limit, setup monitoring eight minutes. A stopped/failed service is reported promptly rather than waiting the full monitoring timeout.
 
-Success requires a new API heartbeat later than the current setup invocation. Error dialogs contain only fixed stage codes. FIRST_HEARTBEAT can mean a startup/configuration/expired bootstrap or API problem; preserved state permits diagnosis, not destructive retries. No token/password is logged.
+The XPoint service is automatic LocalSystem, dependent on RustDesk, with recovery after 30/60/120 seconds. It uses dedicated Program Files/XPointRemoteAgent and ProgramData/XPointRemoteAgent directories. Only the base EXE is copied to the runtime, without provisioning data. SYSTEM enrolls and runs, keeping CurrentUser DPAPI consistent. Bootstrap uses machine DPAPI and SYSTEM/Administrators-only ACLs, and is removed after successful enrollment/password configuration. Runtime is readable/executable by Users; recovery state remains private.
 
-Public server options are set individually using the pinned upstream supported --option CLI and read back, preserving unrelated settings. The existing agent sets the unique permanent password via the supported --password CLI. **Exception accepted for compatibility:** this password appears briefly in a SYSTEM RustDesk process argument and privileged local administrators may inspect it. Enrollment/device tokens never enter arguments. The existing trusted runner protects the child process, clears argument references/output buffers, and redacts failures. Pinned 1.4.9 main IPC rejects foreign executable peers, so the installer does not bypass IPC authorization or import a full private config.
+## Adjacent log
 
-Official release 1.4.9 x86_64 SHA256 from GitHub asset digest:
-eaedeb0088e687bf46f7c46a9c6ea5493ce51f3134dfd6acbedb47b5b9136274
-https://api.github.com/repos/rustdesk/rustdesk/releases/tags/1.4.9
-CLI reference: https://github.com/rustdesk/rustdesk/blob/1.4.9/src/core_main.rs
-IPC identity policy: https://github.com/rustdesk/rustdesk/blob/1.4.9/src/ipc/auth.rs
+Executing `XPoint-Instalar-Cliente.exe` creates/appends `XPoint-Instalar-Cliente.log` in the same directory. Renamed executables get the corresponding basename, including the browser's numeric suffix. Each entry has timestamp, version, PID, stage, operation, result and sanitized diagnostic. It includes UAC denial, lock failure, each option write/readback, enrollment/password operations, service exits, heartbeat retries and the final result. No token, password, hostname, customer name, command arguments, stdout/stderr or raw error message is written. Win32 numbers, timeout classes and known API error codes are retained.
 
-Uninstall: run the installed remote-agent.exe --uninstall and approve UAC. This stops/deletes only the exact XPoint service after checking its binary path. It leaves RustDesk and recovery/identity files in place, intentionally. Deleting private state or removing RustDesk is not part of this command.
+The log writer pins non-reparse ancestor directories, refuses redirected or multiply-linked log files, appends instead of truncating, and flushes each event. If the adjacent file cannot be opened, installation does not begin: copy the executable to a writable local folder. A private bounded `setup-status.json` journal lets the SYSTEM service report progress; setup copies only matching fresh events into the adjacent log. Atomic status replacement permits readers to retain a stable old handle without blocking publication.
 
-Verification performed: offline Go tests for all agent packages, bounded overlay/expiry/duplicate/unknown fields, retry receipt isolation, public configuration readback and preserved unrelated options, configuration error redaction, existing password argv/output redaction; Windows GUI compilation. Not performed: executing installer, UAC/SCM acceptance, LocalSystem DPAPI roundtrip, reboot, real RustDesk session, production enrollment. Those require an authorized Windows test endpoint. Compilation and mocks do not establish endpoint acceptance.
+`BUSY` means another setup handle exists. `LOCK_ACCESS` means access denied, and `LOCK` another Win32 lock error; the numeric reason is logged. The mutex uses handle lifetime, not Go goroutine/thread ownership. The old 1.0.0 implementation classified every mutex error as BUSY and only exposed a static waiting message; the screenshot alone cannot identify which client condition triggered it.
 
+## Provisioning and recovery
 
-Review fixes (2026-10-01): the dedicated installer runner waits for the portable launcher's direct installer child, not just the launcher. It keeps the job bounded by context and cleans up any contained tray grandchild after installation; the existing password runner behavior is unchanged. Post-install confirmation requires the exact RustDesk SCM binary path, LocalSystem account, automatic startup and RUNNING state. Windows nonprivileged launcher/child/tray fixtures verify child completion and timeout cleanup without installing RustDesk.
+Append UTF-8 JSON with exactly schemaVersion (1), enrollmentId, enrollmentToken, expiresAt (RFC3339), organizationId, deviceDisplayName; uint32 little-endian byte length; ASCII XPOINT_SETUP_V1. Maximum JSON 16384 bytes. Unknown/duplicate fields, controls, invalid IDs and expired packages are rejected. Runtime destinations never come from the package.
 
-Setup explicitly sets and reads back approve-mode=password and verification-method=use-permanent-password, including when an existing installation previously required clicks or temporary passwords. A rejected policy yields RUSTDESK_UNATTENDED and preserves state. Only the dedicated public runtime directory and clean EXE grant Users read/execute; ProgramData, bootstrap, identities and secrets remain SYSTEM/Administrators-only. A responsive modeless progress window explains that closing it only hides progress: installation continues in the background and a final result is shown. Closing never announces or attempts cancellation of a service-owned enrollment. The setup wait remains bounded to eight minutes; no intermediate step is labelled complete without evidence. UI/SCM/installation acceptance remains unperformed on this host.
+A previous installation must match organization and display name before its service is stopped. After validating and stopping the exact managed service, inspect protected enrollment state:
+
+- No pending marker and no credentials: the agent has not started an API enrollment request. A fresh package for the same customer/name can replace the unused receipt/bootstrap, including an expired 1.0.0 attempt.
+- Pending marker plus saved credentials: preserve the original receipt, identity and credentials, update the runtime while stopped and resume. The new package's token is not used. The original device remains in Dispositivos; the new package's enrollment-status card does not impersonate that old receipt.
+- Pending marker without credentials, or inconsistent state: RECONCILIATION. Do not replay enrollment, delete state or generate a new device identity. Follow apps/api/ENROLLMENT.md.
+
+Runtime updates are written to a protected temporary file and atomically replace the stopped service executable. Unrelated service configurations are rejected. Success requires a new API heartbeat after the current invocation; a browser download is not success.
+
+## RustDesk configuration
+
+Set/read back only custom-rendezvous-server, relay-server, key, api-server (empty), approve-mode=password and verification-method=use-permanent-password. Unrelated settings remain unchanged. The agent sets a unique permanent password using the supported --password CLI. Compatibility exception: the password is briefly a SYSTEM child-process argument inspectable by privileged local administrators; no enrollment/device token enters arguments and no arguments/output are logged. CLI behavior was checked against upstream 1.4.9; older/custom builds that reject these options fail readback with the exact operation in the log.
+
+References: https://github.com/rustdesk/rustdesk/blob/1.4.9/src/core_main.rs and https://github.com/rustdesk/rustdesk/blob/1.4.9/src/ipc/auth.rs. The configurator does not bypass IPC authorization.
+
+Uninstall: the installed remote-agent.exe --uninstall requests UAC and removes only the exact XPoint service after checking its path. RustDesk and private identity/recovery data are preserved.
+
+## Verification and limits
+
+Windows Go tests cover actual named-mutex contention/release, same-directory append logs, hardlink refusal, diagnostic redaction, precise option timeout, service timeout rejection, receipt recovery/tenant isolation, fresh journal correlation and existing agent behavior. Go vet and GUI compilation are required. Browser tests cover prerequisite/log instructions, exact package overlay/integrity, receipt polling and permissions.
+
+The user's 1.0.0 client attempt failed. Tests and compilation of 1.0.1 do not establish real-client acceptance. Installation with UAC, SYSTEM/DPAPI, reboot and a real RustDesk session still require the client run. Publishing this correction is panel-only; API/schema/server configuration is unchanged.
