@@ -57,16 +57,32 @@ const (
 )
 
 type fakeAPI struct {
-	calls    int
-	request  api.EnrollRequest
-	response api.EnrollResponse
-	err      error
+	reconfigureCalls    int
+	reconfigureRequest  api.EnrollRequest
+	reconfigureToken    string
+	reconfigureError    error
+	reconfigureDeviceID string
+	calls               int
+	request             api.EnrollRequest
+	response            api.EnrollResponse
+	err                 error
 }
 
 func (client *fakeAPI) Enroll(_ context.Context, request api.EnrollRequest) (api.EnrollResponse, error) {
 	client.calls++
 	client.request = request
 	return client.response, client.err
+}
+
+func (client *fakeAPI) Reconfigure(_ context.Context, token []byte, request api.EnrollRequest) (api.ReconfigureResponse, error) {
+	client.reconfigureCalls++
+	client.reconfigureRequest = request
+	client.reconfigureToken = string(token)
+	id := client.reconfigureDeviceID
+	if id == "" {
+		id = client.response.DeviceID
+	}
+	return api.ReconfigureResponse{DeviceID: id, Reconfigured: true}, client.reconfigureError
 }
 
 type fakeRustDesk struct {
@@ -182,7 +198,7 @@ func TestExistingEnrollmentNeverCallsEnrollOrRotatesCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	credentialState := append([]byte(nil), artifacts.values[credentialsArtifact]...)
-	second, err := service.Run(context.Background(), []byte("another-enrollment-token-00000000"), validMetadata())
+	second, err := service.Run(context.Background(), nil, validMetadata())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,6 +392,18 @@ func TestServiceRoundTripUsesRealCurrentUserDPAPI(t *testing.T) {
 	if apiClient.calls != 1 || !second.Existing || string(first.DeviceToken) != string(second.DeviceToken) {
 		t.Fatalf("credentials were not reused: calls=%d first=%#v second=%#v", apiClient.calls, first, second)
 	}
+	metadata := validMetadata()
+	metadata.DisplayName = "Renamed after real DPAPI recovery"
+	third, err := service.Run(context.Background(), []byte("new-package-token-0000000000000000"), metadata)
+	if err != nil {
+		t.Fatalf("reinstall: %v", err)
+	}
+	if third.DeviceID != first.DeviceID || string(third.DeviceToken) != string(first.DeviceToken) || apiClient.reconfigureCalls != 1 || apiClient.reconfigureRequest.DisplayName != metadata.DisplayName {
+		t.Fatal("DPAPI reinstall changed identity or failed to rename")
+	}
+	clear(first.DeviceToken)
+	clear(second.DeviceToken)
+	clear(third.DeviceToken)
 	data, err := os.ReadFile(filepath.Join(directory, credentialsArtifact))
 	if err != nil {
 		t.Fatal(err)
@@ -384,6 +412,64 @@ func TestServiceRoundTripUsesRealCurrentUserDPAPI(t *testing.T) {
 	for _, plaintext := range []string{testEnrollmentToken, testDeviceToken, testPassword} {
 		if strings.Contains(string(data), plaintext) {
 			t.Fatalf("DPAPI artifact contains plaintext %q", plaintext)
+		}
+	}
+}
+
+func TestNewInstallerRenamesExistingDeviceWithoutRotatingCredentials(t *testing.T) {
+	client, rd, artifacts := successfulAPI(), &fakeRustDesk{}, newFakeArtifacts()
+	service := newTestService(client, rd, artifacts, fakeProtector{})
+	first, err := service.Run(context.Background(), []byte(testEnrollmentToken), validMetadata())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(first.DeviceToken)
+	before := append([]byte(nil), artifacts.values[credentialsArtifact]...)
+	metadata := validMetadata()
+	metadata.DisplayName = "New name, old name forgotten"
+	second, err := service.Run(context.Background(), []byte("new-package-token-0000000000000000"), metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(second.DeviceToken)
+	if client.calls != 1 || client.reconfigureCalls != 1 || rd.passwordCalls != 1 || !second.Existing {
+		t.Fatal("reinstallation rotated or recreated enrollment")
+	}
+	if client.reconfigureRequest.DisplayName != metadata.DisplayName || client.reconfigureRequest.DeviceUUID != client.request.DeviceUUID || client.reconfigureToken != string(first.DeviceToken) {
+		t.Fatal("incorrect reconfiguration identity or label")
+	}
+	if second.DeviceID != first.DeviceID || !bytes.Equal(before, artifacts.values[credentialsArtifact]) {
+		t.Fatal("saved credentials changed")
+	}
+	// A normal restart has no provisioning token and never changes the label.
+	_, err = service.Run(context.Background(), nil, metadata)
+	if err != nil || client.reconfigureCalls != 1 {
+		t.Fatal("restart reconfigured device")
+	}
+}
+
+func TestReconfigurationFailurePreservesRecoveryAndPreciseDiagnostic(t *testing.T) {
+	for _, wrongID := range []bool{false, true} {
+		client, rd, artifacts := successfulAPI(), &fakeRustDesk{}, newFakeArtifacts()
+		service := newTestService(client, rd, artifacts, fakeProtector{})
+		first, err := service.Run(context.Background(), []byte(testEnrollmentToken), validMetadata())
+		if err != nil {
+			t.Fatal(err)
+		}
+		clear(first.DeviceToken)
+		before := append([]byte(nil), artifacts.values[credentialsArtifact]...)
+		if wrongID {
+			client.reconfigureDeviceID = "other-device"
+		} else {
+			client.reconfigureError = &api.Error{Code: api.ErrorEnrollmentDenied}
+		}
+		result, err := service.Run(context.Background(), []byte(testEnrollmentToken), validMetadata())
+		var stage *StageError
+		if !errors.As(err, &stage) || stage.Operation != "DEVICE_RECONFIGURE_REQUEST" || len(result.DeviceToken) != 0 {
+			t.Fatal("failure was not isolated")
+		}
+		if !bytes.Equal(before, artifacts.values[credentialsArtifact]) || client.calls != 1 {
+			t.Fatal("recovery state changed")
 		}
 	}
 }

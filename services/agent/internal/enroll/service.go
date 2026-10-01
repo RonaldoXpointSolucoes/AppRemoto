@@ -192,7 +192,40 @@ func (service *Service) Run(ctx context.Context, enrollmentToken []byte, metadat
 		if configuredExists && configured.Version != 1 {
 			return Result{}, ErrManualReconciliation
 		}
-		return service.resume(ctx, identity.DeviceUUID, credentials, configuredExists)
+		result, err := service.resume(ctx, identity.DeviceUUID, credentials, configuredExists)
+		if err != nil || len(enrollmentToken) == 0 {
+			return result, err
+		}
+		// A fresh installer may change the label, while the saved machine identity
+		// and credentials remain authoritative. Acknowledgement contains no secrets.
+		err = service.stage("DEVICE_RECONFIGURE_REQUEST", func() error {
+			client, ok := service.api.(interface {
+				Reconfigure(context.Context, []byte, api.EnrollRequest) (api.ReconfigureResponse, error)
+			})
+			if !ok {
+				return errors.New("reconfiguration unavailable")
+			}
+			info, err := service.rustdesk.Discover(ctx)
+			if err != nil {
+				return err
+			}
+			response, err := client.Reconfigure(ctx, result.DeviceToken, api.EnrollRequest{
+				EnrollmentToken: string(enrollmentToken), DeviceUUID: identity.DeviceUUID,
+				DisplayName: metadata.DisplayName, Hostname: metadata.Hostname, OperatingSystem: metadata.OperatingSystem,
+				OSVersion: metadata.OSVersion, AgentVersion: metadata.AgentVersion, RustDeskID: info.ID, RustDeskVersion: info.Version})
+			if err != nil {
+				return err
+			}
+			if response.DeviceID != result.DeviceID || !response.Reconfigured {
+				return errors.New("reconfiguration identity mismatch")
+			}
+			return nil
+		})
+		if err != nil {
+			clear(result.DeviceToken)
+			return Result{}, err
+		}
+		return result, nil
 	}
 	if configuredExists || pendingExists {
 		return Result{}, ErrManualReconciliation

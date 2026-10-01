@@ -115,7 +115,7 @@ O Appwrite Console e o Coolify sao consoles administrativos, nao telas alternati
 - Painel Next.js com login, listagem responsiva, filtros, busca, paginacao, polling e logout com revogacao de sessao.
 - `/setup` prepara um EXE Windows para cliente/nome selecionados e acompanha o receipt/heartbeat daquela instalacao. O checklist manual de 6 etapas e 20 itens fica recolhido para suporte.
 - Endpoint de operador cria enrollment token de 256 bits, uso unico e validade de 30 minutos; apenas hash e auditoria persistidos. Status correlaciona receipt committed e heartbeat confirmado, sem busca pelo nome. Nao exige alteracao de schema.
-- Configurador Windows x64 1.0.2 em `services/agent/cmd/remote-setup`: exige RustDesk ja instalado com servico automatico LocalSystem, verifica o executavel confiavel, configura acesso e cadastra o servico XPoint com estado DPAPI. Nao baixa nem instala RustDesk. Janela com seis etapas e log com mesmo nome/pasta do EXE, sem argumentos, tokens ou senhas. Distribuicao base gerada no Docker do painel; personalizacao em memoria no navegador com token de uso unico. Nao e um instalador assinado.
+- Configurador Windows x64 1.0.3 em `services/agent/cmd/remote-setup`: exige RustDesk ja instalado com servico automatico LocalSystem, verifica o executavel confiavel, configura acesso e cadastra o servico XPoint com estado DPAPI. Nao baixa nem instala RustDesk. Janela com seis etapas e log com mesmo nome/pasta do EXE, sem argumentos, tokens ou senhas. Distribuicao base gerada no Docker do painel; personalizacao em memoria no navegador com token de uso unico. Nao e um instalador assinado.
 - Agente Windows manual com identidade estavel, DPAPI, discovery do RustDesk, configuracao de senha unattended, enrollment e heartbeat resiliente.
 - Protecoes de recuperacao para escritas de enrollment/heartbeat incertas.
 - MCP local `appwrite-xpoint` com perfis separados e credenciais DPAPI.
@@ -309,7 +309,7 @@ Se houver falha depois de consumir token, preserve artefatos e receipts. Nao apa
 - Estado desejado atual, calculado diretamente de `schema.ts`: 11 colecoes, 69 atributos e 27 indices, totalizando 108 recursos incluindo o database.
 - O runbook de provisionamento ainda contem referencias historicas a 104 recursos, anteriores a `heartbeat_guards`. Nao remova recursos para fazer a producao coincidir com essa contagem antiga; atualize o runbook quando o proximo card de schema for executado.
 - IDs relacionais sao strings de ate 36 caracteres; Appwrite nao cria foreign keys. A API garante integridade e tenant isolation.
-- Nao use documentos completos em respostas. Cada repositorio usa `Query.select` para projeções minimas.
+- Nao use documentos completos em respostas. Cada repositorio usa `Query.select` para projeÃ§Ãµes minimas.
 
 ### 8.1 `organizations`
 
@@ -606,7 +606,7 @@ pnpm --filter @appremoto/appwrite provision plan
 pnpm --filter @appremoto/appwrite provision apply
 ```
 
-O apply cria faltantes, aguarda readiness e faz bootstrap; ele nao apaga/recria recursos incompatíveis. Conflito exige diagnostico e migracao revisada.
+O apply cria faltantes, aguarda readiness e faz bootstrap; ele nao apaga/recria recursos incompatÃ­veis. Conflito exige diagnostico e migracao revisada.
 
 Leia `docs/operations/appwrite-provisioning.md` antes de qualquer apply.
 
@@ -768,3 +768,9 @@ Posteriormente, neste chat, o usuario solicitou diretamente automatizar os seis 
 ## 19. Principio de manutencao
 
 O objetivo nao e aumentar o numero de arquivos, tabelas ou servicos. O objetivo e preservar um sistema pequeno, explicavel e confiavel. Primeiro estenda o modelo existente; somente adicione uma nova estrutura quando houver uma responsabilidade realmente nova, uma consulta impossivel de atender com o schema atual e um plano claro de migracao, seguranca, operacao e rollback.
+
+### Reinstalacao com novo nome (1.0.3)
+
+O nome exibido e editavel e nao identifica a instalacao. Um pacote novo para a mesma organizacao pode substituir uma tentativa ainda nao enviada ou atualizar um dispositivo com credenciais salvas, sem duplicar UUID/dispositivo e sem trocar senha. O recibo e o bootstrap locais passam a usar o pacote novo para o painel acompanhar essa tentativa. O log separa INSTALLATION_CUSTOMER_CHECK e NEW_PACKAGE_STATE_WRITE de PROTECTED_DIRECTORIES.
+
+`POST /v1/agent/reconfigure` exige pacote valido e credencial atual da maquina. Compartilha filas e limite de requisicoes com enrollment, conserva organizacao/UUID/credenciais e retorna somente confirmacao. A atualizacao usa o bloqueio persistente de heartbeat; uma escrita indeterminada preserva esse bloqueio para reconciliacao. O status exige heartbeat posterior ao `$updatedAt` do recibo confirmado. Nao ha colecao ou atributo novo. Publicar API pela sequencia stop/zero/start e depois painel; aceite real do cliente segue distinto dos testes automatizados.

@@ -79,7 +79,7 @@ test('status correlates exact committed receipt and requires a heartbeat after e
   f.records.set('enrollment_tokens/enrollment', { organization_id: 'org', expires_at: '2026-10-01T12:30:00.000Z', max_uses: 1, use_count: 1 });
   assert.deepEqual(await f.service.status(technician, 'enrollment'), { status: 'waiting', expiresAt: '2026-10-01T12:30:00.000Z', device: null });
   const receipt = { organization_id: 'org', enrollment_token_id: 'enrollment', device_id: 'device',
-    device_uuid: f.device.device_uuid, status: 'committed', token_use_consumed: true, recovery_frozen: false, expected_use_count: 1 };
+    device_uuid: f.device.device_uuid, status: 'committed', committed_at: now.toISOString(), token_use_consumed: true, recovery_frozen: false, expected_use_count: 1 };
   f.receipts([receipt]);
   assert.equal((await f.service.status(technician, 'enrollment')).status, 'online');
   f.device.enabled = false;
@@ -95,7 +95,7 @@ test('pending heartbeat guards cannot be presented as a confirmed installation',
   const f = fixture(); f.pendingHeartbeat();
   f.records.set('enrollment_tokens/enrollment', { organization_id: 'org', expires_at: '2026-10-01T12:30:00.000Z', max_uses: 1, use_count: 1 });
   f.receipts([{ organization_id: 'org', enrollment_token_id: 'enrollment', device_id: 'device', device_uuid: f.device.device_uuid,
-    status: 'committed', token_use_consumed: true, recovery_frozen: false, expected_use_count: 1 }]);
+    status: 'committed', committed_at: now.toISOString(), token_use_consumed: true, recovery_frozen: false, expected_use_count: 1 }]);
   assert.equal((await f.service.status(technician, 'enrollment')).status, 'waiting');
 });
 
@@ -152,4 +152,21 @@ test('pending heartbeat and revoked tokens deny connect before credential access
     assert.ok(!f.reads.includes('device_credentials'));
     assert.equal(f.events.length, 0);
   }
+});
+
+test('reinstallation status waits for communication newer than the new receipt', async () => {
+  const f = fixture();
+  f.records.set('enrollment_tokens/new-package', { organization_id: 'org', expires_at: '2026-10-01T12:30:00.000Z', max_uses: 1, use_count: 1 });
+  const receipt = { organization_id: 'org', enrollment_token_id: 'new-package', device_id: 'device',
+    device_uuid: f.device.device_uuid, status: 'committed', committed_at: now.toISOString(), token_use_consumed: true, recovery_frozen: false, expected_use_count: 1 };
+  f.receipts([receipt]);
+  f.device.display_name = 'New name';
+  f.device.last_seen_at = new Date(now.getTime() - 1000).toISOString();
+  f.records.get('device_tokens/device')!.last_used_at = f.device.last_seen_at;
+  assert.equal((await f.service.status(technician, 'new-package')).status, 'waiting');
+  f.device.last_seen_at = now.toISOString();
+  f.records.get('device_tokens/device')!.last_used_at = f.device.last_seen_at;
+  const response = await f.service.status(technician, 'new-package');
+  assert.equal(response.status, 'online'); assert.equal(response.device!.displayName, 'New name');
+  assert.equal(response.device!.id, 'device');
 });

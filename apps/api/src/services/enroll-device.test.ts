@@ -23,8 +23,8 @@ function fixture() {
   let fail = ''; let after = false; let restoreFail = '';
   const repo: EnrollmentRepository = {
     findToken: async (hash) => {
-      const current = rows.get('enrollment_tokens/enroll-1') as EnrollmentToken;
-      return current.token_hash === hash ? structuredClone(current) : null;
+      const current = [...rows].find(([path, data]) => path.startsWith('enrollment_tokens/') && data.token_hash === hash)?.[1];
+      return current ? structuredClone(current) as EnrollmentToken : null;
     },
     organizationActive: async () => true,
     pendingReceipts: async (tokenId) => [...rows].filter(([path, data]) => path.startsWith('enrollment_receipts/') &&
@@ -57,8 +57,13 @@ function fixture() {
     },
     remove: async (id) => { calls.push('restore:audit'); if (restoreFail === 'audit') throw new Error('private'); events.delete(id); },
   };
-  const enroll = createEnrollmentService({ repository: repo, audit, encryptionKey: key, keyVersion: 2, now: () => now });
-  return { rows, token, events, calls, repo, enroll,
+  let guarded = false;
+  const guard = {
+    beginHeartbeatGuard: async () => { if (guarded) return false; guarded = true; return true; },
+    endHeartbeatGuard: async () => { guarded = false; return true; },
+  };
+  const enroll = createEnrollmentService({ repository: repo, reconfigurationGuard: guard, audit, encryptionKey: key, keyVersion: 2, now: () => now });
+  return { rows, token, events, calls, repo, enroll, guard, isGuarded: () => guarded,
     failAt: (point: string, post = false) => { fail = point; after = post; },
     failRestore: (point: string) => { restoreFail = point; } };
 }
@@ -277,3 +282,86 @@ for (const point of ['enrollment_receipts', 'devices', 'device_tokens', 'device_
     assert.ok(!JSON.stringify([...f.events]).includes('private'));
   });
 }
+
+async function reinstallationFixture() {
+  const f = fixture(); const first = await f.enroll(request, '127.0.0.1');
+  const replacement = { ...f.token, id: 'enroll-new', token_hash: hashToken('new-package-token-0000000000000000') };
+  f.rows.set('enrollment_tokens/enroll-new', replacement);
+  const update = { ...request, enrollmentToken: 'new-package-token-0000000000000000',
+    displayName: 'New display name', currentDeviceToken: first.deviceToken };
+  f.calls.length = 0;
+  return { ...f, first, replacement, update };
+}
+
+test('fresh package renames the existing machine and links its receipt without returning or rotating secrets', async () => {
+  const f = await reinstallationFixture();
+  const credential = structuredClone(f.rows.get(`device_credentials/${f.first.deviceId}`));
+  const deviceToken = structuredClone(f.rows.get(`device_tokens/${f.first.deviceId}`));
+  const result = await f.enroll.reconfigure!(f.update, '127.0.0.1');
+  assert.deepEqual(result, { deviceId: f.first.deviceId, reconfigured: true });
+  assert.equal(f.rows.get(`devices/${f.first.deviceId}`)!.display_name, f.update.displayName);
+  assert.equal([...f.rows.keys()].filter((path) => path.startsWith('devices/')).length, 1);
+  assert.deepEqual(f.rows.get(`device_credentials/${f.first.deviceId}`), credential);
+  assert.deepEqual(f.rows.get(`device_tokens/${f.first.deviceId}`), deviceToken);
+  assert.equal(f.rows.get('enrollment_tokens/enroll-new')!.use_count, 1);
+  const receipt = f.rows.get(`enrollment_receipts/${enrollmentId('receipt', 'enroll-new', request.deviceUuid)}`)!;
+  assert.equal(receipt.status, 'committed'); assert.equal(receipt.device_id, f.first.deviceId);
+  assert.equal(receipt.token_use_consumed, true); assert.equal(f.isGuarded(), false);
+  assert.ok(!f.calls.some((call) => /write:device_(credentials|tokens)/.test(call)));
+  const persisted = JSON.stringify([...f.rows, ...f.events]);
+  for (const value of [f.update.enrollmentToken, f.first.deviceToken, f.first.rustdeskPassword]) assert.ok(!persisted.includes(value));
+});
+
+test('lost reconfiguration acknowledgement and simultaneous retries consume exactly one use', async () => {
+  const f = await reinstallationFixture();
+  const responses = await Promise.all([f.enroll.reconfigure!(f.update, '127.0.0.1'), f.enroll.reconfigure!(f.update, '127.0.0.1')]);
+  assert.deepEqual(responses[0], responses[1]);
+  assert.equal(f.rows.get('enrollment_tokens/enroll-new')!.use_count, 1);
+  f.calls.length = 0;
+  await f.enroll.reconfigure!(f.update, '127.0.0.1');
+  assert.equal(f.calls.length, 0);
+  await assert.rejects(f.enroll(f.update, '127.0.0.1'), EnrollmentError);
+});
+
+for (const failure of ['proof', 'expired', 'organization', 'uuid', 'revoked-device', 'revoked-package', 'disabled-device', 'missing-proof'] as const) {
+  test(`reconfiguration rejects ${failure} without changing device or credential`, async () => {
+    const f = await reinstallationFixture(); const input = { ...f.update };
+    if (failure === 'proof') input.currentDeviceToken = 'x'.repeat(43);
+    if (failure === 'expired') f.replacement.expires_at = '2020-01-01T00:00:00Z';
+    if (failure === 'organization') f.replacement.organization_id = 'other-organization';
+    if (failure === 'uuid') input.deviceUuid = '00000000-0000-4000-8000-000000000002';
+    if (failure === 'revoked-device') f.rows.get(`device_tokens/${f.first.deviceId}`)!.revoked_at = now.toISOString();
+    if (failure === 'revoked-package') f.replacement.revoked_at = now.toISOString();
+    if (failure === 'disabled-device') f.rows.get(`devices/${f.first.deviceId}`)!.enabled = false;
+    if (failure === 'missing-proof') input.currentDeviceToken = '';
+    const before = structuredClone([...f.rows]);
+    await assert.rejects(f.enroll.reconfigure!(input, '127.0.0.1'), EnrollmentError);
+    assert.deepEqual([...f.rows], before); assert.equal(f.isGuarded(), false);
+  });
+}
+
+for (const point of ['enrollment_receipts', 'enrollment_tokens', 'devices', 'audit', 'receipt_commit']) {
+  test(`reconfiguration resumes a definite ${point} failure without duplicate or secret changes`, async () => {
+    const f = await reinstallationFixture(); f.failAt(point);
+    await assert.rejects(f.enroll.reconfigure!(f.update, '127.0.0.1'), EnrollmentError);
+    assert.equal(f.isGuarded(), false); f.failAt('');
+    await f.enroll.reconfigure!(f.update, '127.0.0.1');
+    assert.equal(f.rows.get('enrollment_tokens/enroll-new')!.use_count, 1);
+    assert.equal(f.rows.get(`devices/${f.first.deviceId}`)!.display_name, f.update.displayName);
+    assert.equal(f.rows.get(`device_tokens/${f.first.deviceId}`)!.token_hash, hashToken(f.first.deviceToken));
+  });
+}
+
+test('reconfiguration shares heartbeat exclusion and leaves an uncertain write guarded', async () => {
+  const { IndeterminateEnrollmentWrite } = await import('../repositories/enrollment.ts');
+  const f = await reinstallationFixture();
+  await f.guard.beginHeartbeatGuard();
+  await assert.rejects(f.enroll.reconfigure!(f.update, '127.0.0.1'), EnrollmentError);
+  assert.equal(f.calls.filter((call) => call.startsWith('write:')).length, 0);
+  await f.guard.endHeartbeatGuard();
+  const write = f.repo.write;
+  f.repo.write = async (kind, ...args) => { if (kind === 'devices') throw new IndeterminateEnrollmentWrite(); await write(kind, ...args); };
+  await assert.rejects(f.enroll.reconfigure!(f.update, '127.0.0.1'), EnrollmentError);
+  assert.equal(f.isGuarded(), true); assert.equal(f.rows.get('enrollment_tokens/enroll-new')!.active, false);
+  await assert.rejects(f.enroll.reconfigure!(f.update, '127.0.0.1'), EnrollmentError);
+});

@@ -1,6 +1,6 @@
 # Native setup distribution interface
 
-Version: 1.0.2. Windows x64. Build from services/agent:
+Version: 1.0.3. Windows x64. Build from services/agent:
 
 ```sh
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -H=windowsgui" -o xpoint-setup-base.exe ./cmd/remote-setup
@@ -28,10 +28,10 @@ The log writer pins non-reparse ancestor directories, refuses redirected or mult
 
 Append UTF-8 JSON with exactly schemaVersion (1), enrollmentId, enrollmentToken, expiresAt (RFC3339), organizationId, deviceDisplayName; uint32 little-endian byte length; ASCII XPOINT_SETUP_V1. Maximum JSON 16384 bytes. Unknown/duplicate fields, controls, invalid IDs and expired packages are rejected. Runtime destinations never come from the package.
 
-A previous installation must match organization and display name before its service is stopped. After validating and stopping the exact managed service, inspect protected enrollment state:
+A previous installation must match the organization before its service is stopped. The display name may change. After validating and stopping the exact managed service, inspect protected enrollment state:
 
-- No pending marker and no credentials: the agent has not started an API enrollment request. A fresh package for the same customer/name can replace the unused receipt/bootstrap, including an expired 1.0.0 attempt.
-- Pending marker plus saved credentials: preserve the original receipt, identity and credentials, update the runtime while stopped and resume. The new package's token is not used. The original device remains in Dispositivos; the new package's enrollment-status card does not impersonate that old receipt.
+- No pending marker and no credentials: the agent has not started an API enrollment request. A fresh package for the same customer (any display name) can replace the unused receipt/bootstrap, including an expired 1.0.0 attempt.
+- Pending marker plus saved credentials: preserve identity and credentials, write the new package receipt/bootstrap, update the runtime while stopped and resume. Reconfiguration authenticates the new package, updates the same device name and creates its linked receipt so the panel tracks the current installation.
 - Pending marker without credentials, or inconsistent state: RECONCILIATION. Do not replay enrollment, delete state or generate a new device identity. Follow apps/api/ENROLLMENT.md.
 
 Runtime updates are written to a protected temporary file and atomically replace the stopped service executable. Unrelated service configurations are rejected. Success requires a new API heartbeat after the current invocation; a browser download is not success.
@@ -48,4 +48,10 @@ Uninstall: the installed remote-agent.exe --uninstall requests UAC and removes o
 
 Windows Go tests cover actual named-mutex contention/release, same-directory append logs, hardlink refusal, diagnostic redaction, precise option timeout, service timeout rejection, receipt recovery/tenant isolation, fresh journal correlation and existing agent behavior. Go vet and GUI compilation are required. Browser tests cover prerequisite/log instructions, exact package overlay/integrity, receipt polling and permissions.
 
-The user's 1.0.1 log stops at ENROLLMENT_STATE before discovery/API. A native SYSTEM regression reproduced an identity creation failure when the token defaults ownership to Administrators. Version 1.0.2 sets the actual service user as owner at creation, with a protected explicit ACL; it does not relax existing-file validation. Both SYSTEM default-owner variants now pass identity creation, real DPAPI persistence and resume with a synthetic API/RustDesk. A separate SYSTEM-to-administrator test covers recovery metadata inspection without reading credential bytes or changing their ACLs. Backup-read permission is scoped to a duplicated thread token and reverted immediately. These tests do not establish acceptance on the user's client, a reboot or a real RustDesk session. Publish the panel only; API/schema/server configuration is unchanged.
+The user's 1.0.1 log stops at ENROLLMENT_STATE before discovery/API. A native SYSTEM regression reproduced an identity creation failure when the token defaults ownership to Administrators. Version 1.0.2 sets the actual service user as owner at creation, with a protected explicit ACL; it does not relax existing-file validation. Both SYSTEM default-owner variants now pass identity creation, real DPAPI persistence and resume with a synthetic API/RustDesk. A separate SYSTEM-to-administrator test covers recovery metadata inspection without reading credential bytes or changing their ACLs. Backup-read permission is scoped to a duplicated thread token and reverted immediately. These tests do not establish acceptance on the user's client, a reboot or a real RustDesk session. That 1.0.2 release required only the panel. The 1.0.3 flow below also changes the API.
+
+## Reinstallation with a new name (1.0.3)
+
+The display name is never an installation key. Download a fresh package for the same customer and choose any new name. Unsent attempts accept the new receipt/bootstrap. Saved credentials resume the same device, then authenticate `/v1/agent/reconfigure` with both the fresh package and saved device credential. The API changes only the label and links a new receipt; it returns no password/token. The local receipt always follows the new package, so its panel checklist observes the same operation. Ordinary service restarts without a bootstrap never rename anything. Rejected updates retain protected credentials for a fresh package; they never report success or remove the bootstrap. Different organizations and ambiguous initial requests without saved credentials still fail closed.
+
+The adjacent log identifies INSTALLATION_CUSTOMER_CHECK, NEW_PACKAGE_STATE_WRITE and DEVICE_RECONFIGURE_REQUEST. Only a fresh successful heartbeat completes setup. Version 1.0.3 requires the accompanying API deployment before the panel executable is published.

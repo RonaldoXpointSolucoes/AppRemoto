@@ -14,6 +14,16 @@ export const EnrollRequestSchema = z.object({
   rustdeskVersion: version,
 }).strict();
 
+export const ReconfigureRequestSchema = EnrollRequestSchema.extend({
+  currentDeviceToken: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+}).strict();
+export const ReconfigureResponseSchema = z.object({
+  deviceId: z.string().min(1).max(36),
+  reconfigured: z.literal(true),
+}).strict();
+export type ReconfigureRequest = z.infer<typeof ReconfigureRequestSchema>;
+export type ReconfigureResponse = z.infer<typeof ReconfigureResponseSchema>;
+
 export const EnrollResponseSchema = z.object({
   deviceId: z.string().min(1).max(36),
   deviceToken: z.string().min(32).max(512),

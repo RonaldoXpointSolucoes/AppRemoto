@@ -54,7 +54,7 @@ func TestConfigureFailsClosedAndRedacts(t *testing.T) {
 		}
 	}
 }
-func TestRetryCannotChangeCustomerOrEnrollment(t *testing.T) {
+func TestBootstrapMustMatchCurrentReceipt(t *testing.T) {
 	r := receipt{"enroll", "org", "pc"}
 	p := Provisioning{EnrollmentID: "enroll", OrganizationID: "org", DeviceDisplayName: "pc"}
 	if !sameInstall(r, p) {

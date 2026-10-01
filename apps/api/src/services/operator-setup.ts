@@ -81,7 +81,11 @@ export function createOperatorSetupService(deps: Dependencies): OperatorSetupSer
       const device = await repo.snapshot('devices', receipt.device_id);
       if (!device || device.organization_id !== organization.id || device.device_uuid !== receipt.device_uuid) throw unavailable();
       const projected = view(receipt.device_id, device, organization.name);
-      if (!await heartbeatConfirmed(receipt.device_id, device)) return waiting();
+      // A reinstall must receive a heartbeat after its new receipt was committed.
+      // Appwrite supplies this timestamp; no schema field or client clock is needed.
+      if (typeof receipt.committed_at !== 'string' || !Number.isFinite(Date.parse(receipt.committed_at)) ||
+          typeof device.last_seen_at !== 'string' || Date.parse(device.last_seen_at) < Date.parse(receipt.committed_at) ||
+          !await heartbeatConfirmed(receipt.device_id, device)) return waiting();
       return EnrollmentStatusResponseSchema.parse({ status: projected.status.toLowerCase(), expiresAt: token.expires_at, device: projected });
     },
     async connect(technician, deviceId, sourceIp) {

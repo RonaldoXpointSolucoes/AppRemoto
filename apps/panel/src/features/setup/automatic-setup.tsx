@@ -136,7 +136,7 @@ export function AutomaticSetup() {
   const currentlyOnline = status?.status === 'online' && !pollError;
   return <section className="automatic-setup" aria-labelledby="automatic-setup-title">
     <div className="setup-introduction">
-      <p className="eyebrow">Configurador 1.0.2 · Windows 64 bits</p>
+      <p className="eyebrow">Configurador 1.0.3 · Windows 64 bits</p>
       <h1 id="automatic-setup-title">Configure. O computador aparece aqui.</h1>
       <p>Com o RustDesk já instalado no computador do cliente, este configurador prepara os servidores, a senha permanente exclusiva e o serviço que inicia com o Windows.</p>
       <p><strong>Pré-requisito:</strong> instale o <a href="https://rustdesk.com/download" target="_blank" rel="noreferrer">RustDesk</a> com seu serviço do Windows. O configurador verifica essa instalação antes de continuar.</p>
@@ -149,7 +149,7 @@ export function AutomaticSetup() {
             <option value="">Selecione o cliente</option>
             {organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
           </select></div>
-          <div className="installer-field"><label htmlFor="installer-device-name">Nome do computador</label><input id="installer-device-name" value={deviceDisplayName} onChange={(event) => setDeviceDisplayName(event.target.value)} maxLength={128} placeholder="Ex.: Recepção" required disabled={busy} autoComplete="off" /></div>
+          <div className="installer-field"><label htmlFor="installer-device-name">Nome do computador</label><input id="installer-device-name" value={deviceDisplayName} onChange={(event) => setDeviceDisplayName(event.target.value)} maxLength={128} placeholder="Ex.: Recepção" required disabled={busy} autoComplete="off" aria-describedby="installer-name-help" /><p id="installer-name-help" className="field-hint">Escolha o nome que deseja ver no painel. Ao reinstalar no mesmo cliente, você pode informar um novo nome.</p></div>
           <button className="primary-button guide-link" type="submit" disabled={busy || !organizationId || !deviceDisplayName.trim()}>
             {busy ? <LoaderCircle size={18} aria-hidden="true" /> : <Download size={18} aria-hidden="true" />}
             {busy ? 'Preparando instalador...' : 'Baixar instalador do cliente'}
@@ -167,12 +167,12 @@ export function AutomaticSetup() {
         <li><span aria-hidden="true">{currentlyOnline ? '✓' : '3'}</span><div><strong>{currentlyOnline ? 'Comunicação recebida' : 'Aguardando comunicação do computador'}</strong><p>{status?.status === 'offline' ? 'O cadastro foi recebido. Aguardando o serviço ficar online.' : 'Esta tela confirma automaticamente quando o serviço começa a se comunicar.'}</p></div></li>
       </ol>
       <p>Se ocorrer um erro, abra o arquivo <strong>XPoint-Instalar-Cliente.log</strong> na mesma pasta do executável. Se você renomear o executável, o log terá o mesmo nome. Ele registra a etapa e o erro sem gravar senhas ou tokens.</p>
-      <p>Para retomar uma tentativa vencida, gere um novo pacote para o mesmo cliente e nome do computador. Cadastros já confirmados são preservados e aparecem em <Link href="/devices">Dispositivos</Link>. Uma tentativa cujo envio ficou incerto exige conferir o log antes de tentar novamente.</p>
+      <p>Para instalar novamente, baixe um novo pacote para o mesmo cliente e escolha o nome desejado. Você não precisa lembrar o nome anterior. O computador já cadastrado é atualizado sem duplicar o registro em <Link href="/devices">Dispositivos</Link>.</p>
       {pollError && <p role="alert">Não foi possível consultar o progresso. Tentando novamente; não reinstale enquanto isso.</p>}
       {expired && <p role="status">Se a instalação já começou, confira a mensagem no computador antes de gerar outro pacote. O prazo limita novos cadastros, sem desligar computadores já cadastrados.</p>}
       {status?.device && connectOrganizations.includes(installation.organizationId) && <ConnectDevice deviceId={status.device.id} enabled={currentlyOnline && status.device.enabled} service={api} />}
       {status?.device && <Link className="command-button guide-link" href="/devices">Ver todos os dispositivos</Link>}
-      <button className="command-button" type="button" onClick={() => { setInstallation(null); setStatus(null); setDeviceDisplayName(''); }}>Preparar outro computador</button>
+      <button className="command-button" type="button" onClick={() => { setInstallation(null); setStatus(null); setDeviceDisplayName(''); }}>Gerar novo instalador</button>
     </div>}
     <aside className="technician-note"><strong>No computador do técnico</strong><p>Instale o <a href="https://rustdesk.com/download" target="_blank" rel="noreferrer">RustDesk</a> uma vez. O botão Conectar do painel abrirá esse aplicativo. O navegador pode pedir confirmação para abri-lo.</p></aside>
   </section>;
