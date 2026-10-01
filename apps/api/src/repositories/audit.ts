@@ -28,8 +28,30 @@ export interface HeartbeatAudit {
   recoveryRequired: boolean;
 }
 
-export function createAuditRepository(databases: Databases): AuditRepository & HeartbeatAuditRepository {
+export interface OperatorAudit {
+  organizationId: string;
+  actorId: string;
+  deviceId?: string;
+  enrollmentId?: string;
+  sourceIp: string;
+  action: 'enrollment.create' | 'device.connect';
+}
+export interface OperatorAuditRepository {
+  recordOperator(id: string, event: OperatorAudit): Promise<void>;
+}
+
+export function createAuditRepository(databases: Databases): AuditRepository & HeartbeatAuditRepository & OperatorAuditRepository {
   return {
+    async recordOperator(id, event) {
+      const data = { organization_id: event.organizationId, actor_type: 'technician', actor_id: event.actorId,
+        device_id: event.deviceId ?? null, action: event.action, result: 'success', source_ip: event.sourceIp,
+        metadata_json: JSON.stringify(event.enrollmentId ? { enrollmentId: event.enrollmentId } : {}) };
+      try {
+        await databases.createDocument('remote_management', 'audit_logs', id, data, []);
+        const current = await databases.getDocument('remote_management', 'audit_logs', id);
+        if (!Object.entries(data).every(([key, value]) => current[key] === value)) throw new Error();
+      } catch { throw new Error('Operator audit unavailable'); }
+    },
     async recordHeartbeat(id, event) {
       const data = { organization_id: event.organizationId, actor_type: 'device', actor_id: event.deviceId,
         device_id: event.deviceId, action: 'device.heartbeat', result: event.result,

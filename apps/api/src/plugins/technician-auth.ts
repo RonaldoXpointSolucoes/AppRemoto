@@ -5,6 +5,7 @@ import type { TechnicianRepository } from '../repositories/technicians.ts';
 import type { DeviceRepository } from '../repositories/devices.ts';
 import type { EnrollDevice } from '../services/enroll-device.ts';
 import type { RecordHeartbeat } from '../services/record-heartbeat.ts';
+import type { OperatorSetupService } from '../services/operator-setup.ts';
 
 export interface JwtVerifier {
   verify(jwt: string): Promise<{ userId: string } | null>;
@@ -20,6 +21,7 @@ export interface TechnicianServices {
   now?: () => Date;
   enrollDevice?: EnrollDevice;
   recordHeartbeat?: RecordHeartbeat;
+  operatorSetup?: OperatorSetupService;
 }
 
 export interface OrganizationAuthorization {

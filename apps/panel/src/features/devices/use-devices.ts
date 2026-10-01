@@ -4,10 +4,12 @@ import type { DeviceListQuery } from '@appremoto/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 
-import { ApiClientError, type DevicePage, type OrganizationView } from '../../lib/api';
+import { ApiClientError, type DevicePage, type OrganizationView, type TechnicianView } from '../../lib/api';
 import { sessionEpoch } from '../auth/session-cache';
 
 export interface DeviceDirectoryService {
+  getMe?(): Promise<TechnicianView>;
+  connectDevice?(deviceId: string): Promise<{ launchUri: string }>;
   getOrganizations(): Promise<OrganizationView[]>;
   getDevices(query: DeviceListQuery): Promise<DevicePage>;
   expireSession(): Promise<void>;
@@ -66,6 +68,12 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
+  const profile = useQuery({
+    queryKey: ['session', epoch, 'connection-permissions'],
+    queryFn: () => service.getMe!(),
+    enabled: Boolean(service.getMe), retry: false,
+    staleTime: 0, refetchOnWindowFocus: false, refetchOnReconnect: false,
+  });
   const canLoadDevices = organizations.isSuccess && organizations.data.length > 0;
   const devices = useQuery({
     queryKey: ['session', epoch, 'devices', filterKey, activePagination.snapshot, cursor ?? null],
@@ -94,6 +102,7 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
     refreshLock.current = true;
     setPagination((current) => firstPage(filterKey, current.snapshot + 1));
     void organizations.refetch();
+    if (service.getMe) void profile.refetch();
   }
 
   const refreshRef = useRef(refresh);
@@ -110,6 +119,8 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
     : devices.isError && page ? devices.error : null;
 
   return {
+    canConnect: (organizationId: string) => !profile.isError && !profile.isFetching && (profile.data?.globalRole === 'super_admin'
+      || Boolean(profile.data?.authorization.some((permission) => permission.organizationId === organizationId && permission.canConnect))),
     organizations,
     devices,
     rows: page?.devices ?? [],

@@ -6,6 +6,7 @@ import { registerOrganizationsRoute } from './routes/organizations.ts';
 import { registerDevicesRoute } from './routes/devices.ts';
 import { registerAgentEnrollRoute } from './routes/agent-enroll.ts';
 import { registerAgentHeartbeatRoute } from './routes/agent-heartbeat.ts';
+import { registerSetupRoutes } from './routes/setup.ts';
 
 export function buildApp(options: FastifyServerOptions = {}, services?: TechnicianServices,
   allowedOrigins?: string[]): FastifyInstance {
@@ -38,6 +39,7 @@ export function buildApp(options: FastifyServerOptions = {}, services?: Technici
 
   if (services) {
     const authenticate = registerTechnicianAuth(app, services);
+    if (services.operatorSetup) registerSetupRoutes(app, authenticate, services.operatorSetup);
     registerMeRoute(app, authenticate);
     registerOrganizationsRoute(app, authenticate);
     if (services.devices && services.cursorSecret) {

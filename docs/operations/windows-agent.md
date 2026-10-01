@@ -2,7 +2,13 @@
 
 ## Current status
 
-The Windows agent is implemented as a manually executed binary. It supports first enrollment, DPAPI-protected credentials, trusted RustDesk discovery/password configuration, and resilient heartbeats. A Windows service, installer, auto-update, and code signing are outside this milestone.
+Two entry points now exist. The original manually executed agent supports enrollment, DPAPI-protected credentials, trusted RustDesk discovery/password configuration and resilient heartbeats. The new `cmd/remote-setup` implements an automatic installer and LocalSystem service; see [the distribution and recovery interface](../../services/agent/SETUP.md). Real client endpoint acceptance is still required; consult release evidence before claiming UAC/SCM/reboot/session validation. Auto-update and code signing remain outside this delivery.
+
+Build the panel artifact from the repository root with `node apps/panel/scripts/build-installer.mjs` (Go 1.26 on PATH or `GO_BINARY` pointing to it). The Docker build performs the Windows cross-compilation automatically and writes its SHA256 manifest. The base executable alone cannot enroll: the authenticated panel adds a bounded, single-use provisioning overlay after operator authorization. No server secret or master key is embedded.
+
+The personalized download authorizes one registration into the selected customer for 30 minutes. Keep it private and delete it after confirmed installation. The service uses its own SYSTEM-owned state; do not copy manual CurrentUser DPAPI state into it. Retrying a different customer's package is rejected. Preserve uncertain enrollment state and use the existing recovery guide.
+
+The instructions below describe the original manual entry point for support.
 
 The local build produced during acceptance is intentionally outside Git:
 
@@ -75,5 +81,5 @@ The following integration work is intentionally deferred to keep this delivery f
 - Install RustDesk on the host and complete a real production enrollment.
 - Provision a second Windows client or VM and prove direct and relayed RustDesk sessions.
 - Exercise the 90-second offline transition and network recovery against production.
-- Package the agent as a signed installer or Windows service.
-- Add an operator-facing enrollment-token workflow; current token provisioning remains an authorized Appwrite operation.
+- Sign the installer with a real certificate and validate automatic service installation/reboot on an authorized endpoint.
+- Publish and exercise the new operator-facing enrollment-token workflow after its complete connection flow is authorized and reviewed.

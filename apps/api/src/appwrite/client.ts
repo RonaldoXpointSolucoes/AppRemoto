@@ -10,6 +10,8 @@ import { createEnrollmentRepository } from '../repositories/enrollment.ts';
 import { createAuditRepository } from '../repositories/audit.ts';
 import { createEnrollmentService } from '../services/enroll-device.ts';
 import { createHeartbeatService } from '../services/record-heartbeat.ts';
+import { createOperatorSetupService } from '../services/operator-setup.ts';
+import { createSetupReceiptRepository } from '../repositories/operator-setup.ts';
 
 export function createAppwriteServices(config: ApiConfig): TechnicianServices {
   const dataClient = new Client().setEndpoint(config.appwriteEndpoint)
@@ -39,6 +41,9 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
     enrollDevice: createEnrollmentService({ repository: enrollmentRepository,
       audit: auditRepository, encryptionKey: config.masterEncryptionKey, keyVersion: config.encryptionKeyVersion }),
     recordHeartbeat: createHeartbeatService({ repository: enrollmentRepository, audit: auditRepository }),
+    operatorSetup: createOperatorSetupService({ repository: enrollmentRepository,
+      receipts: createSetupReceiptRepository(databases), audit: auditRepository,
+      encryptionKey: config.masterEncryptionKey, keyVersion: config.encryptionKeyVersion }),
     cursorSecret: Buffer.from(hkdfSync('sha256', config.masterEncryptionKey, Buffer.alloc(0),
       'appremoto-device-list-cursor-v1', 32)),
   };

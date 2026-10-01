@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { CreateEnrollmentTokenRequestSchema, CreateEnrollmentTokenResponseSchema, EnrollmentStatusResponseSchema,
+  ConnectDeviceResponseSchema } from './setup.ts';
 import { test } from 'node:test';
 import {
   ApiErrorSchema, DeviceListQuerySchema, DeviceViewSchema,
@@ -91,4 +93,22 @@ test('API errors expose only bounded public fields and stable codes', () => {
     { code: 'NOT_FOUND', message: 'Device not found', requestId: '' },
     { code: 'NOT_FOUND', message: 'Device not found', details: { tokenHash: 'secret' } },
   ]) assert.equal(ApiErrorSchema.safeParse(invalid).success, false, JSON.stringify(invalid));
+});
+test('setup contracts reject unknown fields, unsafe names and non-RustDesk launch destinations', () => {
+  assert.deepEqual(CreateEnrollmentTokenRequestSchema.parse({ organizationId: 'org', deviceDisplayName: ' PC ' }),
+    { organizationId: 'org', deviceDisplayName: 'PC' });
+  for (const invalid of [{ organizationId: 'other/path', deviceDisplayName: 'PC' },
+    { organizationId: 'org', deviceDisplayName: ' ' }, { organizationId: 'org', deviceDisplayName: 'PC\nother' },
+    { organizationId: 'org', deviceDisplayName: 'PC', maxUses: 5 }]) {
+    assert.equal(CreateEnrollmentTokenRequestSchema.safeParse(invalid).success, false);
+  }
+  const issued = { enrollmentId: 'enrollment', enrollmentToken: 'a'.repeat(43), expiresAt: '2026-10-01T12:30:00Z' };
+  assert.equal(CreateEnrollmentTokenResponseSchema.safeParse(issued).success, true);
+  assert.equal(CreateEnrollmentTokenResponseSchema.safeParse({ ...issued, password: 'unexpected' }).success, false);
+  assert.equal(EnrollmentStatusResponseSchema.safeParse({ status: 'waiting', expiresAt: issued.expiresAt, device: null }).success, true);
+  assert.equal(EnrollmentStatusResponseSchema.safeParse({ status: 'online', expiresAt: issued.expiresAt, device: null }).success, false);
+  for (const launchUri of ['https://evil.example', 'javascript:alert(1)', 'rustdesk://password/change',
+    'rustdesk://connect/123456789@evil.example?key=abc&password=test']) {
+    assert.equal(ConnectDeviceResponseSchema.safeParse({ launchUri }).success, false);
+  }
 });

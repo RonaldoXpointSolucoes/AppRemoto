@@ -42,6 +42,29 @@ function renderDirectory(directoryService: DeviceDirectoryService, onSessionExpi
 }
 
 describe('DeviceDirectory', () => {
+  it('offers connection only for current organization permissions and keeps offline devices disabled', async () => {
+    renderDirectory(service({
+      getMe: vi.fn().mockResolvedValue({ id: 'tech-1', displayName: 'Tech', globalRole: null,
+        authorization: [{ organizationId: 'org-a', canView: true, canConnect: true, canManageDevices: false, role: 'technician' }] }),
+      connectDevice: vi.fn().mockRejectedValue(new Error('private failure')),
+      getDevices: vi.fn().mockResolvedValue({ devices: [device({ status: 'OFFLINE' }), device({ id: 'device-2', organizationId: 'org-b' })], nextCursor: null }),
+    }));
+    const table = await screen.findByRole('table');
+    await waitFor(() => expect(within(table).getAllByRole('button', { name: 'Conectar' })).toHaveLength(1));
+    expect(within(table).getByRole('button', { name: 'Conectar' })).toBeDisabled();
+  });
+
+  it('sends only the chosen device id and presents safe connection failures', async () => {
+    const connectDevice = vi.fn().mockRejectedValue(new Error('private credential provider failure'));
+    renderDirectory(service({ connectDevice, getMe: vi.fn().mockResolvedValue({ id: 'tech-1', displayName: 'Tech', globalRole: 'super_admin', authorization: [] }) }));
+    const table = await screen.findByRole('table');
+    await userEvent.click(await within(table).findByRole('button', { name: 'Conectar' }));
+    expect(connectDevice).toHaveBeenCalledWith('device-1');
+    await waitFor(() => expect(within(table).getByRole('status')).toHaveTextContent('Não foi possível iniciar o acesso.'));
+    expect(document.body).not.toHaveTextContent('private credential provider failure');
+    expect(document.querySelector('a[href^="rustdesk:"]')).toBeNull();
+  });
+
   it('awaits one remote logout before clearing the session cache and redirecting', async () => {
     let finishLogout!: () => void;
     const expireSession = vi.fn(() => new Promise<void>((resolve) => { finishLogout = resolve; }));

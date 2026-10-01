@@ -104,14 +104,16 @@ O Appwrite Console e o Coolify sao consoles administrativos, nao telas alternati
 
 ## 4. Estado funcional atual
 
-### Implementado e versionado
+### Implementado no codigo
 
 - Monorepo TypeScript/Go com contratos compartilhados.
 - Schema Appwrite idempotente e protecoes de alvo exato.
 - Bootstrap de administrador tecnico com artefato DPAPI local.
 - API Fastify com autenticacao de tecnico, listagem de organizacoes/dispositivos, enrollment e heartbeat.
 - Painel Next.js com login, listagem responsiva, filtros, busca, paginacao, polling e logout com revogacao de sessao.
-- Guia manual autenticado em `/setup`, acessivel por `Como Configurar?`, com preparo do RustDesk, enrollment e heartbeat. Checklist de 6 etapas e 20 itens, progresso por etapa e geral, persistencia na aba ate sair/trocar/expirar sessao e reinicio para outro dispositivo. Marcacoes nao executam nem validam comandos. A URL dos comandos vem da configuracao publica do painel; a homologacao Windows real continua sendo uma verificacao separada.
+- `/setup` prepara um EXE Windows para cliente/nome selecionados e acompanha o receipt/heartbeat daquela instalacao. O checklist manual de 6 etapas e 20 itens fica recolhido para suporte.
+- Endpoint de operador cria enrollment token de 256 bits, uso unico e validade de 30 minutos; apenas hash e auditoria persistidos. Status correlaciona receipt committed e heartbeat confirmado, sem busca pelo nome. Nao exige alteracao de schema.
+- Instalador Windows x64 em `services/agent/cmd/remote-setup`: RustDesk oficial com SHA256 fixado, configuracao automatica, servico LocalSystem no boot e estado DPAPI. Distribuicao base gerada no Docker do painel; personalizacao em memoria no navegador com token de uso unico. Nao e um instalador assinado.
 - Agente Windows manual com identidade estavel, DPAPI, discovery do RustDesk, configuracao de senha unattended, enrollment e heartbeat resiliente.
 - Protecoes de recuperacao para escritas de enrollment/heartbeat incertas.
 - MCP local `appwrite-xpoint` com perfis separados e credenciais DPAPI.
@@ -127,11 +129,8 @@ O Appwrite Console e o Coolify sao consoles administrativos, nao telas alternati
 
 ### Ainda nao implementado ou nao homologado
 
-- Wizard operacional de `Setup` (o guia manual ja existe; geracao de token e instalacao automatica continuam pendentes).
-- Endpoint de operador para criar enrollment token.
-- Instalador ou servico Windows automatico para o agente.
-- Configuracao automatica completa do servidor RustDesk no cliente.
-- Botao de conexao RustDesk em um clique.
+- Homologacao do instalador automatico em um Windows cliente real, incluindo UAC, SYSTEM/DPAPI, reboot e acesso remoto.
+- Prova de abertura de sessao real pelo botao Conectar. A entrega transitoria de senha ao RustDesk foi autorizada explicitamente pelo usuario; o endpoint exige canConnect, organizacao ativa, dispositivo online e heartbeat confirmado antes de consultar a credencial. Descriptografia/validacao e auditoria confirmada precedem a resposta no-store. O painel nao exibe nem armazena a URI e descarta respostas de sessoes encerradas.
 - Gestao de organizacoes, tecnicos e RBAC pelo painel.
 - Rotacao completa de credenciais e historico de sessoes.
 - Prova final com dois computadores/VMs, conexao direta e relay.
@@ -229,7 +228,7 @@ Responsavel por:
 - aplicar senha unattended no RustDesk;
 - enviar heartbeat com jitter e backoff.
 
-Estado atual: executavel manual. Ele nao e servico Windows e nao inicia sozinho apos boot.
+O comando manual continua disponivel e nao inicia sozinho apos boot. O novo `cmd/remote-setup` registra o servico automatico `XPointRemoteAgent` como LocalSystem, com estado proprio em ProgramData; esse fluxo ainda requer homologacao em endpoint real. Consulte `services/agent/SETUP.md` para overlay, build, ACL, recuperacao e limites de compatibilidade.
 
 ### RustDesk Server OSS
 
@@ -518,8 +517,9 @@ technician + organization + device ---- connection_sessions (planejado)
 | `GET /v1/devices` | JWT tecnico | Implementado | Busca, filtro e paginacao segura |
 | `POST /v1/agent/enroll` | Enrollment token no body | Implementado | Primeiro cadastro e credenciais |
 | `POST /v1/agent/heartbeat` | Device Bearer token | Implementado | Presenca e versoes |
-| `POST /v1/enrollment-tokens` | JWT + manage devices | Planejado | Criacao pelo Setup |
-| `POST /v1/devices/:id/connect` | JWT + connect | Planejado | Abertura RustDesk auditada |
+| `POST /v1/enrollment-tokens` | JWT + manage devices | Implementado | Token de uso unico e 30 minutos |
+| `GET /v1/enrollment-tokens/:enrollmentId/status` | JWT + manage devices | Implementado | Receipt committed e heartbeat da instalacao |
+| `POST /v1/devices/:deviceId/connect` | JWT + connect | Implementado | Entrega transitoria ao RustDesk apos autorizacao e auditoria |
 
 Todos os payloads usam schemas estritos e rejeitam campos desconhecidos. Erros externos sao genericos; detalhes sensiveis nao devem aparecer em logs.
 
@@ -679,6 +679,8 @@ Em 1 de outubro de 2026 foram criados 10 cards em `Em Analise`, nesta sequencia:
 
 Eles permanecem fora de desenvolvimento ate liberacao manual. Outra IA deve reler o card ao iniciar, pois o card contem dependencias e criterios mais detalhados.
 
+Posteriormente, neste chat, o usuario solicitou diretamente automatizar os seis passos com instalador e acesso em um clique. A implementacao local descrita acima segue esse pedido direto; nao houve movimentacao desses cards de Analise.
+
 ## 15. Regras de seguranca que nao podem ser flexibilizadas
 
 - Nunca registrar ou exibir API keys, master key, senhas, JWTs, cookies, enrollment/device/connect tokens ou chave privada RustDesk.
@@ -743,6 +745,7 @@ Eles permanecem fora de desenvolvimento ate liberacao manual. Outra IA deve rele
 | Rotas ativas | `apps/api/src/app.ts` |
 | Desenho do MVP | `docs/superpowers/specs/2026-09-29-remote-platform-mvp-design.md` |
 | Desenho futuro do Setup | `docs/superpowers/specs/2026-10-01-technician-setup-design.md` |
+| Instalacao automatica Windows | `services/agent/SETUP.md` e `docs/superpowers/specs/2026-10-01-automatic-installer-design.md` |
 | Fila futura | Quadro App Acesso Remoto |
 
 ## 18. Checklist antes de entregar uma alteracao

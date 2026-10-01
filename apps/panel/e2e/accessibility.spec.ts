@@ -92,6 +92,6 @@ test('device controls have accessible names, keyboard focus, touch-sized targets
   const table = page.getByRole('table', { name: 'Dispositivos remotos' });
   await expect(table.getByText('ONLINE', { exact: true })).toBeVisible();
   await expect(table.getByText('OFFLINE', { exact: true })).toBeVisible();
-  await expect(table.getByRole('columnheader')).toHaveCount(7);
+  await expect(table.getByRole('columnheader')).toHaveCount(8);
   await page.screenshot({ path: testInfo.outputPath('devices-desktop-1440.png'), fullPage: true });
 });

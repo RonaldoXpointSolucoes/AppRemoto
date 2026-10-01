@@ -14,6 +14,8 @@ function createDeviceDirectoryService(): DeviceDirectoryService {
   const { account } = createAppwriteSessionClient(config);
   const api = createApiClient({ baseUrl: config.apiBaseUrl, getJwt: async () => (await account.createJWT()).jwt });
   return {
+    getMe: api.getMe,
+    connectDevice: api.connectDevice,
     getOrganizations: api.getOrganizations,
     getDevices: api.getDevices,
     expireSession: async () => { await account.deleteSession('current'); },
