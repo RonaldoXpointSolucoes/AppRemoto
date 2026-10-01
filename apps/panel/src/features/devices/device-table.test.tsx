@@ -59,7 +59,7 @@ describe('DeviceDirectory', () => {
     renderDirectory(service({ connectDevice, getMe: vi.fn().mockResolvedValue({ id: 'tech-1', displayName: 'Tech', globalRole: 'super_admin', authorization: [] }) }));
     const table = await screen.findByRole('table');
     await userEvent.click(await within(table).findByRole('button', { name: 'Conectar' }));
-    expect(connectDevice).toHaveBeenCalledWith('device-1');
+    expect(connectDevice).toHaveBeenCalledWith('device-1', { mode: 'automatic', attemptId: expect.any(String) });
     await waitFor(() => expect(within(table).getByRole('status')).toHaveTextContent('Não foi possível iniciar o acesso.'));
     expect(document.body).not.toHaveTextContent('private credential provider failure');
     expect(document.querySelector('a[href^="rustdesk:"]')).toBeNull();

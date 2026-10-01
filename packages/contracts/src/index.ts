@@ -1,5 +1,6 @@
 import { z } from 'zod';
 export * from './setup.ts';
+export * from './device-tools.ts';
 
 export { DeviceListQuerySchema, DeviceViewSchema } from './devices.ts';
 export type { DeviceListQuery, DeviceView } from './devices.ts';

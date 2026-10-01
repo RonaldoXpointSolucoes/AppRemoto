@@ -1,4 +1,5 @@
-import { AppwriteException, type Databases } from 'node-appwrite';
+import { AppwriteException, Query, type Databases } from 'node-appwrite';
+import { ConnectionHistoryEventSchema, type ConnectionHistoryEvent } from '@appremoto/contracts';
 import { redactLogData } from '../security/redaction.ts';
 
 export interface EnrollmentAudit {
@@ -34,20 +35,69 @@ export interface OperatorAudit {
   deviceId?: string;
   enrollmentId?: string;
   sourceIp: string;
-  action: 'enrollment.create' | 'device.connect';
+  action: 'enrollment.create' | 'device.connect' | 'device.connect.event' | 'device.update.requested' | 'device.update';
+  result?: 'success' | 'failure';
+  connection?: Omit<ConnectionHistoryEvent, 'id' | 'at'>;
+}
+export interface ConnectionAuditRecord {
+  organizationId: string; actorId: string; deviceId: string; action: 'device.connect' | 'device.connect.event';
+  result: 'success' | 'failure'; event: ConnectionHistoryEvent;
 }
 export interface OperatorAuditRepository {
   recordOperator(id: string, event: OperatorAudit): Promise<void>;
+  connectionAttempt?(id: string): Promise<ConnectionAuditRecord | null>;
+  connectionHistory?(deviceId: string): Promise<ConnectionAuditRecord[]>;
+}
+
+function projectConnection(document: Record<string, unknown>): ConnectionAuditRecord | null {
+  try {
+    if (document.actor_type !== 'technician' || !['device.connect', 'device.connect.event'].includes(String(document.action)) ||
+        typeof document.organization_id !== 'string' || typeof document.actor_id !== 'string' ||
+        typeof document.device_id !== 'string' || !['success', 'failure'].includes(String(document.result)) ||
+        typeof document.metadata_json !== 'string') return null;
+    const metadata: unknown = JSON.parse(document.metadata_json);
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+    const event = ConnectionHistoryEventSchema.parse({ ...metadata, id: document.$id, at: document.$createdAt });
+    return { organizationId: document.organization_id, actorId: document.actor_id, deviceId: document.device_id,
+      action: document.action as ConnectionAuditRecord['action'], result: document.result as ConnectionAuditRecord['result'], event };
+  } catch { return null; }
 }
 
 export function createAuditRepository(databases: Databases): AuditRepository & HeartbeatAuditRepository & OperatorAuditRepository {
   return {
-    async recordOperator(id, event) {
-      const data = { organization_id: event.organizationId, actor_type: 'technician', actor_id: event.actorId,
-        device_id: event.deviceId ?? null, action: event.action, result: 'success', source_ip: event.sourceIp,
-        metadata_json: JSON.stringify(event.enrollmentId ? { enrollmentId: event.enrollmentId } : {}) };
+    async connectionAttempt(id) {
+      try { return projectConnection(await databases.getDocument('remote_management', 'audit_logs', id)); }
+      catch (error) {
+        if (error instanceof AppwriteException && error.code === 404) return null;
+        throw new Error('Operator audit unavailable');
+      }
+    },
+    async connectionHistory(deviceId) {
       try {
-        await databases.createDocument('remote_management', 'audit_logs', id, data, []);
+        const page = await databases.listDocuments('remote_management', 'audit_logs', [
+          Query.equal('device_id', deviceId), Query.equal('action', ['device.connect', 'device.connect.event']),
+          Query.orderDesc('$createdAt'), Query.limit(30), Query.select(['$id', '$createdAt', 'organization_id',
+            'actor_type', 'actor_id', 'device_id', 'action', 'result', 'metadata_json']),
+        ]);
+        return page.documents.map(projectConnection).filter((value): value is ConnectionAuditRecord => value !== null);
+      } catch { throw new Error('Operator audit unavailable'); }
+    },
+    async recordOperator(id, event) {
+      // Reconstruct a fixed allowlist; caller objects and free-form error strings never become audit metadata.
+      const connection = event.connection && ConnectionHistoryEventSchema.parse({ ...event.connection,
+        id, at: new Date(0).toISOString() });
+      const metadata = connection ? { attemptId: connection.attemptId, mode: connection.mode,
+        stage: connection.stage, code: connection.code, source: connection.source } :
+        event.enrollmentId ? { enrollmentId: event.enrollmentId } : {};
+      const data = { organization_id: event.organizationId, actor_type: 'technician', actor_id: event.actorId,
+        device_id: event.deviceId ?? null, action: event.action, result: event.result ?? 'success', source_ip: event.sourceIp,
+        metadata_json: JSON.stringify(metadata) };
+      try {
+        try { await databases.createDocument('remote_management', 'audit_logs', id, data, []); }
+        catch (error) {
+          // Only bounded, deterministic follow-up events are idempotent. A launch ID cannot release a URI twice.
+          if (!(error instanceof AppwriteException) || error.code !== 409 || event.action !== 'device.connect.event') throw error;
+        }
         const current = await databases.getDocument('remote_management', 'audit_logs', id);
         if (!Object.entries(data).every(([key, value]) => current[key] === value)) throw new Error();
       } catch { throw new Error('Operator audit unavailable'); }

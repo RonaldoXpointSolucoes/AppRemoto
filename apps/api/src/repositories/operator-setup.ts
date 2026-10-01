@@ -1,13 +1,37 @@
 import { AppwriteException, Query, type Databases } from 'node-appwrite';
 import type { EnrollmentData } from './enrollment.ts';
+import { IndeterminateEnrollmentWrite, RejectedEnrollmentWrite } from './enrollment.ts';
 
 export interface SetupReceiptRepository {
   committedReceipts(enrollmentId: string): Promise<EnrollmentData[]>;
   heartbeatPending(deviceId: string): Promise<boolean>;
+  updateDeviceFields?(deviceId: string, fields: { displayName: string; notes: string }): Promise<void>;
 }
 
 export function createSetupReceiptRepository(databases: Databases): SetupReceiptRepository {
   return {
+    async updateDeviceFields(deviceId, fields) {
+      let acknowledged = false;
+      try {
+        // Editing descriptive fields must never replay a snapshot of agent, identity, status or credential fields.
+        await databases.updateDocument('remote_management', 'devices', deviceId,
+          { display_name: fields.displayName, notes: fields.notes });
+        acknowledged = true;
+      } catch (error) {
+        if (error instanceof AppwriteException && error.code >= 400 && error.code < 500 && ![408, 429].includes(error.code)) {
+          throw new RejectedEnrollmentWrite();
+        }
+      }
+      try {
+        const current = await databases.getDocument('remote_management', 'devices', deviceId,
+          [Query.select(['display_name', 'notes'])]);
+        if (current.display_name !== fields.displayName || current.notes !== fields.notes) throw new Error();
+      } catch {
+        // A lost response is resolved only by exact readback. Preserve the guard when a late PATCH remains possible.
+        if (!acknowledged) throw new IndeterminateEnrollmentWrite();
+        throw new Error('Device update unavailable');
+      }
+    },
     async committedReceipts(enrollmentId) {
       try {
         const page = await databases.listDocuments('remote_management', 'enrollment_receipts', [

@@ -82,6 +82,7 @@ empty collection permissions and document security disabled (server-only access)
 | `last_seen_at` | datetime | - | no | - |
 | `last_ip` | string | 45 | no | - |
 | `enabled` | boolean | - | yes | - |
+| `notes` | string | 2048 | no | - |
 
 | Index ID | Type | Attributes |
 | --- | --- | --- |

@@ -71,7 +71,7 @@ export const REMOTE_MANAGEMENT_SCHEMA: RemoteManagementSchema = deepFreeze({
       string('hostname', 255), string('rustdesk_id', 64), string('operating_system', 64),
       string('os_version', 128), string('agent_version', 64, false),
       string('rustdesk_version', 64, false), datetime('last_seen_at', false),
-      string('last_ip', 45, false), boolean('enabled'),
+      string('last_ip', 45, false), boolean('enabled'), string('notes', 2048, false),
     ], [
       unique('organization_id', 'device_uuid'), key('organization_id'), key('last_seen_at'),
       key('display_name'), key('hostname'), key('rustdesk_id'),

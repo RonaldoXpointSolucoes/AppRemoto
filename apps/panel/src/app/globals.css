@@ -259,3 +259,41 @@ button, a, input, select { outline-offset: 3px; }
   .device-record dt { color: var(--text-muted); font-size: 0.75rem; font-weight: 700; }
   .device-record dd { min-width: 0; margin: 0; text-align: right; }
 }
+
+/* Device tools keep the directory compact; diagnostics open in one focused dialog. */
+.device-actions, .device-connect { display: grid; gap: 8px; }
+.device-connect > p { margin: 2px 0; font-size: .8125rem; color: var(--text-muted); }
+.text-button { min-height: 44px; padding: 6px 0; color: var(--primary); border: 0; background: transparent; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; font: inherit; }
+.device-dialog-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: rgb(15 28 35 / 55%); }
+.device-dialog { width: min(100%, 780px); max-height: calc(100dvh - 40px); overflow-y: auto; overscroll-behavior: contain; background: var(--surface); border-radius: 12px; box-shadow: 0 20px 80px rgb(0 0 0 / 25%); padding: 24px; }
+.device-dialog-header, .device-section-heading { display: flex; gap: 16px; align-items: start; justify-content: space-between; }
+.device-dialog-header h2 { font-size: 1.4rem; margin: 0; overflow-wrap: anywhere; }
+.device-dialog-header .product-name { margin: 0 0 6px; }
+.device-dialog-header > div { min-width: 0; }
+.device-dialog-header > button { flex-shrink: 0; }
+.device-tools-context { color: var(--text-muted); overflow-wrap: anywhere; }
+.device-tools-section { padding: 22px 0; border-top: 1px solid var(--border); }
+.device-tools-section h3 { margin: 0 0 12px; font-size: 1.1rem; }
+.device-tools-section p { margin: 10px 0; }
+.device-tools-section a { color: var(--primary); }
+.connection-checklist { padding-left: 24px; }
+.connection-checklist li { margin: 10px 0; }
+.connection-server-help { margin-top: 18px; }
+.connection-server-help summary { padding: 10px 0; cursor: pointer; font-weight: 600; color: var(--primary); }
+.device-edit-form, .device-manual-form { display: grid; gap: 12px; }
+.device-manual-form .field { max-width: 450px; }
+.device-dialog textarea { min-width: 0; width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; resize: vertical; font: inherit; }
+.device-dialog .field { font-weight: 600; }
+.device-inline-actions, .connection-outcomes { display: flex; flex-wrap: wrap; gap: 12px; }
+.device-notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+.diagnostic-checks { display: grid; gap: 6px; padding-left: 22px; }
+.connection-history { display: grid; gap: 10px; padding: 0; list-style: none; max-height: 420px; overflow: auto; margin-top: 18px; }
+.connection-history li { display: grid; gap: 4px; padding: 12px; background: var(--background); border: 1px solid var(--border); border-radius: 6px; overflow-wrap: anywhere; }
+.connection-history span, .connection-history small { color: var(--text-muted); }
+.connection-history code { font-size: .8rem; }
+@media (max-width: 600px) {
+  .device-dialog-backdrop { padding: 8px; }
+  .device-dialog { max-height: calc(100dvh - 16px); padding: 18px; }
+  .device-section-heading { flex-wrap: wrap; gap: 4px; }
+  .device-dialog .command-button { white-space: normal; }
+}

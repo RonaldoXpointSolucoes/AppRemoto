@@ -23,6 +23,7 @@ const fields: Record<string, readonly (readonly [string, string, number | null, 
     ['os_version', 'string', 128, true, null], ['agent_version', 'string', 64, false, null],
     ['rustdesk_version', 'string', 64, false, null], ['last_seen_at', 'datetime', null, false, null],
     ['last_ip', 'string', 45, false, null], ['enabled', 'boolean', null, true, null],
+    ['notes', 'string', 2048, false, null],
   ],
   device_tokens: [
     ['device_id', 'string', 36, true, null], ['token_hash', 'string', 64, true, null],

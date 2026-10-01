@@ -42,6 +42,7 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
       audit: auditRepository, encryptionKey: config.masterEncryptionKey, keyVersion: config.encryptionKeyVersion }),
     recordHeartbeat: createHeartbeatService({ repository: enrollmentRepository, audit: auditRepository }),
     operatorSetup: createOperatorSetupService({ repository: enrollmentRepository,
+      guard: enrollmentRepository,
       receipts: createSetupReceiptRepository(databases), audit: auditRepository,
       encryptionKey: config.masterEncryptionKey, keyVersion: config.encryptionKeyVersion }),
     cursorSecret: Buffer.from(hkdfSync('sha256', config.masterEncryptionKey, Buffer.alloc(0),
