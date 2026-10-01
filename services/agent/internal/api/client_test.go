@@ -195,3 +195,106 @@ func TestClientRejectsInsecureProductionConfigurationAndRedactsErrors(t *testing
 		t.Fatalf("error was not redacted: %v", err)
 	}
 }
+
+func TestHeartbeatSendsBearerAndExactProductionContract(t *testing.T) {
+	deviceToken := []byte("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	client := testClient(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/v1/agent/heartbeat" || request.URL.RawQuery != "" {
+			t.Errorf("unexpected target: %s %s", request.Method, request.URL.String())
+		}
+		if got := request.Header.Get("Authorization"); got != "Bearer "+string(deviceToken) {
+			t.Errorf("Authorization = %q", got)
+		}
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := `{"agentVersion":"1.0.0","rustdeskVersion":"1.4.2","rustdeskId":"123456789","operatingSystem":"Windows","osVersion":"11.0.26100"}`
+		if string(body) != want {
+			t.Errorf("body = %s, want %s", body, want)
+		}
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"deviceId":"device-1","lastSeenAt":"2026-09-30T12:00:00.000Z"}`))
+	}), time.Second)
+	got, err := client.Heartbeat(context.Background(), deviceToken, HeartbeatRequest{
+		AgentVersion: "1.0.0", RustDeskVersion: "1.4.2", RustDeskID: "123456789", OperatingSystem: "Windows", OSVersion: "11.0.26100",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DeviceID != "device-1" || got.LastSeenAt.IsZero() {
+		t.Fatalf("response = %#v", got)
+	}
+}
+
+func TestHeartbeatStrictStatusMalformedAndSecretRedaction(t *testing.T) {
+	token := []byte("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	request := HeartbeatRequest{AgentVersion: "1", RustDeskVersion: "1", RustDeskID: "123", OperatingSystem: "Windows", OSVersion: "11"}
+	tests := []struct {
+		status int
+		body   string
+		want   ErrorCode
+	}{
+		{400, `{"error":{"code":"INVALID_HEARTBEAT","message":"Invalid heartbeat"}}`, ErrorInvalidHeartbeat},
+		{401, `{"error":{"code":"UNAUTHENTICATED","message":"Authentication required"}}`, ErrorUnauthenticated},
+		{403, `{"error":{"code":"HEARTBEAT_FORBIDDEN","message":"Access denied"}}`, ErrorHeartbeatForbidden},
+		{503, `{"error":{"code":"HEARTBEAT_UNAVAILABLE","message":"Unavailable"}}`, ErrorHeartbeatUnavailable},
+		{200, `{"deviceId":"device-1","lastSeenAt":"bad","extra":true}`, ErrorUnexpectedResponse},
+	}
+	for _, test := range tests {
+		client := testClient(t, http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+			response.Header().Set("Content-Type", "application/json")
+			response.WriteHeader(test.status)
+			_, _ = response.Write([]byte(test.body))
+		}), time.Second)
+		_, err := client.Heartbeat(context.Background(), token, request)
+		if !IsCode(err, test.want) {
+			t.Fatalf("status %d: error = %v, want %s", test.status, err, test.want)
+		}
+		if strings.Contains(err.Error(), string(token)) {
+			t.Fatalf("token leaked in error: %v", err)
+		}
+	}
+
+	httpClient := &http.Client{Transport: errorTransport{secret: string(token)}}
+	client, err := NewClient("https://api.example.test", Options{HTTPClient: httpClient, RequestTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Heartbeat(context.Background(), token, request)
+	if err == nil || strings.Contains(err.Error(), string(token)) || strings.Contains(err.Error(), "private") {
+		t.Fatalf("transport error leaked: %v", err)
+	}
+}
+
+func TestHeartbeatRejectsInvalidBearerBeforeNetwork(t *testing.T) {
+	var calls atomic.Int32
+	client := testClient(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls.Add(1) }), time.Second)
+	_, err := client.Heartbeat(context.Background(), []byte("not-a-device-token"), HeartbeatRequest{
+		AgentVersion: "1", RustDeskVersion: "1", RustDeskID: "123", OperatingSystem: "Windows", OSVersion: "11",
+	})
+	if !IsCode(err, ErrorUnauthenticated) || calls.Load() != 0 {
+		t.Fatalf("error=%v calls=%d", err, calls.Load())
+	}
+}
+
+func TestHeartbeatNeverForwardsBearerOnRedirect(t *testing.T) {
+	token := []byte("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	var destinationCalls atomic.Int32
+	destination := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		destinationCalls.Add(1)
+		if request.Header.Get("Authorization") != "" {
+			t.Error("bearer was forwarded")
+		}
+	}))
+	defer destination.Close()
+	client := testClient(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		http.Redirect(response, request, destination.URL, http.StatusTemporaryRedirect)
+	}), time.Second)
+	_, err := client.Heartbeat(context.Background(), token, HeartbeatRequest{
+		AgentVersion: "1", RustDeskVersion: "1", RustDeskID: "123", OperatingSystem: "Windows", OSVersion: "11",
+	})
+	if !IsCode(err, ErrorUnexpectedResponse) || destinationCalls.Load() != 0 {
+		t.Fatalf("error=%v destination calls=%d", err, destinationCalls.Load())
+	}
+}

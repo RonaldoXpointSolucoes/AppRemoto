@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -40,15 +41,32 @@ type EnrollResponse struct {
 	HeartbeatIntervalSeconds int    `json:"heartbeatIntervalSeconds"`
 }
 
+type HeartbeatRequest struct {
+	AgentVersion    string `json:"agentVersion"`
+	RustDeskVersion string `json:"rustdeskVersion"`
+	RustDeskID      string `json:"rustdeskId"`
+	OperatingSystem string `json:"operatingSystem"`
+	OSVersion       string `json:"osVersion"`
+}
+
+type HeartbeatResponse struct {
+	DeviceID   string    `json:"deviceId"`
+	LastSeenAt time.Time `json:"lastSeenAt"`
+}
+
 type ErrorCode string
 
 const (
-	ErrorInvalidEnrollment  ErrorCode = "INVALID_ENROLLMENT"
-	ErrorEnrollmentDenied   ErrorCode = "ENROLLMENT_DENIED"
-	ErrorRateLimited        ErrorCode = "ENROLLMENT_RATE_LIMITED"
-	ErrorUnavailable        ErrorCode = "ENROLLMENT_UNAVAILABLE"
-	ErrorUnexpectedResponse ErrorCode = "UNEXPECTED_RESPONSE"
-	ErrorTransport          ErrorCode = "TRANSPORT_ERROR"
+	ErrorInvalidEnrollment    ErrorCode = "INVALID_ENROLLMENT"
+	ErrorEnrollmentDenied     ErrorCode = "ENROLLMENT_DENIED"
+	ErrorRateLimited          ErrorCode = "ENROLLMENT_RATE_LIMITED"
+	ErrorUnavailable          ErrorCode = "ENROLLMENT_UNAVAILABLE"
+	ErrorUnexpectedResponse   ErrorCode = "UNEXPECTED_RESPONSE"
+	ErrorTransport            ErrorCode = "TRANSPORT_ERROR"
+	ErrorInvalidHeartbeat     ErrorCode = "INVALID_HEARTBEAT"
+	ErrorUnauthenticated      ErrorCode = "UNAUTHENTICATED"
+	ErrorHeartbeatForbidden   ErrorCode = "HEARTBEAT_FORBIDDEN"
+	ErrorHeartbeatUnavailable ErrorCode = "HEARTBEAT_UNAVAILABLE"
 )
 
 type Error struct {
@@ -67,9 +85,17 @@ func (err *Error) Error() string {
 	case ErrorUnavailable:
 		return "enrollment service unavailable"
 	case ErrorTransport:
-		return "enrollment transport failed"
+		return "API transport failed"
+	case ErrorInvalidHeartbeat:
+		return "invalid heartbeat request"
+	case ErrorUnauthenticated:
+		return "device authentication failed"
+	case ErrorHeartbeatForbidden:
+		return "device heartbeat forbidden"
+	case ErrorHeartbeatUnavailable:
+		return "heartbeat service unavailable"
 	default:
-		return "unexpected enrollment response"
+		return "unexpected API response"
 	}
 }
 
@@ -87,7 +113,7 @@ type Options struct {
 }
 
 type Client struct {
-	endpoint   *url.URL
+	baseURL    *url.URL
 	httpClient *http.Client
 	timeout    time.Duration
 }
@@ -115,9 +141,7 @@ func NewClient(baseURL string, options Options) (*Client, error) {
 	}
 	clientCopy := *httpClient
 	clientCopy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	endpoint := *parsed
-	endpoint.Path = "/v1/agent/enroll"
-	return &Client{endpoint: &endpoint, httpClient: &clientCopy, timeout: timeout}, nil
+	return &Client{baseURL: parsed, httpClient: &clientCopy, timeout: timeout}, nil
 }
 
 func (client *Client) Enroll(ctx context.Context, request EnrollRequest) (EnrollResponse, error) {
@@ -131,7 +155,7 @@ func (client *Client) Enroll(ctx context.Context, request EnrollRequest) (Enroll
 	defer clear(body)
 	requestCtx, cancel := context.WithTimeout(ctx, client.timeout)
 	defer cancel()
-	httpRequest, err := http.NewRequestWithContext(requestCtx, http.MethodPost, client.endpoint.String(), bytes.NewReader(body))
+	httpRequest, err := http.NewRequestWithContext(requestCtx, http.MethodPost, client.endpoint("/v1/agent/enroll"), bytes.NewReader(body))
 	if err != nil {
 		return EnrollResponse{}, &Error{Code: ErrorTransport}
 	}
@@ -160,7 +184,79 @@ func (client *Client) Enroll(ctx context.Context, request EnrollRequest) (Enroll
 		}
 		return result, nil
 	}
-	return EnrollResponse{}, mapErrorResponse(response.StatusCode, data)
+	return EnrollResponse{}, mapErrorResponse(response.StatusCode, data, map[int]ErrorCode{
+		400: ErrorInvalidEnrollment, 403: ErrorEnrollmentDenied, 429: ErrorRateLimited, 503: ErrorUnavailable,
+	})
+}
+
+func (client *Client) Heartbeat(ctx context.Context, deviceToken []byte, request HeartbeatRequest) (HeartbeatResponse, error) {
+	if !validDeviceToken(deviceToken) {
+		return HeartbeatResponse{}, &Error{Code: ErrorUnauthenticated}
+	}
+	if !length(request.AgentVersion, 1, 64) || !length(request.RustDeskVersion, 1, 64) ||
+		!length(request.RustDeskID, 1, 64) || !length(request.OperatingSystem, 1, 64) || !length(request.OSVersion, 1, 128) {
+		return HeartbeatResponse{}, &Error{Code: ErrorInvalidHeartbeat}
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
+		return HeartbeatResponse{}, &Error{Code: ErrorInvalidHeartbeat}
+	}
+	defer clear(body)
+	requestCtx, cancel := context.WithTimeout(ctx, client.timeout)
+	defer cancel()
+	httpRequest, err := http.NewRequestWithContext(requestCtx, http.MethodPost, client.endpoint("/v1/agent/heartbeat"), bytes.NewReader(body))
+	if err != nil {
+		return HeartbeatResponse{}, &Error{Code: ErrorTransport}
+	}
+	httpRequest.Header.Set("Content-Type", "application/json")
+	httpRequest.Header.Set("Accept", "application/json")
+	httpRequest.Header.Set("Authorization", "Bearer "+string(deviceToken))
+	response, err := client.httpClient.Do(httpRequest)
+	if err != nil {
+		if requestCtx.Err() != nil {
+			return HeartbeatResponse{}, &Error{Code: ErrorTransport, cause: requestCtx.Err()}
+		}
+		return HeartbeatResponse{}, &Error{Code: ErrorTransport}
+	}
+	defer response.Body.Close()
+	data, err := readBounded(response.Body, maxResponseBytes)
+	if err != nil {
+		return HeartbeatResponse{}, &Error{Code: ErrorUnexpectedResponse}
+	}
+	defer clear(data)
+	if !isJSONContentType(response.Header.Get("Content-Type")) {
+		return HeartbeatResponse{}, &Error{Code: ErrorUnexpectedResponse}
+	}
+	if response.StatusCode == http.StatusOK {
+		var result HeartbeatResponse
+		if decodeStrict(data, &result) != nil || !length(result.DeviceID, 1, 36) || result.LastSeenAt.IsZero() {
+			return HeartbeatResponse{}, &Error{Code: ErrorUnexpectedResponse}
+		}
+		return result, nil
+	}
+	return HeartbeatResponse{}, mapErrorResponse(response.StatusCode, data, map[int]ErrorCode{
+		400: ErrorInvalidHeartbeat, 401: ErrorUnauthenticated, 403: ErrorHeartbeatForbidden, 503: ErrorHeartbeatUnavailable,
+	})
+}
+
+func (client *Client) endpoint(path string) string {
+	endpoint := *client.baseURL
+	endpoint.Path = path
+	return endpoint.String()
+}
+
+func validDeviceToken(token []byte) bool {
+	if len(token) != 43 {
+		return false
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(string(token))
+	if err != nil || len(decoded) != 32 {
+		clear(decoded)
+		return false
+	}
+	canonical := base64.RawURLEncoding.EncodeToString(decoded)
+	clear(decoded)
+	return canonical == string(token)
 }
 
 func ValidateEnrollRequest(value EnrollRequest) error {
@@ -227,7 +323,7 @@ func decodeStrict(data []byte, target any) error {
 	return nil
 }
 
-func mapErrorResponse(status int, data []byte) error {
+func mapErrorResponse(status int, data []byte, expected map[int]ErrorCode) error {
 	type errorDetail struct {
 		Code      string  `json:"code"`
 		Message   string  `json:"message"`
@@ -241,7 +337,6 @@ func mapErrorResponse(status int, data []byte) error {
 		(envelope.Error.RequestID != nil && (len(*envelope.Error.RequestID) == 0 || len(*envelope.Error.RequestID) > 128)) {
 		return &Error{Code: ErrorUnexpectedResponse}
 	}
-	expected := map[int]ErrorCode{400: ErrorInvalidEnrollment, 403: ErrorEnrollmentDenied, 429: ErrorRateLimited, 503: ErrorUnavailable}
 	code, ok := expected[status]
 	if !ok || string(code) != envelope.Error.Code {
 		return &Error{Code: ErrorUnexpectedResponse}
