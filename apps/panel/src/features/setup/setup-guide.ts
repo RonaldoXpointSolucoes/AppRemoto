@@ -17,7 +17,7 @@ export function setupGuideSteps(apiBaseUrl: string): SetupStep[] {
       title: "Antes de começar",
       tasks: [
         "Use Windows 10 ou superior e uma conta Windows autorizada com privilégios de administrador para instalar o RustDesk e cadastrar o agente.",
-        "Solicite à equipe XPoint o **remote-agent.exe**, sua versão e hash SHA-256, um **enrollment token** válido para a organização correta, os endereços ID/relay e a chave pública do servidor RustDesk.",
+        "Solicite à equipe XPoint o **remote-agent.exe**, sua versão e hash SHA-256 e um **enrollment token** válido para a organização correta. Os endereços do servidor RustDesk e a chave pública já estão disponíveis na etapa 2 deste guia.",
         "Use um cliente RustDesk oficial e suportado, aprovado pela equipe (mínimo previsto: 1.1.9). Garanta acesso HTTPS à API e conectividade com o servidor RustDesk.",
         "Escolha a conta Windows que executará o agente: cadastro e heartbeats precisam usar **a mesma conta e a mesma pasta de estado**.",
       ],
@@ -28,7 +28,7 @@ export function setupGuideSteps(apiBaseUrl: string): SetupStep[] {
       title: "Prepare o RustDesk e o agente",
       tasks: [
         "Instale o RustDesk no computador do cliente. Abra **Configurações → Rede** (ou o menu ao lado do ID) e desbloqueie as configurações quando solicitado.",
-        "Preencha **ID Server** e **Key** com o servidor e a chave pública fornecidos pela XPoint. Use **Relay Server** conforme a orientação do administrador e aplique a mesma configuração no computador do técnico. No RustDesk Server OSS, deixe **API Server** vazio: a API do AppRemoto usada abaixo não pertence a esse campo.",
+        "Copie **ID Server**, **Relay Server** e **Key** do quadro **Dados do servidor XPoint** acima para os campos de mesmo nome no RustDesk. Deixe **API Server** vazio e clique em **Aplicar**. Repita no computador do técnico.",
         "Confirme que o RustDesk exibe um ID e está pronto para conexão. O agente configura a senha unattended, mas **não instala o RustDesk nem configura esses servidores**.",
         "Obtenha **remote-agent.exe** pelo canal seguro indicado pela equipe. Confira a versão e o hash antes de executar e salve em uma pasta permanente. A distribuição pública automática do agente ainda não está disponível.",
         "Abra o PowerShell com **Executar como administrador**, na conta Windows escolhida. A aplicação da senha unattended exige RustDesk instalado e execução elevada. Se o Windows solicitar credenciais de outra conta, confirme com a equipe qual conta será dona do estado antes de cadastrar: a DPAPI não permite trocar de usuário depois. Ajuste o caminho de **$Agent** abaixo. A URL da API é a configurada neste painel.",

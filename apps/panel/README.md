@@ -29,6 +29,14 @@ limpas ao trocar/iniciar sessao, expirar a sessao ou sair da conta. O botao
 `Comecar outro dispositivo` reinicia o checklist. Sem esse armazenamento, as
 marcacoes funcionam em memoria. Marcar um item nao executa nem verifica o setup.
 
+A etapa 2 mostra ID Server, Relay Server e a chave publica do RustDesk XPoint,
+com copia individual e selecao manual se o navegador bloquear a area de
+transferencia. API Server deve ficar vazio. Os valores publicos estao em
+`src/features/setup/rustdesk-server-config.tsx`; foram conferidos no servico
+Coolify existente em 2026-10-01. Mudancas de host/porta/chave publica exigem
+reconferencia e atualizacao desse componente. Nunca inclua chave privada,
+token de enrollment ou senha de acesso nessa configuracao.
+
 O guia documenta o agente manual existente; nao emite enrollment tokens,
 instala RustDesk, registra servico Windows nem inicia conexoes. O binario e
 o token continuam sendo fornecidos pela equipe pelo fluxo autorizado.

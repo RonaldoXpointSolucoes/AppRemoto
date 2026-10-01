@@ -159,6 +159,23 @@ button, a, input, select { outline-offset: 3px; }
 .setup-tasks li:has(input:checked) { background: #f0f8f4; border-color: #b7d9cb; }
 .setup-tasks li:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 .setup-step-details { margin-top: 20px; padding-top: 4px; border-top: 1px solid var(--surface-muted); }
+.rustdesk-config { margin: 0 0 24px; padding: 18px; background: #f0f8f4; border: 1px solid #b7d9cb; border-radius: 6px; }
+.rustdesk-config h3 { margin: 0; font-size: 1.125rem; }
+.rustdesk-config p { line-height: 1.6; }
+.rustdesk-config-fields { display: grid; gap: 16px; }
+.rustdesk-config-field { min-width: 0; display: grid; gap: 6px; }
+.rustdesk-config-field label { font-weight: 700; }
+.rustdesk-config-value { display: flex; align-items: start; gap: 8px; min-width: 0; }
+.rustdesk-config-field textarea, .rustdesk-config-field input { width: 100%; min-width: 0; min-height: 48px; padding: 12px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; font-family: monospace; font-size: 0.9375rem; line-height: 1.5; resize: vertical; }
+.rustdesk-config-field input::placeholder { color: var(--text-muted); opacity: 1; }
+.rustdesk-config-value button { flex: 0 0 auto; }
+.rustdesk-config-field p { margin: 0; color: var(--text-muted); font-size: 0.875rem; }
+.rustdesk-copy-status { min-height: 1.6em; margin-bottom: 0; color: var(--primary); }
+@media (max-width: 480px) {
+  .rustdesk-config { padding: 12px; }
+  .rustdesk-config-value { flex-direction: column; }
+  .rustdesk-config-value button { width: 100%; }
+}
 .guide-markdown { min-width: 0; font-size: 1rem; line-height: 1.7; overflow-wrap: anywhere; }
 .guide-markdown h1 { margin: 0 0 20px; font-size: clamp(1.65rem, 4vw, 2.1rem); line-height: 1.25; }
 .guide-markdown h2 { margin: 36px 0 12px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 1.25rem; line-height: 1.35; }

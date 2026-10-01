@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { MarkdownRenderer } from '../../components/markdown-renderer';
 import { clearSetupProgress, readSetupProgress, saveSetupProgress } from '../../lib/setup-progress';
 import { setupGuideIntroduction, setupGuideSteps, setupGuideTitle } from './setup-guide';
+import { RustDeskServerConfig } from './rustdesk-server-config';
 
 export function SetupChecklist({ apiBaseUrl }: { apiBaseUrl: string }) {
   const steps = useMemo(() => setupGuideSteps(apiBaseUrl), [apiBaseUrl]);
@@ -59,6 +60,7 @@ export function SetupChecklist({ apiBaseUrl }: { apiBaseUrl: string }) {
             <h2 id={'step-' + step.id}>{step.title}</h2>
             <span className="setup-step-count">{count}/{step.tasks.length}</span>
           </header>
+          {step.id === 'install' && <RustDeskServerConfig />}
           <ul className="setup-tasks">
             {step.tasks.map((task, index) => {
               const id = step.id + '-' + index;

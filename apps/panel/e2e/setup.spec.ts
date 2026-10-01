@@ -86,3 +86,35 @@ test('direct setup navigation requires an authenticated session', async ({ page 
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole('heading', { name: 'Guia de Setup do XPoint Remote e RustDesk' })).toBeHidden();
 });
+
+test('technician can copy the supplied XPoint server settings without requesting them elsewhere', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await authenticate(page);
+  await page.goto('/setup');
+  for (const [label, value] of [
+    ['ID Server', '179.199.142.157:21116'],
+    ['Relay Server', '179.199.142.157:21117'],
+    ['Key', '6qc86QUPst9+H4QjXyQvSLPbGU6ef25iO+ESoi3figk='],
+  ]) {
+    await expect(page.getByLabel(label, { exact: true })).toHaveValue(value);
+    await page.getByRole('button', { name: 'Copiar ' + label, exact: true }).click();
+    await expect(page.getByRole('status')).toContainText(label + ' copiado.');
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(value);
+  }
+  await expect(page.getByLabel('API Server', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('API Server', { exact: true })).toHaveAttribute('placeholder', 'Deixe vazio');
+});
+
+test('blocked clipboard leaves server values available for manual copying', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.clipboard, 'writeText', { value: () => Promise.reject(new Error('denied')) });
+  });
+  await authenticate(page);
+  await page.goto('/setup');
+  await page.getByRole('button', { name: 'Copiar Relay Server' }).click();
+  await expect(page.getByRole('status')).toContainText('Não foi possível copiar Relay Server.');
+  const relay = page.getByLabel('Relay Server', { exact: true });
+  await expect(relay).toHaveValue('179.199.142.157:21117');
+  await relay.focus();
+  expect(await relay.evaluate((field: HTMLTextAreaElement) => field.value.slice(field.selectionStart, field.selectionEnd))).toBe('179.199.142.157:21117');
+});

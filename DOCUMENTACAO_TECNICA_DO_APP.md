@@ -240,6 +240,8 @@ Estado atual: executavel manual. Ele nao e servico Windows e nao inicia sozinho 
 
 Existe um `infra/rustdesk/compose.yaml` local nao versionado no checkout primario, com imagem proposta `rustdesk/rustdesk-server:1.1.16`. Ele nao esta presente no commit atual deste worktree e nao deve ser tratado como fonte canonica. Antes de alterar RustDesk, inspecione o servico real no Coolify, confirme imagem, comandos, volumes, host/relay e depois versione uma definicao revisada. Nunca regenere ou substitua a chave do servidor sem plano de migracao dos clientes.
 
+Em 2026-10-01, consulta ao servico existente confirmou ID Server `179.199.142.157:21116`, Relay Server `179.199.142.157:21117`, chave publica Ed25519 de 32 bytes correspondente ao hbbs em execucao e alcance das portas TCP 21115/21116/21117. O tutorial mostra os valores publicos em `apps/panel/src/features/setup/rustdesk-server-config.tsx`, com botoes de copia e API Server vazio. Nao houve alteracao ou reinicio do RustDesk. Esta verificacao nao substitui a prova de uma sessao remota entre dois clientes nem comprova UDP.
+
 ### Coolify
 
 Responsavel por:
