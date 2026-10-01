@@ -303,9 +303,9 @@ func FailureMessage(code string) string {
 	case "RUSTDESK_MISSING":
 		return "Instale o RustDesk no computador (incluindo o servico) e execute novamente este arquivo. Este configurador nao baixa nem instala o RustDesk."
 	case "PACKAGE":
-		return "Pacote invalido ou vencido. Baixe um novo instalador no painel para o mesmo cliente e nome do computador."
+		return "Pacote invalido ou vencido. Baixe um novo instalador no painel para o cliente desejado. O nome pode ser diferente do anterior."
 	case "EXISTING_INSTALLATION":
-		return "Este computador possui uma configuracao para outro cliente ou nome. Use o mesmo cliente e nome do cadastro original."
+		return "Este computador pertence a outro cliente. Baixe o instalador para o cliente correto; o nome do computador pode ser alterado livremente."
 	case "RECONCILIATION":
 		return "Uma tentativa anterior pode ter enviado o cadastro, mas nao salvou a resposta. Preserve os dados e encaminhe o log ao tecnico para reconciliar o cadastro."
 	case "IDENTITY_DIRECTORY_PREPARE", "IDENTITY_LOAD_CREATE":

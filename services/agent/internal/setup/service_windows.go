@@ -220,6 +220,10 @@ func (a reportedAPI) Enroll(ctx context.Context, request api.EnrollRequest) (api
 	return res, e
 }
 
+func (a reportedAPI) Reconfigure(ctx context.Context, token []byte, request api.EnrollRequest) (api.ReconfigureResponse, error) {
+	return a.client.Reconfigure(ctx, token, request)
+}
+
 type reportedRustDesk struct {
 	client *rustdesk.Client
 	report *Report

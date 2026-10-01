@@ -54,7 +54,7 @@ func acquireSetupLock(name string, sa *windows.SecurityAttributes) (windows.Hand
 	return h, "", nil
 }
 func recoveryDecision(r receipt, p Provisioning, pending, credentials bool) string {
-	if r.OrganizationID != p.OrganizationID || r.DeviceDisplayName != p.DeviceDisplayName {
+	if r.OrganizationID != p.OrganizationID {
 		return "EXISTING_INSTALLATION"
 	}
 	if credentials && pending {
@@ -164,13 +164,16 @@ func Install(ctx context.Context, r *Report) (code string) {
 		return fail("PATH", e)
 	}
 	defer windows.CloseHandle(dh)
+	r.Record(3, "PROTECTED_DIRECTORIES", "OK", nil)
+	// Display names are editable labels, never installation identity.
+	start(3, "INSTALLATION_CUSTOMER_CHECK")
 	// Reject a different customer before stopping any existing managed service.
 	if prior, readErr := readPrivate(filepath.Join(ps.Data, "installation.json"), 4096); readErr == nil {
 		var reg receipt
 		if json.Unmarshal(prior, &reg) != nil {
 			return fail("STATE", errStage)
 		}
-		if reg.OrganizationID != p.OrganizationID || reg.DeviceDisplayName != p.DeviceDisplayName {
+		if reg.OrganizationID != p.OrganizationID {
 			return fail("EXISTING_INSTALLATION", errStage)
 		}
 	} else if !errors.Is(readErr, windows.ERROR_FILE_NOT_FOUND) {
@@ -212,7 +215,6 @@ func Install(ctx context.Context, r *Report) (code string) {
 		return fail("STATE", e)
 	}
 	existing, e := readPrivate(registration, 4096)
-	resume := false
 	if e == nil {
 		var reg receipt
 		if json.Unmarshal(existing, &reg) != nil || !idPattern.MatchString(reg.EnrollmentID) || !idPattern.MatchString(reg.OrganizationID) {
@@ -221,8 +223,6 @@ func Install(ctx context.Context, r *Report) (code string) {
 		decision := recoveryDecision(reg, p, pending, credentials)
 		switch decision {
 		case "RESUME":
-			p.EnrollmentID = reg.EnrollmentID
-			resume = true
 			r.Record(3, "RESUME_SAVED_CREDENTIALS", "START", nil)
 		case "REPLACE_UNUSED":
 			r.Record(3, "REPLACE_UNUSED_ATTEMPT", "START", nil)
@@ -234,7 +234,8 @@ func Install(ctx context.Context, r *Report) (code string) {
 	} else if pending || credentials {
 		return fail("RECONCILIATION", errStage)
 	}
-	if !resume {
+	{
+		start(3, "NEW_PACKAGE_STATE_WRITE")
 		b, _ := json.Marshal(receipt{p.EnrollmentID, p.OrganizationID, p.DeviceDisplayName})
 		if e = replacePrivate(registration, b); e != nil {
 			return fail("STATE", e)

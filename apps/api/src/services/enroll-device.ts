@@ -1,7 +1,8 @@
+import { reconfigureExistingDevice } from './reconfigure-device.ts';
 import { randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
-import { EnrollRequestSchema, EnrollResponseSchema, type EnrollRequest, type EnrollResponse } from '@appremoto/contracts';
+import { ReconfigureRequestSchema, type ReconfigureRequest, type ReconfigureResponse, EnrollRequestSchema, EnrollResponseSchema, type EnrollRequest, type EnrollResponse } from '@appremoto/contracts';
 import { enrollmentId, IndeterminateEnrollmentWrite, sameEnrollmentState,
-  type EnrollmentRepository, type EnrollmentKind, type EnrollmentData } from '../repositories/enrollment.ts';
+  type HeartbeatTokenRepository, type EnrollmentRepository, type EnrollmentKind, type EnrollmentData } from '../repositories/enrollment.ts';
 import type { AuditRepository, EnrollmentAudit } from '../repositories/audit.ts';
 import { decryptPassword, encryptPassword } from '../security/credentials.ts';
 import { deriveDeviceToken, hashToken } from '../security/tokens.ts';
@@ -13,9 +14,12 @@ export class EnrollmentError extends Error {
     this.code = code;
   }
 }
-export type EnrollDevice = (request: EnrollRequest, sourceIp: string) => Promise<EnrollResponse>;
+export type EnrollDevice = ((request: EnrollRequest, sourceIp: string) => Promise<EnrollResponse>) & {
+  reconfigure?: (request: ReconfigureRequest, sourceIp: string) => Promise<ReconfigureResponse>;
+};
 export interface EnrollmentDependencies {
   repository: EnrollmentRepository;
+  reconfigurationGuard?: Pick<HeartbeatTokenRepository, 'beginHeartbeatGuard' | 'endHeartbeatGuard'>;
   audit: AuditRepository;
   encryptionKey: Buffer;
   keyVersion: number;
@@ -54,7 +58,7 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
   const poisonedTokens = new Set<string>();
   const uncertainWrites = new Map<string, { kind: EnrollmentKind; id: string; expected: EnrollmentData }>();
 
-  async function execute(request: EnrollRequest, sourceIp: string, tokenHash: string): Promise<EnrollResponse> {
+  async function execute(request: EnrollRequest, sourceIp: string, tokenHash: string, proof?: string): Promise<EnrollResponse | ReconfigureResponse> {
     const token = await repo.findToken(tokenHash);
     if (!token || token.token_hash !== tokenHash || !token.organization_id) throw new EnrollmentError('ENROLLMENT_DENIED');
     const deviceId = enrollmentId('device', token.organization_id, request.deviceUuid);
@@ -98,6 +102,10 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
         repo.snapshot('enrollment_receipts', receiptId), repo.snapshot('devices', deviceId),
         repo.snapshot('device_tokens', deviceId), repo.snapshot('device_credentials', deviceId),
       ]);
+      if (proof) {
+        return reconfigureExistingDevice({ repo, guard: dependencies.reconfigurationGuard, audit, now,
+          token, tokenHash, request, proof, deviceId, receiptId, receipt, event, deny });
+      }
       const linked = receipt && receipt.organization_id === token.organization_id && receipt.enrollment_token_id === token.id &&
         receipt.device_id === deviceId && receipt.device_uuid === request.deviceUuid;
       const uncertain = uncertainWrites.get(tokenHash);
@@ -224,8 +232,8 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
     });
   }
 
-  return (input, sourceIp) => {
-    const parsed = EnrollRequestSchema.safeParse(input);
+  const dispatch = (input: EnrollRequest | ReconfigureRequest, sourceIp: string, reconfigure: boolean) => {
+    const parsed = (reconfigure ? ReconfigureRequestSchema : EnrollRequestSchema).safeParse(input);
     if (!parsed.success) return Promise.reject(new EnrollmentError('ENROLLMENT_DENIED'));
     const request = { ...parsed.data, deviceUuid: parsed.data.deviceUuid.toLowerCase() };
     const tokenHash = hashToken(request.enrollmentToken);
@@ -236,11 +244,14 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
     pendingCalls++;
     const result = tokenQueue(tokenHash, async () => {
       if (poisonedTokens.has(tokenHash)) throw new EnrollmentError();
-      try { return await execute(request, sourceIp, tokenHash); }
+      try { return await execute(request, sourceIp, tokenHash, reconfigure ? (parsed.data as ReconfigureRequest).currentDeviceToken : undefined); }
       catch (error) { throw error instanceof EnrollmentError ? error : new EnrollmentError(); }
     });
     const cleanup = () => { pendingCalls--; };
     void result.then(cleanup, cleanup);
     return result;
   };
+  return Object.assign((input: EnrollRequest, ip: string) => dispatch(input, ip, false) as Promise<EnrollResponse>, {
+    reconfigure: (input: ReconfigureRequest, ip: string) => dispatch(input, ip, true) as Promise<ReconfigureResponse>,
+  });
 }

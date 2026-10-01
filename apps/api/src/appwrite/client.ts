@@ -38,7 +38,7 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
     technicians: createTechnicianRepository(databases),
     organizations: createOrganizationRepository(databases),
     devices: createDeviceRepository(databases),
-    enrollDevice: createEnrollmentService({ repository: enrollmentRepository,
+    enrollDevice: createEnrollmentService({ repository: enrollmentRepository, reconfigurationGuard: enrollmentRepository,
       audit: auditRepository, encryptionKey: config.masterEncryptionKey, keyVersion: config.encryptionKeyVersion }),
     recordHeartbeat: createHeartbeatService({ repository: enrollmentRepository, audit: auditRepository }),
     operatorSetup: createOperatorSetupService({ repository: enrollmentRepository,

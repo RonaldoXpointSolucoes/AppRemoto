@@ -110,3 +110,22 @@ test('source-IP admission prevents rotating tokens from consuming unrelated clie
     time = 1000; assert.equal((await send('127.0.0.1', 'e')).statusCode, 200);
   } finally { await app.close(); }
 });
+
+test('reconfiguration route validates both proofs, shares limits and exposes only acknowledgement', async () => {
+  const logs: string[] = []; const proof = 'A'.repeat(43); let calls = 0;
+  const app = Fastify({ logger: { stream: { write: (line: string) => logs.push(line) } } });
+  const enroll = Object.assign(async () => result, { reconfigure: async () => { calls++; return { deviceId: 'device', reconfigured: true as const }; } });
+  registerAgentEnrollRoute(app, enroll, { limit: 2 });
+  try {
+    const send = (body: unknown, query = '') => app.inject({ method: 'POST', url: '/v1/agent/reconfigure' + query, payload: body as object });
+    assert.equal((await send(payload)).statusCode, 400);
+    assert.equal((await send({ ...payload, currentDeviceToken: proof }, '?token=' + proof)).statusCode, 400);
+    const response = await send({ ...payload, currentDeviceToken: proof });
+    assert.equal(response.statusCode, 200); assert.equal(response.headers['cache-control'], 'no-store');
+    assert.deepEqual(response.json(), { deviceId: 'device', reconfigured: true });
+    assert.equal((await app.inject({ method: 'POST', url: '/v1/agent/enroll', payload })).statusCode, 200);
+    assert.equal((await send({ ...payload, currentDeviceToken: proof })).statusCode, 429);
+    assert.equal(calls, 1);
+    for (const secret of [proof, payload.enrollmentToken, result.rustdeskPassword]) assert.ok(!logs.join('').includes(secret));
+  } finally { await app.close(); }
+});

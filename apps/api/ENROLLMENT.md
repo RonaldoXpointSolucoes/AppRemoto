@@ -129,3 +129,9 @@ result and a fixed reason code. These events are marked `scope=unscoped` and con
 no user, credential or organization identifier. Authentication happens before an
 organization is authorized, so the API does not invent an `organization_id`, query
 memberships for a denied identity, or insert an invalid organization audit row.
+
+## Existing device reconfiguration
+
+`POST /v1/agent/reconfigure` adds `currentDeviceToken` to the enrollment request. Both a valid unexpired enrollment package and a matching enabled device's existing credential are required. Organization and UUID must match; display names are editable labels. It shares enrollment token/device queues and route admission limits. The response is only `{ deviceId, reconfigured: true }`, never a password/token.
+
+Under the persistent heartbeat guard, write the new pending receipt, consume its use once, patch only display_name, audit, and commit its receipt. Known failures retain resumable state; retries with both proofs may finalize it. An indeterminate database mutation keeps the durable guard and freezes the package, requiring reconciliation before another writer. A committed retry acknowledges only an already matching name and active credentials/package, with no second write or secret replay. Old packages cannot rename back after a later rename. Panel status requires a heartbeat after the committed receipt's Appwrite timestamp. The initial enrollment one-time secret boundary is unchanged.

@@ -298,3 +298,27 @@ func TestHeartbeatNeverForwardsBearerOnRedirect(t *testing.T) {
 		t.Fatalf("error=%v destination calls=%d", err, destinationCalls.Load())
 	}
 }
+
+func TestReconfigureUsesBothCredentialsInBodyAndAcceptsOnlyAcknowledgement(t *testing.T) {
+	for _, reply := range []string{`{"deviceId":"device-1","reconfigured":true}`, `{"deviceId":"device-1","reconfigured":false}`, validEnrollResponse} {
+		client := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/v1/agent/reconfigure" || r.URL.RawQuery != "" || r.Header.Get("Authorization") != "" {
+				t.Error("incorrect private request target")
+			}
+			b, _ := io.ReadAll(r.Body)
+			if !strings.Contains(string(b), `"currentDeviceToken":"`+strings.Repeat("A", 43)+`"`) || !strings.Contains(string(b), validEnrollRequest.EnrollmentToken) {
+				t.Error("missing proof")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(reply))
+		}), time.Second)
+		result, err := client.Reconfigure(context.Background(), []byte(strings.Repeat("A", 43)), validEnrollRequest)
+		if strings.Contains(reply, `"reconfigured":true`) {
+			if err != nil || result.DeviceID != "device-1" {
+				t.Fatal(err)
+			}
+		} else if err == nil {
+			t.Fatal("invalid response accepted")
+		}
+	}
+}

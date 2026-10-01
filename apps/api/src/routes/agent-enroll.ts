@@ -1,6 +1,6 @@
 import { isIP } from 'node:net';
 import type { FastifyInstance } from 'fastify';
-import { EnrollRequestSchema, EnrollResponseSchema } from '@appremoto/contracts';
+import { ReconfigureRequestSchema, ReconfigureResponseSchema, EnrollRequestSchema, EnrollResponseSchema } from '@appremoto/contracts';
 import { hashToken } from '../security/tokens.ts';
 import { EnrollmentError, type EnrollDevice } from '../services/enroll-device.ts';
 
@@ -23,42 +23,51 @@ export function registerAgentEnrollRoute(app: FastifyInstance, enroll: EnrollDev
   const maxEntries = options.maxEntries ?? 10_000; const now = options.now ?? Date.now;
   const sources = new Map<string, { count: number; expires: number; tokens: Map<string, number> }>();
   const errorBody = (code: string, message: string) => ({ error: { code, message } });
-  app.post('/v1/agent/enroll', {
-    bodyLimit: 8192,
-    childLoggerFactory: (logger, bindings, options) => logger.child(bindings, {
-      ...options, serializers: {
-        req: (request: { method: string }) => ({ method: request.method, route: '/v1/agent/enroll' }),
-        err: () => ({ code: 'ENROLLMENT_UNAVAILABLE' }),
-      },
-    }),
-    errorHandler: (_error, _request, reply) => reply.code(400).send(errorBody('INVALID_ENROLLMENT', 'Invalid enrollment')),
-  }, async (request, reply) => {
-    reply.header('cache-control', 'no-store');
-    const body = EnrollRequestSchema.safeParse(request.body);
-    const sourceIp = canonicalIp(request.ip);
-    if (!body.success || !sourceIp || Object.keys(request.query as object).length !== 0) {
-      return reply.code(400).send(errorBody('INVALID_ENROLLMENT', 'Invalid enrollment'));
-    }
-    const time = now();
-    for (const [key, bucket] of sources) if (bucket.expires <= time) sources.delete(key);
-    let bucket = sources.get(sourceIp);
-    if ((!bucket && sources.size >= maxEntries) || (bucket && bucket.count >= limit)) {
-      return reply.code(429).send(errorBody('ENROLLMENT_RATE_LIMITED', 'Enrollment rate limited'));
-    }
-    if (!bucket) { bucket = { count: 0, expires: time + windowMs, tokens: new Map() }; sources.set(sourceIp, bucket); }
-    bucket.count++;
-    const tokenHash = hashToken(body.data.enrollmentToken);
-    const tokenCount = bucket.tokens.get(tokenHash) ?? 0;
-    if (tokenCount >= limit) return reply.code(429).send(errorBody('ENROLLMENT_RATE_LIMITED', 'Enrollment rate limited'));
-    bucket.tokens.set(tokenHash, tokenCount + 1);
-    try { return EnrollResponseSchema.parse(await enroll(body.data, sourceIp)); }
-    catch (error) {
-      if (error instanceof EnrollmentError && error.code === 'ENROLLMENT_DENIED') {
-        request.log.warn({ code: 'ENROLLMENT_DENIED' }, 'Enrollment denied');
-        return reply.code(403).send(errorBody(error.code, 'Enrollment denied'));
+  for (const reconfigure of [false, true]) {
+    const route = reconfigure ? '/v1/agent/reconfigure' : '/v1/agent/enroll';
+    app.post(route, {
+      bodyLimit: 8192,
+      childLoggerFactory: (logger, bindings, options) => logger.child(bindings, {
+        ...options, serializers: {
+          req: (request: { method: string }) => ({ method: request.method, route }),
+          err: () => ({ code: 'ENROLLMENT_UNAVAILABLE' }),
+        },
+      }),
+      errorHandler: (_error, _request, reply) => reply.code(400).send(errorBody('INVALID_ENROLLMENT', 'Invalid enrollment')),
+    }, async (request, reply) => {
+      reply.header('cache-control', 'no-store');
+      const body = (reconfigure ? ReconfigureRequestSchema : EnrollRequestSchema).safeParse(request.body);
+      const sourceIp = canonicalIp(request.ip);
+      if (!body.success || !sourceIp || Object.keys(request.query as object).length !== 0) {
+        return reply.code(400).send(errorBody('INVALID_ENROLLMENT', 'Invalid enrollment'));
       }
-      request.log.warn({ code: 'ENROLLMENT_UNAVAILABLE' }, 'Enrollment unavailable');
-      return reply.code(503).send(errorBody('ENROLLMENT_UNAVAILABLE', 'Enrollment unavailable'));
-    }
-  });
+      const time = now();
+      for (const [key, bucket] of sources) if (bucket.expires <= time) sources.delete(key);
+      let bucket = sources.get(sourceIp);
+      if ((!bucket && sources.size >= maxEntries) || (bucket && bucket.count >= limit)) {
+        return reply.code(429).send(errorBody('ENROLLMENT_RATE_LIMITED', 'Enrollment rate limited'));
+      }
+      if (!bucket) { bucket = { count: 0, expires: time + windowMs, tokens: new Map() }; sources.set(sourceIp, bucket); }
+      bucket.count++;
+      const tokenHash = hashToken(body.data.enrollmentToken);
+      const tokenCount = bucket.tokens.get(tokenHash) ?? 0;
+      if (tokenCount >= limit) return reply.code(429).send(errorBody('ENROLLMENT_RATE_LIMITED', 'Enrollment rate limited'));
+      bucket.tokens.set(tokenHash, tokenCount + 1);
+      try {
+        if (reconfigure) {
+          if (!enroll.reconfigure) throw new Error('Reconfiguration unavailable');
+          return ReconfigureResponseSchema.parse(await enroll.reconfigure(ReconfigureRequestSchema.parse(body.data), sourceIp));
+        }
+        return EnrollResponseSchema.parse(await enroll(body.data, sourceIp));
+      }
+      catch (error) {
+        if (error instanceof EnrollmentError && error.code === 'ENROLLMENT_DENIED') {
+          request.log.warn({ code: 'ENROLLMENT_DENIED' }, 'Enrollment denied');
+          return reply.code(403).send(errorBody(error.code, 'Enrollment denied'));
+        }
+        request.log.warn({ code: 'ENROLLMENT_UNAVAILABLE' }, 'Enrollment unavailable');
+        return reply.code(503).send(errorBody('ENROLLMENT_UNAVAILABLE', 'Enrollment unavailable'));
+      }
+    });
+  }
 }

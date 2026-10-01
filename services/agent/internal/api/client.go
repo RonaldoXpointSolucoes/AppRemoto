@@ -189,6 +189,59 @@ func (client *Client) Enroll(ctx context.Context, request EnrollRequest) (Enroll
 	})
 }
 
+type ReconfigureResponse struct {
+	DeviceID     string `json:"deviceId"`
+	Reconfigured bool   `json:"reconfigured"`
+}
+
+func (client *Client) Reconfigure(ctx context.Context, deviceToken []byte, request EnrollRequest) (ReconfigureResponse, error) {
+	if err := ValidateEnrollRequest(request); err != nil || !validDeviceToken(deviceToken) {
+		return ReconfigureResponse{}, &Error{Code: ErrorInvalidEnrollment}
+	}
+	body, err := json.Marshal(struct {
+		EnrollRequest
+		CurrentDeviceToken string `json:"currentDeviceToken"`
+	}{request, string(deviceToken)})
+	if err != nil {
+		return ReconfigureResponse{}, &Error{Code: ErrorInvalidEnrollment}
+	}
+	defer clear(body)
+	requestCtx, cancel := context.WithTimeout(ctx, client.timeout)
+	defer cancel()
+	httpRequest, err := http.NewRequestWithContext(requestCtx, http.MethodPost, client.endpoint("/v1/agent/reconfigure"), bytes.NewReader(body))
+	if err != nil {
+		return ReconfigureResponse{}, &Error{Code: ErrorTransport}
+	}
+	httpRequest.Header.Set("Content-Type", "application/json")
+	httpRequest.Header.Set("Accept", "application/json")
+	response, err := client.httpClient.Do(httpRequest)
+	if err != nil {
+		if requestCtx.Err() != nil {
+			return ReconfigureResponse{}, &Error{Code: ErrorTransport, cause: requestCtx.Err()}
+		}
+		return ReconfigureResponse{}, &Error{Code: ErrorTransport}
+	}
+	defer response.Body.Close()
+	data, err := readBounded(response.Body, maxResponseBytes)
+	if err != nil {
+		return ReconfigureResponse{}, &Error{Code: ErrorUnexpectedResponse}
+	}
+	defer clear(data)
+	if !isJSONContentType(response.Header.Get("Content-Type")) {
+		return ReconfigureResponse{}, &Error{Code: ErrorUnexpectedResponse}
+	}
+	if response.StatusCode == http.StatusOK {
+		var result ReconfigureResponse
+		if decodeStrict(data, &result) != nil || !length(result.DeviceID, 1, 36) || !result.Reconfigured {
+			return ReconfigureResponse{}, &Error{Code: ErrorUnexpectedResponse}
+		}
+		return result, nil
+	}
+	return ReconfigureResponse{}, mapErrorResponse(response.StatusCode, data, map[int]ErrorCode{
+		400: ErrorInvalidEnrollment, 403: ErrorEnrollmentDenied, 429: ErrorRateLimited, 503: ErrorUnavailable,
+	})
+}
+
 func (client *Client) Heartbeat(ctx context.Context, deviceToken []byte, request HeartbeatRequest) (HeartbeatResponse, error) {
 	if !validDeviceToken(deviceToken) {
 		return HeartbeatResponse{}, &Error{Code: ErrorUnauthenticated}
