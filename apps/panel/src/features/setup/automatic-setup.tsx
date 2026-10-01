@@ -28,8 +28,8 @@ export function AutomaticSetup() {
   const [epoch] = useState(() => sessionEpoch(queryClient));
   const { api, removeSession } = useMemo(() => {
     const config = getPublicConfig();
-    const { account } = createAppwriteSessionClient(config);
-    return { api: createApiClient({ baseUrl: config.apiBaseUrl, getJwt: async () => (await account.createJWT()).jwt }),
+    const { account, getJwt } = createAppwriteSessionClient(config);
+    return { api: createApiClient({ baseUrl: config.apiBaseUrl, getJwt }),
       removeSession: async () => { await account.deleteSession('current'); } };
   }, []);
   const [organizations, setOrganizations] = useState<OrganizationView[]>([]);

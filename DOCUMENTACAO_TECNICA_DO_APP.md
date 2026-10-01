@@ -57,6 +57,8 @@ O AppRemoto e uma plataforma de acesso remoto para tecnicos da XPoint. Ele combi
 
 O painel nao conversa diretamente com as colecoes privadas. O navegador usa o Appwrite somente para criar a sessao do tecnico e emitir um JWT curto. Toda leitura operacional passa pela `remote-api`.
 
+O JWT da sessao e reutilizado somente em memoria por ate 12 minutos (validade padrao Appwrite: 15 minutos), compartilhando uma emissao entre requisicoes concorrentes. Inicio, encerramento ou expiracao da sessao limpam essa memoria e rejeitam emissoes tardias da sessao anterior. O polling nao deve criar um JWT por requisicao: esse comportamento atingiu o limite de emissao observado em producao. Senhas RustDesk continuam fora desse cache.
+
 ```text
 Tecnico no navegador
     |
