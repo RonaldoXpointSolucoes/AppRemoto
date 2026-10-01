@@ -54,7 +54,7 @@ Do not replace it with `*`, add HTTP variants, or add unrelated origins. Any API
 6. Deploy the reviewed commit and wait for Coolify to report a finished, healthy application. Verify that the resolved deployment commit is the intended commit.
 7. Request `GET /health` over public HTTPS and require HTTP 200 with exact body `{"status":"ok"}`. Also confirm the container health probe reports healthy.
 8. Inspect build, startup, and request logs for errors, crash loops, secret material, authorization headers, cookies, passwords, tokens, or keys. Treat any exposure as an incident and rotate the affected credential.
-9. Run the private production verifier below. It is the only authorized authentication acceptance path while the panel has no logout control.
+9. Run the private production verifier below as the reproducible server-side authentication baseline. Interactive acceptance is permitted only after the reviewed logout commit is deployed and the procedure below is followed.
 10. Confirm auto-deploy remains off after validation.
 
 ## Production authentication acceptance
@@ -80,11 +80,19 @@ Success requires `status=PASS`, `account_verified=true`, `jwt_created=true`, `de
 
 The verifier's exact sequence is Appwrite `GET /account`, Appwrite `POST /account/jwts`, authenticated API `GET /v1/devices`, and Appwrite `DELETE /account/sessions/current` in one process. It does not prove an interactive browser login and must not be described as one. Record only the redacted evidence fields above, timestamps, commit/deployment identifiers, and non-secret counts.
 
-## Interactive UI acceptance gate
+## Interactive UI acceptance
 
-Interactive production login is blocked as an acceptance path until a reviewed logout control is implemented and verified to await Appwrite `account.deleteSession('current')` before clearing browser state or navigating away. Do not attempt or prescribe a production browser login before that gate is satisfied.
+The panel source includes a locally verified logout control that calls and awaits Appwrite `account.deleteSession('current')` in the same authenticated browser context. Only a successful deletion advances the session epoch, clears protected query data, and redirects to `/login`. While deletion is pending the control is disabled, and a concurrent authorization failure shares that in-flight operation. A failed deletion keeps the session and local state in place and shows only a redacted, retryable error.
 
-After logout exists, a separate reviewed acceptance procedure must require server-side deletion, clear cookies/storage/service workers/cache for the exact panel origin and residual Appwrite site data, close all acceptance tabs, and prove that reopening `/devices` starts unauthenticated. Clearing local site data or closing a tab alone must never count as session revocation.
+This source behavior does not establish that a particular production deployment contains the control. Before interactive production login, require the deployed commit to include the reviewed logout change, then verify public health and container health again.
+
+For interactive acceptance:
+
+1. Start from a clean browser context for the exact panel and Appwrite origins, then authenticate with the approved technician account without recording credentials, cookies, JWTs, or response bodies.
+2. Confirm the protected device view loads through the production API.
+3. Activate `Sair da conta` once and require the Appwrite `DELETE /account/sessions/current` response to succeed before the browser reaches `/login`. A disabled control while pending is expected; a visible logout error is a failed acceptance and must not be reported as logout.
+4. Close all acceptance tabs, clear cookies, storage, service workers, and cache for the exact panel origin plus residual Appwrite site data, and open `/devices` in a new tab.
+5. Require the new visit to start unauthenticated and redirect to `/login`. Local cleanup or closing a tab alone never counts as server-side session revocation.
 
 The earlier attempt with the commercial email did not authenticate successfully and its tab was closed. It created no accepted technical browser session (session A), so no browser-session cleanup is claimed or required for that attempt. The successful evidence is only the verifier's self-contained session (session B), which recorded `session_deleted=true`.
 

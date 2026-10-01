@@ -10,6 +10,8 @@ Each URL must be an absolute HTTPS URL without credentials, query parameters, or
 
 The device directory polls every 30 seconds without overlapping an active request. Both polling and manual refresh start a new first-page snapshot while retaining organization, status, and search filters. Previous rows have their status masked during refresh and after a failure. Session transitions cancel and clear query data and use an epoch to ignore obsolete authorization failures.
 
+The device header includes an accessible logout command. It awaits deletion of the current Appwrite session before advancing the session epoch, clearing protected query data, and returning to login. A failed deletion keeps the active state intact and presents a redacted, retryable error; concurrent clicks and authorization failures share the same in-flight deletion.
+
 `GET /health` returns `{ "status": "ok" }` without authentication. The container includes curl and checks this route on port 3000 while running the standalone server as the non-root `node` user.
 
 `pnpm --filter @appremoto/panel test:e2e` builds with synthetic public configuration and starts the generated standalone server, including its static assets. Chromium covers desktop/mobile layouts, session transitions, snapshot refresh, and five minutes of polling with a controlled clock. API/Appwrite responses are intercepted; these tests do not replace production enrollment or RustDesk acceptance.

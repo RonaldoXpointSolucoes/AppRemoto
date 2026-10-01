@@ -1,10 +1,10 @@
 'use client';
 
 import type { DeviceView } from '@appremoto/contracts';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { expireSession, sessionEpoch } from '../auth/session-cache';
+import { expireSession, logoutSession, sessionEpoch } from '../auth/session-cache';
 
 import { DeviceFilters } from './device-filters';
 import { DeviceRecord, DeviceStatus, formatLastSeen, type DeviceStatusState } from './device-record';
@@ -33,17 +33,43 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   const queryClient = useQueryClient();
   const [epoch] = useState(() => sessionEpoch(queryClient));
   const [filters, setFilters] = useState<DeviceFiltersValue>({ organizationId: '', status: '', search: '' });
+  const [logoutPending, setLogoutPending] = useState(false);
+  const [logoutError, setLogoutError] = useState(false);
   const query = useDevices(service, filters);
   const handledExpiry = useRef(false);
+  const logoutLock = useRef(false);
+  const navigationHandled = useRef(false);
   const unauthorized = isUnauthorized(query.error ?? query.backgroundError);
+  const finishSession = useCallback(() => {
+    if (navigationHandled.current) return;
+    navigationHandled.current = true;
+    onSessionExpired();
+  }, [onSessionExpired]);
 
   useEffect(() => {
     if (!unauthorized || handledExpiry.current) return;
     handledExpiry.current = true;
     void expireSession(queryClient, epoch, () => service.expireSession()).then((expired) => {
-      if (expired) onSessionExpired();
+      if (expired) finishSession();
     });
-  }, [epoch, onSessionExpired, queryClient, service, unauthorized]);
+  }, [epoch, finishSession, queryClient, service, unauthorized]);
+
+  async function handleLogout() {
+    if (logoutLock.current) return;
+    logoutLock.current = true;
+    setLogoutPending(true);
+    setLogoutError(false);
+    const loggedOut = await logoutSession(queryClient, epoch, () => service.expireSession());
+    if (loggedOut) {
+      finishSession();
+      return;
+    }
+    logoutLock.current = false;
+    if (sessionEpoch(queryClient) === epoch) {
+      setLogoutPending(false);
+      setLogoutError(true);
+    }
+  }
 
   const organizations = query.organizations.data ?? [];
   const hasFilter = Boolean(filters.organizationId || filters.status || filters.search);
@@ -53,7 +79,13 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     : 'Nenhum dispositivo corresponde aos filtros.';
 
   return <main className="devices-shell">
-    <header className="devices-header"><div><p className="product-name">AppRemoto</p><h1>Dispositivos</h1></div></header>
+    <header className="devices-header">
+      <div><p className="product-name">AppRemoto</p><h1>Dispositivos</h1></div>
+      <button className="icon-button" type="button" title="Sair da conta" aria-label="Sair da conta" aria-busy={logoutPending} disabled={logoutPending} onClick={() => void handleLogout()}>
+        <LogOut aria-hidden="true" size={19} />
+      </button>
+    </header>
+    {logoutError && <p className="logout-error" role="alert">Nao foi possivel sair. Tente novamente.</p>}
     {query.isOrganizationLoading && <section className="device-state" role="status">Carregando dispositivos...</section>}
     {!query.isOrganizationLoading && unauthorized && <section className="device-state error-state" role="alert">Sessao expirada. Entre novamente.</section>}
     {!query.isOrganizationLoading && query.error && !unauthorized && <section className="device-state error-state" role="alert">

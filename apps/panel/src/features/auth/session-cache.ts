@@ -3,6 +3,7 @@ import type { QueryClient } from '@tanstack/react-query';
 interface SessionScope {
   epoch: number;
   removing?: Promise<void>;
+  loggingOut?: Promise<boolean>;
 }
 
 const scopes = new WeakMap<QueryClient, SessionScope>();
@@ -29,7 +30,32 @@ function clearSession(client: QueryClient): number {
 
 export async function beginSession(client: QueryClient): Promise<number> {
   await scope(client).removing;
+  await scope(client).loggingOut;
   return clearSession(client);
+}
+
+export function logoutSession(
+  client: QueryClient, expectedEpoch: number, remove: () => Promise<void>,
+): Promise<boolean> {
+  const current = scope(client);
+  if (current.epoch !== expectedEpoch) return Promise.resolve(false);
+  if (current.loggingOut) return current.loggingOut;
+
+  let deletion: Promise<void>;
+  try {
+    deletion = remove();
+  } catch (error) {
+    deletion = Promise.reject(error);
+  }
+  const loggingOut = deletion.then(() => {
+    if (current.epoch !== expectedEpoch) return false;
+    clearSession(client);
+    return true;
+  }, () => false).finally(() => {
+    if (current.loggingOut === loggingOut) current.loggingOut = undefined;
+  });
+  current.loggingOut = loggingOut;
+  return loggingOut;
 }
 
 export async function expireSession(
@@ -37,6 +63,7 @@ export async function expireSession(
 ): Promise<boolean> {
   const current = scope(client);
   if (current.epoch !== expectedEpoch) return false;
+  if (current.loggingOut) return current.loggingOut;
   const expiredEpoch = clearSession(client);
   const removing = Promise.resolve().then(remove).catch(() => undefined);
   current.removing = removing;

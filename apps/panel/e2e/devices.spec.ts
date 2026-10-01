@@ -98,6 +98,45 @@ test('mobile records preserve hierarchy and contain long values inside supported
   await page.screenshot({ path: testInfo.outputPath('devices-mobile-390.png'), fullPage: true });
 });
 
+test('mobile logout waits for server deletion, prevents duplicates, and reports a safe failure', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await mockAuthenticatedDevices(page);
+  await page.route('**/v1/devices?**', (route) => route.fulfill({
+    contentType: 'application/json', status: 200, body: JSON.stringify({ devices: [device], nextCursor: null }),
+  }));
+  let deletes = 0;
+  let fail = true;
+  let finishDelete!: () => void;
+  await page.route('**/account/sessions/current', async (route) => {
+    deletes += 1;
+    await new Promise<void>((resolve) => { finishDelete = resolve; });
+    return fail
+      ? route.fulfill({ status: 503, json: { message: 'private Appwrite failure' } })
+      : route.fulfill({ status: 204 });
+  });
+  await page.goto('/devices');
+  await expect(page.getByRole('article', { name: device.displayName })).toBeVisible();
+  const logout = page.getByRole('button', { name: 'Sair da conta' });
+  await expect(logout).toHaveAttribute('title', 'Sair da conta');
+
+  await logout.click();
+  await expect(logout).toBeDisabled();
+  await logout.click({ force: true });
+  expect(deletes).toBe(1);
+  await expect(page).toHaveURL(/\/devices$/);
+  finishDelete();
+  await expect(page.locator('.logout-error')).toHaveText('Nao foi possivel sair. Tente novamente.');
+  await expect(page.locator('body')).not.toContainText('private Appwrite failure');
+  await expect(logout).toBeEnabled();
+
+  fail = false;
+  await logout.click();
+  await expect(logout).toBeDisabled();
+  finishDelete();
+  await expect(page).toHaveURL(/\/login$/);
+  expect(deletes).toBe(2);
+});
+
 test('refresh keeps filters and desktop results at stable dimensions', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await mockAuthenticatedDevices(page);

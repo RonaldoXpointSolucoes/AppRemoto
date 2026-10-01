@@ -36,12 +36,49 @@ function service(overrides: Partial<DeviceDirectoryService> = {}): DeviceDirecto
 
 function renderDirectory(directoryService: DeviceDirectoryService, onSessionExpired = vi.fn()) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 0 } } });
-  return render(<QueryClientProvider client={queryClient}>
+  return { ...render(<QueryClientProvider client={queryClient}>
     <DeviceDirectory service={directoryService} onSessionExpired={onSessionExpired} />
-  </QueryClientProvider>);
+  </QueryClientProvider>), queryClient };
 }
 
 describe('DeviceDirectory', () => {
+  it('awaits one remote logout before clearing the session cache and redirecting', async () => {
+    let finishLogout!: () => void;
+    const expireSession = vi.fn(() => new Promise<void>((resolve) => { finishLogout = resolve; }));
+    const onSessionExpired = vi.fn();
+    const { queryClient } = renderDirectory(service({ expireSession }), onSessionExpired);
+    queryClient.setQueryData(['private-session-state'], { retained: true });
+    const logout = await screen.findByRole('button', { name: 'Sair da conta' });
+
+    await userEvent.click(logout);
+    await userEvent.click(logout);
+
+    expect(logout).toBeDisabled();
+    expect(expireSession).toHaveBeenCalledTimes(1);
+    expect(onSessionExpired).not.toHaveBeenCalled();
+    expect(queryClient.getQueryData(['private-session-state'])).toEqual({ retained: true });
+
+    await act(async () => finishLogout());
+    await waitFor(() => expect(onSessionExpired).toHaveBeenCalledTimes(1));
+    expect(queryClient.getQueryData(['private-session-state'])).toBeUndefined();
+  });
+
+  it('keeps the active session and shows a safe accessible error when logout fails', async () => {
+    const expireSession = vi.fn().mockRejectedValue(new Error('private Appwrite failure'));
+    const onSessionExpired = vi.fn();
+    const { queryClient } = renderDirectory(service({ expireSession }), onSessionExpired);
+    queryClient.setQueryData(['private-session-state'], { retained: true });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Sair da conta' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Nao foi possivel sair. Tente novamente.');
+    expect(screen.getByRole('button', { name: 'Sair da conta' })).toBeEnabled();
+    expect(expireSession).toHaveBeenCalledTimes(1);
+    expect(onSessionExpired).not.toHaveBeenCalled();
+    expect(queryClient.getQueryData(['private-session-state'])).toEqual({ retained: true });
+    expect(document.body).not.toHaveTextContent('private Appwrite failure');
+  });
+
   it('starts a fresh snapshot without the old cursor when refreshing a filtered second page', async () => {
     const getDevices = vi.fn().mockImplementation(async (query) => ({
       devices: [device({ displayName: query.cursor ? 'Pagina dois antiga' : 'Snapshot novo' })],
