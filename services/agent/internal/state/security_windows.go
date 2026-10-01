@@ -342,10 +342,14 @@ func newIdentityDirectorySecurityDescriptor() (*windows.SECURITY_DESCRIPTOR, err
 	if err != nil {
 		return nil, err
 	}
-	acl, err := windows.ACLFromEntries([]windows.EXPLICIT_ACCESS{
-		allowInheritedFullAccess(userSID, windows.TRUSTEE_IS_USER),
-		allowInheritedFullAccess(systemSID, windows.TRUSTEE_IS_WELL_KNOWN_GROUP),
-	}, nil)
+	return newIdentitySecurityDescriptor(userSID, systemSID, true)
+}
+
+// A service token may default new objects to Administrators ownership even
+// though its user is SYSTEM. Set the actual user as owner at creation, before
+// validating the same strict owner/ACL policy used when reopening the file.
+func newIdentitySecurityDescriptor(userSID, systemSID *windows.SID, directory bool) (*windows.SECURITY_DESCRIPTOR, error) {
+	acl, err := windows.ACLFromEntries(identityAccessEntries(userSID, systemSID, directory), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -359,9 +363,27 @@ func newIdentityDirectorySecurityDescriptor() (*windows.SECURITY_DESCRIPTOR, err
 	if err := descriptor.SetControl(windows.SE_DACL_PROTECTED, windows.SE_DACL_PROTECTED); err != nil {
 		return nil, err
 	}
+	if err := descriptor.SetOwner(userSID, false); err != nil {
+		return nil, err
+	}
+	selfRelative, err := descriptor.ToSelfRelative()
 	runtime.KeepAlive(userSID)
 	runtime.KeepAlive(systemSID)
-	return descriptor, nil
+	runtime.KeepAlive(acl)
+	return selfRelative, err
+}
+
+func identityAccessEntries(userSID, systemSID *windows.SID, directory bool) []windows.EXPLICIT_ACCESS {
+	entries := []windows.EXPLICIT_ACCESS{allowFullAccess(userSID, windows.TRUSTEE_IS_USER)}
+	if !userSID.Equals(systemSID) {
+		entries = append(entries, allowFullAccess(systemSID, windows.TRUSTEE_IS_WELL_KNOWN_GROUP))
+	}
+	if directory {
+		for i := range entries {
+			entries[i].Inheritance = windows.SUB_CONTAINERS_AND_OBJECTS_INHERIT
+		}
+	}
+	return entries
 }
 
 func restrictIdentityDirectory(path string) error {
@@ -373,10 +395,7 @@ func restrictIdentityDirectoryHandle(handle windows.Handle) error {
 	if err != nil {
 		return err
 	}
-	entries := []windows.EXPLICIT_ACCESS{
-		allowInheritedFullAccess(userSID, windows.TRUSTEE_IS_USER),
-		allowInheritedFullAccess(systemSID, windows.TRUSTEE_IS_WELL_KNOWN_GROUP),
-	}
+	entries := identityAccessEntries(userSID, systemSID, true)
 	acl, err := windows.ACLFromEntries(entries, nil)
 	if err != nil {
 		return err
@@ -653,7 +672,7 @@ func validateAllowedOwner(descriptor *windows.SECURITY_DESCRIPTOR) error {
 		return err
 	}
 	if !owner.Equals(userSID) && !owner.Equals(systemSID) {
-		return errors.New("identity owner is not current user or SYSTEM")
+		return ErrIdentityOwner
 	}
 	return nil
 }
@@ -712,6 +731,15 @@ func validateRestrictedIdentityWindowsHandle(handle windows.Handle) error {
 }
 
 func createRestrictedIdentityTemp(dir string) (*os.File, string, error) {
+	userSID, systemSID, err := identitySIDs()
+	if err != nil {
+		return nil, "", err
+	}
+	descriptor, err := newIdentitySecurityDescriptor(userSID, systemSID, false)
+	if err != nil {
+		return nil, "", err
+	}
+	attributes := &windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), SecurityDescriptor: descriptor}
 	for range 32 {
 		var random [16]byte
 		if _, err := rand.Read(random[:]); err != nil {
@@ -724,8 +752,9 @@ func createRestrictedIdentityTemp(dir string) (*os.File, string, error) {
 		}
 		handle, err := windows.CreateFile(pointer,
 			windows.GENERIC_READ|windows.GENERIC_WRITE|windows.READ_CONTROL|windows.WRITE_DAC,
-			windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.CREATE_NEW,
+			windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, attributes, windows.CREATE_NEW,
 			windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_WRITE_THROUGH|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+		runtime.KeepAlive(descriptor)
 		if errors.Is(err, windows.ERROR_FILE_EXISTS) || errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
 			continue
 		}
@@ -733,7 +762,7 @@ func createRestrictedIdentityTemp(dir string) (*os.File, string, error) {
 			return nil, "", err
 		}
 		file := os.NewFile(uintptr(handle), path)
-		if err := restrictIdentityWindowsHandle(handle); err != nil {
+		if err := validateRestrictedIdentityWindowsHandle(handle); err != nil {
 			file.Close()
 			os.Remove(path)
 			return nil, "", err

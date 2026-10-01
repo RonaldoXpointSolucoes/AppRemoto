@@ -103,14 +103,6 @@ func replacePrivate(path string, data []byte, readable ...bool) error {
 	defer os.Remove(tmp)
 	return windows.MoveFileEx(ptr(tmp), ptr(path), windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
 }
-func privateExists(path string) (bool, error) {
-	b, e := readPrivate(path, 128<<10)
-	clear(b)
-	if errors.Is(e, windows.ERROR_FILE_NOT_FOUND) || errors.Is(e, windows.ERROR_PATH_NOT_FOUND) {
-		return false, nil
-	}
-	return e == nil, e
-}
 func Install(ctx context.Context, r *Report) (code string) {
 	step, operation := 1, "PACKAGE"
 	fail := func(c string, e error) string { r.Record(step, operation, "ERROR", e); return c }

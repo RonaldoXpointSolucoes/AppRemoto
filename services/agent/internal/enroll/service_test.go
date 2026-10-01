@@ -9,12 +9,46 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/RonaldoXpointSolucoes/AppRemoto/services/agent/internal/api"
 	"github.com/RonaldoXpointSolucoes/AppRemoto/services/agent/internal/rustdesk"
 	"github.com/RonaldoXpointSolucoes/AppRemoto/services/agent/internal/state"
 )
+
+func TestIdentityFailureReportsExactStageAndPreservesCauseWithoutLeaking(t *testing.T) {
+	for _, operation := range []string{"IDENTITY_DIRECTORY_PREPARE", "IDENTITY_LOAD_CREATE"} {
+		t.Run(operation, func(t *testing.T) {
+			client, rd := successfulAPI(), &fakeRustDesk{}
+			service := newTestService(client, rd, newFakeArtifacts(), fakeProtector{})
+			cause := &os.PathError{Op: "private-secret-operation", Path: "secret-path", Err: syscall.Errno(5)}
+			if operation == "IDENTITY_DIRECTORY_PREPARE" {
+				service.prepareIdentity = func(string) error { return cause }
+			} else {
+				service.loadIdentity = func(string) (state.Identity, error) { return state.Identity{}, cause }
+			}
+			var lastOperation, lastResult string
+			service.progress = func(op, result string, err error) {
+				lastOperation, lastResult = op, result
+				if err != nil && strings.Contains(err.Error(), "secret") {
+					t.Fatal("progress leaked the underlying error")
+				}
+			}
+			_, err := service.Run(context.Background(), []byte(testEnrollmentToken), validMetadata())
+			var staged *StageError
+			if !errors.As(err, &staged) || staged.Operation != operation || !errors.Is(err, syscall.Errno(5)) {
+				t.Fatalf("lost stage or OS cause: %v", err)
+			}
+			if lastOperation != operation || lastResult != "ERROR" || strings.Contains(err.Error(), "secret") {
+				t.Fatal("incorrect or unsafe diagnostic")
+			}
+			if client.calls != 0 || rd.discoverCalls != 0 {
+				t.Fatal("failed identity preparation reached enrollment")
+			}
+		})
+	}
+}
 
 const (
 	testEnrollmentToken = "synthetic-enrollment-token-00000000"

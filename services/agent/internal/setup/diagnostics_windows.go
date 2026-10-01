@@ -16,6 +16,7 @@ import (
 
 	"github.com/RonaldoXpointSolucoes/AppRemoto/services/agent/internal/api"
 	"github.com/RonaldoXpointSolucoes/AppRemoto/services/agent/internal/enroll"
+	"github.com/RonaldoXpointSolucoes/AppRemoto/services/agent/internal/state"
 	"golang.org/x/sys/windows"
 )
 
@@ -192,6 +193,13 @@ func diagnostic(err error) string {
 	if errors.As(err, &n) {
 		return fmt.Sprintf("win32=%d", uint32(n))
 	}
+	var nt windows.NTStatus
+	if errors.As(err, &nt) {
+		return fmt.Sprintf("win32=%d", uint32(nt.Errno()))
+	}
+	if errors.Is(err, state.ErrIdentityOwner) {
+		return "IDENTITY_OWNER_MISMATCH"
+	}
 	var ae *api.Error
 	if errors.As(err, &ae) && safeIdentifier(string(ae.Code)) {
 		return string(ae.Code)
@@ -207,6 +215,10 @@ func diagnostic(err error) string {
 	}
 	if errors.Is(err, errUnattended) {
 		return "UNATTENDED_POLICY"
+	}
+	var stage *enroll.StageError
+	if errors.As(err, &stage) && safeIdentifier(stage.Operation+"_FAILED") {
+		return stage.Operation + "_FAILED"
 	}
 	return "FAILED"
 }
@@ -296,6 +308,8 @@ func FailureMessage(code string) string {
 		return "Este computador possui uma configuracao para outro cliente ou nome. Use o mesmo cliente e nome do cadastro original."
 	case "RECONCILIATION":
 		return "Uma tentativa anterior pode ter enviado o cadastro, mas nao salvou a resposta. Preserve os dados e encaminhe o log ao tecnico para reconciliar o cadastro."
+	case "IDENTITY_DIRECTORY_PREPARE", "IDENTITY_LOAD_CREATE":
+		return "O Windows impediu a preparacao da identidade protegida deste computador. O cadastro ainda nao foi enviado ao painel. Consulte a operacao e o codigo do Windows no log."
 	default:
 		return "A configuracao nao foi concluida. O log identifica a ultima operacao e o erro. Os dados de recuperacao foram preservados."
 	}

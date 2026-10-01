@@ -60,6 +60,7 @@ type Options struct {
 	API            APIClient
 	RustDesk       RustDeskClient
 	Protector      Protector
+	Progress       func(operation, result string, err error)
 }
 
 type Service struct {
@@ -70,6 +71,34 @@ type Service struct {
 	prepareIdentity func(string) error
 	loadIdentity    func(string) (state.Identity, error)
 	stateDirectory  string
+	progress        func(operation, result string, err error)
+}
+
+// StageError preserves the OS cause for safe numeric diagnostics without
+// including filenames, credentials or arbitrary underlying text in Error().
+type StageError struct {
+	Operation string
+	cause     error
+}
+
+func (e *StageError) Error() string { return e.Operation + " failed" }
+func (e *StageError) Unwrap() error { return e.cause }
+
+func (service *Service) stage(operation string, action func() error) error {
+	if service.progress != nil {
+		service.progress(operation, "START", nil)
+	}
+	if err := action(); err != nil {
+		failure := &StageError{Operation: operation, cause: err}
+		if service.progress != nil {
+			service.progress(operation, "ERROR", failure)
+		}
+		return failure
+	}
+	if service.progress != nil {
+		service.progress(operation, "OK", nil)
+	}
+	return nil
 }
 
 type dpapiProtector struct{}
@@ -96,7 +125,7 @@ func NewService(options Options) (*Service, error) {
 	}
 	return &Service{api: options.API, rustdesk: options.RustDesk, protector: protector,
 		artifacts: fileArtifacts{directory: options.StateDirectory}, prepareIdentity: state.PrepareIdentityDirectory,
-		loadIdentity: state.LoadOrCreateIdentity, stateDirectory: options.StateDirectory}, nil
+		loadIdentity: state.LoadOrCreateIdentity, stateDirectory: options.StateDirectory, progress: options.Progress}, nil
 }
 
 type marker struct {
@@ -112,24 +141,49 @@ type protectedCredentials struct {
 }
 
 func (service *Service) Run(ctx context.Context, enrollmentToken []byte, metadata Metadata) (Result, error) {
-	if err := service.prepareIdentity(service.stateDirectory); err != nil {
-		return Result{}, errors.New("prepare protected agent state failed")
+	if err := service.stage("IDENTITY_DIRECTORY_PREPARE", func() error { return service.prepareIdentity(service.stateDirectory) }); err != nil {
+		return Result{}, err
 	}
-	identity, err := service.loadIdentity(filepath.Join(service.stateDirectory, "identity.json"))
-	if err != nil {
-		return Result{}, errors.New("load stable device identity failed")
+	var identity state.Identity
+	if err := service.stage("IDENTITY_LOAD_CREATE", func() error {
+		var err error
+		identity, err = service.loadIdentity(filepath.Join(service.stateDirectory, "identity.json"))
+		return err
+	}); err != nil {
+		return Result{}, err
 	}
-	pending, pendingExists, err := service.loadMarker(pendingArtifact)
-	if err != nil {
-		return Result{}, ErrManualReconciliation
+	var pending, configured marker
+	var credentials protectedCredentials
+	var pendingExists, credentialsExist, configuredExists bool
+	if err := service.stage("PENDING_STATE_READ", func() error {
+		var err error
+		pending, pendingExists, err = service.loadMarker(pendingArtifact)
+		if err != nil {
+			return errors.Join(ErrManualReconciliation, err)
+		}
+		return nil
+	}); err != nil {
+		return Result{}, err
 	}
-	credentials, credentialsExist, err := service.loadCredentials()
-	if err != nil {
-		return Result{}, ErrManualReconciliation
+	if err := service.stage("CREDENTIALS_READ", func() error {
+		var err error
+		credentials, credentialsExist, err = service.loadCredentials()
+		if err != nil {
+			return errors.Join(ErrManualReconciliation, err)
+		}
+		return nil
+	}); err != nil {
+		return Result{}, err
 	}
-	configured, configuredExists, err := service.loadMarker(configuredArtifact)
-	if err != nil {
-		return Result{}, ErrManualReconciliation
+	if err := service.stage("PASSWORD_STATE_READ", func() error {
+		var err error
+		configured, configuredExists, err = service.loadMarker(configuredArtifact)
+		if err != nil {
+			return errors.Join(ErrManualReconciliation, err)
+		}
+		return nil
+	}); err != nil {
+		return Result{}, err
 	}
 	if credentialsExist {
 		if !pendingExists || pending.DeviceUUID != identity.DeviceUUID {
@@ -155,9 +209,9 @@ func (service *Service) Run(ctx context.Context, enrollmentToken []byte, metadat
 		return Result{}, errors.New("invalid enrollment inputs")
 	}
 	pendingData, _ := json.Marshal(marker{Version: 1, DeviceUUID: identity.DeviceUUID})
-	if err := service.artifacts.Publish(pendingArtifact, pendingData); err != nil {
+	if err := service.stage("ENROLLMENT_PREFLIGHT_WRITE", func() error { return service.artifacts.Publish(pendingArtifact, pendingData) }); err != nil {
 		clear(pendingData)
-		return Result{}, errors.New("persist enrollment preflight failed")
+		return Result{}, err
 	}
 	clear(pendingData)
 	response, err := service.api.Enroll(ctx, request)
