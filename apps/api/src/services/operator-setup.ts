@@ -4,14 +4,18 @@ import { DeviceViewSchema, CreateEnrollmentTokenRequestSchema, CreateEnrollmentT
   type CreateEnrollmentTokenRequest, type CreateEnrollmentTokenResponse,
   type EnrollmentStatusResponse, type ConnectDeviceResponse, type DeviceView } from '@appremoto/contracts';
 import type { AuthenticatedTechnician } from '../plugins/technician-auth.ts';
-import type { EnrollmentData, EnrollmentRepository } from '../repositories/enrollment.ts';
+import type { EnrollmentData, EnrollmentRepository, HeartbeatTokenRepository } from '../repositories/enrollment.ts';
 import type { OperatorAuditRepository } from '../repositories/audit.ts';
 import type { SetupReceiptRepository } from '../repositories/operator-setup.ts';
 import { issueToken, hashToken } from '../security/tokens.ts';
 import { decryptPassword } from '../security/credentials.ts';
+import { createDeviceTools, type DeviceToolsService } from './device-tools.ts';
+import { OperatorSetupDenied } from './operator-errors.ts';
+import { createConnectionLaunch, type ConnectWithOptions } from './connection-launch.ts';
 
-export class OperatorSetupDenied extends Error {}
-export interface OperatorSetupService {
+export { OperatorSetupDenied } from './operator-errors.ts';
+export interface OperatorSetupService extends Partial<DeviceToolsService> {
+  connectWithOptions?: ConnectWithOptions;
   create(technician: AuthenticatedTechnician, request: CreateEnrollmentTokenRequest, sourceIp: string): Promise<CreateEnrollmentTokenResponse>;
   status(technician: AuthenticatedTechnician, enrollmentId: string): Promise<EnrollmentStatusResponse>;
   connect(technician: AuthenticatedTechnician, deviceId: string, sourceIp: string): Promise<ConnectDeviceResponse>;
@@ -22,6 +26,7 @@ interface Dependencies {
   audit: OperatorAuditRepository;
   encryptionKey: Buffer;
   keyVersion: number;
+  guard?: Pick<HeartbeatTokenRepository, 'beginHeartbeatGuard' | 'endHeartbeatGuard'>;
   now?: () => Date;
 }
 const denied = () => new OperatorSetupDenied('Access denied');
@@ -51,7 +56,8 @@ export function createOperatorSetupService(deps: Dependencies): OperatorSetupSer
       typeof token.last_used_at === 'string' && Number.isFinite(Date.parse(token.last_used_at)) &&
       token.last_used_at === device.last_seen_at && !await deps.receipts.heartbeatPending(deviceId));
   }
-  return {
+  const service: OperatorSetupService = {
+    ...createDeviceTools(deps),
     async create(technician, input, sourceIp) {
       const request = CreateEnrollmentTokenRequestSchema.parse(input);
       await authorize(technician, request.organizationId, 'canManageDevices');
@@ -112,4 +118,6 @@ export function createOperatorSetupService(deps: Dependencies): OperatorSetupSer
       return response;
     },
   };
+  service.connectWithOptions = createConnectionLaunch({ ...deps, connectAutomatic: service.connect });
+  return service;
 }

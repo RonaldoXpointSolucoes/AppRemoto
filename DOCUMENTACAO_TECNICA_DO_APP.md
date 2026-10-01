@@ -113,6 +113,7 @@ O Appwrite Console e o Coolify sao consoles administrativos, nao telas alternati
 - Bootstrap de administrador tecnico com artefato DPAPI local.
 - API Fastify com autenticacao de tecnico, listagem de organizacoes/dispositivos, enrollment e heartbeat.
 - Painel Next.js com login, listagem responsiva, filtros, busca, paginacao, polling e logout com revogacao de sessao.
+- Ferramentas do dispositivo: editar nome/observacoes com permissao de gestao, diagnostico e historico de tentativas em `audit_logs`. Conexao automatica preserva a entrega autorizada existente; modo manual recebe a senha RustDesk somente na memoria do navegador. O RustDesk precisa estar instalado tambem no computador do tecnico.
 - `/setup` prepara um EXE Windows para cliente/nome selecionados e acompanha o receipt/heartbeat daquela instalacao. O checklist manual de 6 etapas e 20 itens fica recolhido para suporte.
 - Endpoint de operador cria enrollment token de 256 bits, uso unico e validade de 30 minutos; apenas hash e auditoria persistidos. Status correlaciona receipt committed e heartbeat confirmado, sem busca pelo nome. Nao exige alteracao de schema.
 - Configurador Windows x64 1.0.3 em `services/agent/cmd/remote-setup`: exige RustDesk ja instalado com servico automatico LocalSystem, verifica o executavel confiavel, configura acesso e cadastra o servico XPoint com estado DPAPI. Nao baixa nem instala RustDesk. Janela com seis etapas e log com mesmo nome/pasta do EXE, sem argumentos, tokens ou senhas. Distribuicao base gerada no Docker do painel; personalizacao em memoria no navegador com token de uso unico. Nao e um instalador assinado.
@@ -131,10 +132,10 @@ O Appwrite Console e o Coolify sao consoles administrativos, nao telas alternati
 
 ### Ainda nao implementado ou nao homologado
 
-- Homologacao do instalador automatico em um Windows cliente real, incluindo UAC, SYSTEM/DPAPI, reboot e acesso remoto.
-- A tentativa 1.0.1 do cliente parou em ENROLLMENT_STATE antes do cadastro. A 1.0.2 corrige uma falha reproduzida como SYSTEM quando o proprietario padrao do token e Administradores: arquivos novos recebem explicitamente o dono correto, sem afrouxar a validacao dos existentes. Testes nativos cobrem ambos os donos padrao, DPAPI e retomada sem duplicar cadastro. O instalador consulta metadados de recuperacao com leitura administrativa limitada a uma thread, sem abrir credenciais ou alterar ACLs. O log discrimina as operacoes de identidade/estado e conserva codigos Win32/NTSTATUS; a causa exata no cliente depende de novo log, pois a 1.0.1 a descartava. Deploy apenas do painel; aceite no cliente, reboot e sessao RustDesk real ainda pendentes.
-- A tentativa real da versao 1.0.0 foi reportada pelo usuario com janela sem progresso e codigo BUSY. A versao 1.0.1 diferencia erro de bloqueio, registra operacoes do servico e permite substituir uma tentativa comprovadamente anterior ao envio do enrollment; credenciais salvas preservam o cadastro original. Enrollment pendente sem credenciais continua exigindo reconciliacao. Testes automatizados nao substituem repetir a instalacao no cliente.
-- Prova de abertura de sessao real pelo botao Conectar. A entrega transitoria de senha ao RustDesk foi autorizada explicitamente pelo usuario; o endpoint exige canConnect, organizacao ativa, dispositivo online e heartbeat confirmado antes de consultar a credencial. Descriptografia/validacao e auditoria confirmada precedem a resposta no-store. O painel nao exibe nem armazena a URI e descarta respostas de sessoes encerradas.
+- Reboot do Windows cliente e reconexao apos inicializacao. Em 2026-10-01, o log real do configurador 1.0.3 confirmou `SETUP_COMPLETE` e heartbeat; o usuario confirmou a maquina ONLINE e a sessao remota funcionando apos instalar o RustDesk tambem no computador do tecnico.
+- A tentativa 1.0.1 do cliente parou em ENROLLMENT_STATE antes do cadastro. A 1.0.2 corrige uma falha reproduzida como SYSTEM quando o proprietario padrao do token e Administradores: arquivos novos recebem explicitamente o dono correto, sem afrouxar a validacao dos existentes. Testes nativos cobrem ambos os donos padrao, DPAPI e retomada sem duplicar cadastro. O instalador consulta metadados de recuperacao com leitura administrativa limitada a uma thread, sem abrir credenciais ou alterar ACLs. O log discrimina as operacoes de identidade/estado e conserva codigos Win32/NTSTATUS; a causa exata no cliente depende de novo log, pois a 1.0.1 a descartava. Historico da 1.0.2: esses testes antecederam o aceite real do cliente e da sessao na 1.0.3; reboot segue pendente.
+- A tentativa real da versao 1.0.0 foi reportada pelo usuario com janela sem progresso e codigo BUSY. A versao 1.0.1 diferencia erro de bloqueio, registra operacoes do servico e permite substituir uma tentativa comprovadamente anterior ao envio do enrollment; credenciais salvas preservam o cadastro original. Enrollment pendente sem credenciais continua exigindo reconciliacao. Essa etapa foi repetida com sucesso no cliente usando a versao 1.0.3.
+- A conexao real pelo botao Conectar foi confirmada pelo usuario em 2026-10-01. A entrega transitoria de senha ao RustDesk foi autorizada explicitamente; o modo automatico exige canConnect, organizacao ativa, dispositivo online e heartbeat confirmado. O navegador nao consegue provar abertura do aplicativo ou sucesso da sessao; eventos do tecnico ficam identificados como declaracoes do operador. Auditoria confirmada precede a resposta no-store; a URI permanece apenas em memoria por prazo curto e e descartada ao encerrar a sessao do painel.
 - Gestao de organizacoes, tecnicos e RBAC pelo painel.
 - Rotacao completa de credenciais e historico de sessoes.
 - Prova final com dois computadores/VMs, conexao direta e relay.
@@ -232,7 +233,7 @@ Responsavel por:
 - aplicar senha unattended no RustDesk;
 - enviar heartbeat com jitter e backoff.
 
-O comando manual continua disponivel e nao inicia sozinho apos boot. O novo `cmd/remote-setup` registra o servico automatico `XPointRemoteAgent` como LocalSystem, com estado proprio em ProgramData; esse fluxo ainda requer homologacao em endpoint real. Consulte `services/agent/SETUP.md` para overlay, build, ACL, recuperacao e limites de compatibilidade.
+O comando manual continua disponivel e nao inicia sozinho apos boot. O novo `cmd/remote-setup` registra o servico automatico `XPointRemoteAgent` como LocalSystem, com estado proprio em ProgramData; esse fluxo foi confirmado pelo usuario em um endpoint real; reboot e reconexao apos boot ainda precisam de aceite. Consulte `services/agent/SETUP.md` para overlay, build, ACL, recuperacao e limites de compatibilidade.
 
 ### RustDesk Server OSS
 
@@ -306,7 +307,7 @@ Se houver falha depois de consumir token, preserve artefatos e receipts. Nao apa
 - Database: `remote_management`.
 - Fonte canonica: `infra/appwrite/src/schema.ts`.
 - Documento gerado: `infra/appwrite/schema.md`.
-- Estado desejado atual, calculado diretamente de `schema.ts`: 11 colecoes, 69 atributos e 27 indices, totalizando 108 recursos incluindo o database.
+- Estado desejado atual, calculado diretamente de `schema.ts`: 11 colecoes, 70 atributos e 27 indices, totalizando 109 recursos incluindo o database. O campo opcional `devices.notes` acrescenta uma unica definicao ao inventario anterior de 108 recursos.
 - O runbook de provisionamento ainda contem referencias historicas a 104 recursos, anteriores a `heartbeat_guards`. Nao remova recursos para fazer a producao coincidir com essa contagem antiga; atualize o runbook quando o proximo card de schema for executado.
 - IDs relacionais sao strings de ate 36 caracteres; Appwrite nao cria foreign keys. A API garante integridade e tenant isolation.
 - Nao use documentos completos em respostas. Cada repositorio usa `Query.select` para projeÃ§Ãµes minimas.
@@ -371,6 +372,7 @@ Registro canonico de cada computador gerenciado.
 | `last_seen_at` | datetime opcional | Ultimo heartbeat confirmado |
 | `last_ip` | string(45), opcional | IP canonico do ultimo heartbeat |
 | `enabled` | boolean, obrigatorio | Desativacao logica do dispositivo |
+| `notes` | string(2048), opcional | Observacoes editadas pelo tecnico; nunca senhas ou tokens |
 
 Indices: identidade unica por `organization_id + device_uuid`; buscas por organizacao, `last_seen_at`, nome, hostname e RustDesk ID.  
 Nao crie campos `online`, `offline`, `status` ou `last_activity`: use `last_seen_at` e a regra de 90 segundos. Nao use `rustdesk_id` como identidade primaria; ele pode mudar, enquanto `device_uuid` preserva a identidade do agente.
@@ -465,7 +467,7 @@ Schema reservado para sessoes curtas de conexao remota.
 | `source_ip` | string(45), obrigatorio | Origem canonica |
 
 Indices por organizacao, device e tecnico.  
-A colecao ja existe; nao crie outra tabela para "historico de conexao" antes de implementar e avaliar este modelo. O fluxo de conexao ainda esta planejado, nao ativo.
+A colecao ja existe e permanece reservada para um protocolo futuro de resgate de tokens de conexao. O fluxo atual entrega a URI ao aplicativo local, sem callback de sessao: tentativas e declaracoes do operador sao eventos de `audit_logs`, nao sessoes remotas comprovadas. Nao criar outra colecao para esses eventos.
 
 ### 8.11 `audit_logs`
 
@@ -524,8 +526,14 @@ technician + organization + device ---- connection_sessions (planejado)
 | `POST /v1/enrollment-tokens` | JWT + manage devices | Implementado | Token de uso unico e 30 minutos |
 | `GET /v1/enrollment-tokens/:enrollmentId/status` | JWT + manage devices | Implementado | Receipt committed e heartbeat da instalacao |
 | `POST /v1/devices/:deviceId/connect` | JWT + connect | Implementado | Entrega transitoria ao RustDesk apos autorizacao e auditoria |
+| `GET /v1/devices/:deviceId/details` | JWT + view | Implementado | Cadastro, observacoes e verificacoes de prontidao |
+| `POST /v1/devices/:deviceId/update` | JWT + manage devices | Implementado | Altera somente nome e observacoes, com guarda de concorrencia |
+| `GET /v1/devices/:deviceId/connection-history` | JWT + view | Implementado | Ultimos 30 eventos de tentativas, com fonte declarada |
+| `POST /v1/devices/:deviceId/connection-events` | JWT + connect | Implementado | Evento permitido ligado a tentativa do mesmo tecnico/device, ate 30 minutos |
 
 Todos os payloads usam schemas estritos e rejeitam campos desconhecidos. Erros externos sao genericos; detalhes sensiveis nao devem aparecer em logs.
+
+Conectar aceita `{}` para compatibilidade e `{mode,attemptId}` para correlacao. O modo manual retorna URI publica sem senha e permite tentar um dispositivo habilitado mesmo sem heartbeat recente. A senha digitada e adicionada somente no navegador, nunca enviada a API. O log exportavel usa campos/codigos permitidos e nao captura console bruto, pois mensagens do navegador podem conter a URI do protocolo.
 
 ## 10. Configuracao e segredos
 

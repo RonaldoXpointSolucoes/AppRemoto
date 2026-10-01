@@ -22,11 +22,48 @@ test('operator endpoints exist and require authentication with no-store', async 
   });
   try {
     for (const [method, url] of [['POST', '/v1/enrollment-tokens'], ['GET', '/v1/enrollment-tokens/test/status'],
-      ['POST', '/v1/devices/test/connect']] as const) {
+      ['POST', '/v1/devices/test/connect'], ['GET', '/v1/devices/test/details'], ['POST', '/v1/devices/test/update'],
+      ['GET', '/v1/devices/test/connection-history'], ['POST', '/v1/devices/test/connection-events']] as const) {
       const response = await app.inject({ method, url });
       assert.equal(response.statusCode, 401);
       assert.equal(response.headers['cache-control'], 'no-store');
     }
+  } finally { await app.close(); }
+});
+
+test('device tools enforce strict contracts, no-store and preserve legacy connect compatibility', async () => {
+  const dependencies = services(); const calls: string[] = [];
+  dependencies.operatorSetup!.connectWithOptions = async (_tech, id, body) => {
+    calls.push(`connect/${id}/${body.mode}`);
+    return { ...body, launchUri: 'rustdesk://connect/123456789@179.199.142.157:21116?key=fixture' };
+  };
+  dependencies.operatorSetup!.connectionHistory = async () => { calls.push('history'); return { events: [] }; };
+  dependencies.operatorSetup!.connectionEvent = async () => { calls.push('event'); return { recorded: true }; };
+  const headers = { authorization: 'Bearer synthetic.jwt.value' };
+  const attemptId = '05965470-d10e-46e8-84e5-3e41d7a9e219';
+  const app = buildApp({ logger: false }, dependencies);
+  try {
+    const connect = await app.inject({ method: 'POST', url: '/v1/devices/device/connect', headers, payload: { mode: 'manual', attemptId } });
+    assert.equal(connect.statusCode, 200); assert.equal(connect.json().attemptId, attemptId);
+    assert.equal(connect.headers['cache-control'], 'no-store');
+    assert.equal((await app.inject({ method: 'GET', url: '/v1/devices/device/connection-history', headers })).statusCode, 200);
+    assert.equal((await app.inject({ method: 'POST', url: '/v1/devices/device/connection-events', headers,
+      payload: { mode: 'manual', attemptId, event: 'not_opened' } })).statusCode, 200);
+    for (const payload of [{ mode: 'manual', attemptId, password: 'synthetic-not-accepted' },
+      { mode: 'automatic' }, { mode: 'manual', attemptId: 'not-a-uuid' }]) {
+      assert.equal((await app.inject({ method: 'POST', url: '/v1/devices/device/connect', headers, payload })).statusCode, 400);
+    }
+    for (const [path, payload] of [
+      ['update', { displayName: 'PC', notes: '', enabled: false }],
+      ['update', { displayName: 'PC', notes: 'a'.repeat(2049) }],
+      ['update', { displayName: 'PC', notes: '', organizationId: 'other' }],
+      ['connection-events', { mode: 'manual', attemptId, event: 'not_opened', message: 'synthetic-private-data' }],
+      ['connection-events', { mode: 'manual', attemptId, event: 'raw_session', code: 'RAW_PASSWORD' }],
+    ] as const) {
+      const response = await app.inject({ method: 'POST', url: `/v1/devices/device/${path}`, headers, payload });
+      assert.equal(response.statusCode, 400); assert.equal(response.headers['cache-control'], 'no-store');
+    }
+    assert.deepEqual(calls, ['connect/device/manual', 'history', 'event']);
   } finally { await app.close(); }
 });
 

@@ -1,5 +1,5 @@
 import { ApiErrorSchema, DeviceViewSchema, type DeviceListQuery, type DeviceView } from '@appremoto/contracts';
-import { CreateEnrollmentTokenResponseSchema, EnrollmentStatusResponseSchema, ConnectDeviceResponseSchema } from '@appremoto/contracts';
+import { CreateEnrollmentTokenResponseSchema, EnrollmentStatusResponseSchema, ConnectDeviceLaunchResponseSchema, DeviceDetailsResponseSchema, UpdateDeviceResponseSchema, ConnectionHistoryResponseSchema, RecordConnectionEventResponseSchema, type ConnectionMode, type ConnectionEventInput } from '@appremoto/contracts';
 import { AppwriteException } from 'appwrite';
 import { z, type ZodType } from 'zod';
 
@@ -177,7 +177,11 @@ export function createApiClient(options: ApiClientOptions) {
     getOrganizations: async () => (await request('/v1/organizations', OrganizationsResponseSchema)).organizations,
     createEnrollmentToken: (organizationId: string, deviceDisplayName: string) => request('/v1/enrollment-tokens', CreateEnrollmentTokenResponseSchema, { organizationId, deviceDisplayName }),
     getEnrollmentStatus: (enrollmentId: string) => request(`/v1/enrollment-tokens/${encodeURIComponent(enrollmentId)}/status`, EnrollmentStatusResponseSchema),
-    connectDevice: (deviceId: string) => request(`/v1/devices/${encodeURIComponent(deviceId)}/connect`, ConnectDeviceResponseSchema, {}),
+    connectDevice: (deviceId: string, options: { mode: ConnectionMode; attemptId: string }) => request(`/v1/devices/${encodeURIComponent(deviceId)}/connect`, ConnectDeviceLaunchResponseSchema, options),
+    getDeviceDetails: (deviceId: string) => request(`/v1/devices/${encodeURIComponent(deviceId)}/details`, DeviceDetailsResponseSchema),
+    updateDevice: (deviceId: string, input: { displayName: string; notes: string }) => request(`/v1/devices/${encodeURIComponent(deviceId)}/update`, UpdateDeviceResponseSchema, input),
+    getConnectionHistory: (deviceId: string) => request(`/v1/devices/${encodeURIComponent(deviceId)}/connection-history`, ConnectionHistoryResponseSchema),
+    recordConnectionEvent: (deviceId: string, input: ConnectionEventInput) => request(`/v1/devices/${encodeURIComponent(deviceId)}/connection-events`, RecordConnectionEventResponseSchema, input),
     getDevices: (query: DeviceListQuery = { limit: 50 }) => {
       const params = new URLSearchParams();
       if (query.organizationId) params.set('organizationId', query.organizationId);

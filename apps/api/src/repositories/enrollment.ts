@@ -41,7 +41,7 @@ const fields: Record<EnrollmentKind, string[]> = {
   enrollment_receipts: ['organization_id', 'enrollment_token_id', 'device_id', 'device_uuid', 'status', 'token_use_consumed',
     'expected_use_count', 'recovery_frozen'],
   devices: ['organization_id', 'device_uuid', 'display_name', 'hostname', 'rustdesk_id', 'operating_system', 'os_version',
-    'agent_version', 'rustdesk_version', 'last_seen_at', 'last_ip', 'enabled'],
+    'agent_version', 'rustdesk_version', 'last_seen_at', 'last_ip', 'enabled', 'notes'],
   device_tokens: ['device_id', 'token_hash', 'last_used_at', 'revoked_at'],
   device_credentials: ['device_id', 'password_ciphertext', 'password_nonce', 'password_tag', 'key_version'],
 };
@@ -52,7 +52,7 @@ export function enrollmentId(...parts: string[]): string {
 
 function project(kind: EnrollmentKind, document: object): EnrollmentData {
   const defaults = kind === 'devices' ? { agent_version: null, rustdesk_version: null,
-    last_seen_at: null, last_ip: null } : kind === 'device_tokens' ?
+    last_seen_at: null, last_ip: null, notes: null } : kind === 'device_tokens' ?
     { last_used_at: null, revoked_at: null } : kind === 'enrollment_tokens' ? { revoked_at: null } : {};
   const record = { ...defaults, ...document } as EnrollmentData;
   return Object.fromEntries(fields[kind].filter((field) => record[field] !== undefined).map((field) => {

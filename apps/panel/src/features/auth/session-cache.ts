@@ -4,6 +4,7 @@ import { clearSessionJwts } from '../../lib/session-jwt';
 
 interface SessionScope {
   epoch: number;
+  listeners?: Set<() => void>;
   removing?: Promise<void>;
   loggingOut?: Promise<boolean>;
 }
@@ -23,8 +24,19 @@ export function sessionEpoch(client: QueryClient): number {
   return scope(client).epoch;
 }
 
+// Ephemeral handoff data lives outside the query cache and must be erased too.
+export function onSessionClear(client: QueryClient, listener: () => void): () => void {
+  const listeners = scope(client).listeners ??= new Set();
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
 function clearSession(client: QueryClient): number {
   const next = ++scope(client).epoch;
+  for (const listener of scope(client).listeners ?? []) {
+    // A failed UI cleanup must not prevent cache and credential invalidation.
+    try { listener(); } catch { /* Continue invalidating the remaining session state. */ }
+  }
   clearSessionJwts();
   // clear destroys and cancels queries synchronously, before another identity can mount.
   client.clear();

@@ -16,6 +16,10 @@ function createDeviceDirectoryService(): DeviceDirectoryService {
   return {
     getMe: api.getMe,
     connectDevice: api.connectDevice,
+    getDeviceDetails: api.getDeviceDetails,
+    updateDevice: api.updateDevice,
+    getConnectionHistory: api.getConnectionHistory,
+    recordConnectionEvent: api.recordConnectionEvent,
     getOrganizations: api.getOrganizations,
     getDevices: api.getDevices,
     expireSession: async () => { await account.deleteSession('current'); },

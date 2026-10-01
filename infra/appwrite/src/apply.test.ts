@@ -8,7 +8,30 @@ import { FakeGateway, desiredResourceCount } from './testing/fake-gateway.ts';
 
 const planFor = async (gateway: FakeGateway) => buildProvisionPlan(await inspectSchema(gateway));
 
-test('current 104-resource inventory plans exactly the heartbeat guard collection and three fields', async () => {
+test('existing 108-resource schema adds only optional device notes and converges', async () => {
+  const gateway = new FakeGateway();
+  gateway.database = { $id: 'remote_management', name: 'remote_management' };
+  for (const collection of REMOTE_MANAGEMENT_SCHEMA.collections) {
+    gateway.collections.set(collection.id, collection);
+    gateway.attributes.set(collection.id, collection.attributes.filter((attribute) =>
+      collection.id !== 'devices' || attribute.key !== 'notes'));
+    gateway.indexes.set(collection.id, [...collection.indexes]);
+  }
+  const first = await planFor(gateway);
+  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 108);
+  assert.deepEqual(first.actions.filter((action) => action.outcome !== 'unchanged'), [
+    { resource: 'attribute', id: 'devices/notes', outcome: 'create' },
+  ]);
+  await applyProvisionPlan(gateway, first);
+  assert.equal(gateway.writes, 1);
+  const second = await planFor(gateway);
+  assert.equal(second.actions.length, 109);
+  assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
+  await applyProvisionPlan(gateway, second);
+  assert.equal(gateway.writes, 1);
+});
+
+test('schema without heartbeat guards plans only the collection and three fields', async () => {
   const gateway = new FakeGateway();
   gateway.database = { $id: 'remote_management', name: 'remote_management' };
   for (const collection of REMOTE_MANAGEMENT_SCHEMA.collections.filter((item) => item.id !== 'heartbeat_guards')) {
@@ -17,8 +40,8 @@ test('current 104-resource inventory plans exactly the heartbeat guard collectio
     gateway.indexes.set(collection.id, [...collection.indexes]);
   }
   const first = await planFor(gateway);
-  assert.equal(first.actions.length, 108);
-  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 104);
+  assert.equal(first.actions.length, 109);
+  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 105);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'create').map(({ resource, id }) => [resource, id]), [
     ['collection', 'heartbeat_guards'], ['attribute', 'heartbeat_guards/device_id'],
     ['attribute', 'heartbeat_guards/device_token_id'], ['attribute', 'heartbeat_guards/started_at'],
@@ -27,7 +50,7 @@ test('current 104-resource inventory plans exactly the heartbeat guard collectio
   await applyProvisionPlan(gateway, first);
   assert.equal(gateway.writes, 4);
   const second = await planFor(gateway);
-  assert.equal(second.actions.length, 108);
+  assert.equal(second.actions.length, 109);
   assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
   await applyProvisionPlan(gateway, second);
   assert.equal(gateway.writes, 4);
@@ -59,11 +82,11 @@ function currentOneHundredOneResourceGateway(): FakeGateway {
   return gateway;
 }
 
-test('prior 101-resource inventory plans three attribute creates and fake apply converges', async () => {
+test('schema without receipt recovery and heartbeat guards converges', async () => {
   const gateway = currentOneHundredOneResourceGateway();
   const first = await planFor(gateway);
-  assert.equal(first.actions.length, 108);
-  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 101);
+  assert.equal(first.actions.length, 109);
+  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 102);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'create').map(({ resource, id }) => [resource, id]), [
     ['collection', 'heartbeat_guards'], ['attribute', 'heartbeat_guards/device_id'],
     ['attribute', 'heartbeat_guards/device_token_id'], ['attribute', 'heartbeat_guards/started_at'],
@@ -75,18 +98,18 @@ test('prior 101-resource inventory plans three attribute creates and fake apply 
   await applyProvisionPlan(gateway, first);
   assert.equal(gateway.writes, 7);
   const second = await planFor(gateway);
-  assert.equal(second.actions.length, 108);
+  assert.equal(second.actions.length, 109);
   assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
   await applyProvisionPlan(gateway, second);
   assert.equal(gateway.writes, 7);
 });
 
-test('prior 102-resource inventory plans recovery provenance and independent revocation', async () => {
+test('schema without recovery provenance, revocation and heartbeat guards converges', async () => {
   const gateway = currentOneHundredOneResourceGateway();
   gateway.attributes.get('enrollment_receipts')!.push({ key: 'expected_use_count', type: 'integer', required: true });
   const first = await planFor(gateway);
-  assert.equal(first.actions.length, 108);
-  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 102);
+  assert.equal(first.actions.length, 109);
+  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 103);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'create').map(({ resource, id }) => [resource, id]), [
     ['collection', 'heartbeat_guards'], ['attribute', 'heartbeat_guards/device_id'],
     ['attribute', 'heartbeat_guards/device_token_id'], ['attribute', 'heartbeat_guards/started_at'],
@@ -95,17 +118,17 @@ test('prior 102-resource inventory plans recovery provenance and independent rev
   ]);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'conflict'), []);
   await applyProvisionPlan(gateway, first); assert.equal(gateway.writes, 6);
-  const second = await planFor(gateway); assert.equal(second.actions.length, 108);
+  const second = await planFor(gateway); assert.equal(second.actions.length, 109);
   assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
   await applyProvisionPlan(gateway, second); assert.equal(gateway.writes, 6);
 });
 
-test('current 103-resource inventory plans only optional enrollment revocation and converges after one write', async () => {
+test('schema without enrollment revocation and heartbeat guards converges', async () => {
   const gateway = currentOneHundredOneResourceGateway();
   gateway.attributes.set('enrollment_receipts', [...REMOTE_MANAGEMENT_SCHEMA.collections.find((item) => item.id === 'enrollment_receipts')!.attributes]);
   const first = await planFor(gateway);
-  assert.equal(first.actions.length, 108);
-  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 103);
+  assert.equal(first.actions.length, 109);
+  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 104);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'create').map(({ resource, id }) => [resource, id]), [
     ['collection', 'heartbeat_guards'], ['attribute', 'heartbeat_guards/device_id'],
     ['attribute', 'heartbeat_guards/device_token_id'], ['attribute', 'heartbeat_guards/started_at'],
@@ -153,11 +176,11 @@ test('incompatible expected use count blocks the whole apply without writes', as
   assert.equal(gateway.writes, 0);
 });
 
-test('prior 90-resource inventory plans 14 creates and fake apply converges', async () => {
+test('schema without receipts, revocation and heartbeat guards converges', async () => {
   const gateway = priorNinetyResourceGateway();
   const first = await planFor(gateway);
-  assert.equal(first.actions.length, 108);
-  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 90);
+  assert.equal(first.actions.length, 109);
+  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 91);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'create').map(({ resource, id }) => [resource, id]), [
     ['collection', 'heartbeat_guards'], ['attribute', 'heartbeat_guards/device_id'],
     ['attribute', 'heartbeat_guards/device_token_id'], ['attribute', 'heartbeat_guards/started_at'],
@@ -179,7 +202,7 @@ test('prior 90-resource inventory plans 14 creates and fake apply converges', as
   await applyProvisionPlan(gateway, first);
   assert.equal(gateway.writes, 18);
   const second = await planFor(gateway);
-  assert.equal(second.actions.length, 108);
+  assert.equal(second.actions.length, 109);
   assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
   await applyProvisionPlan(gateway, second);
   assert.equal(gateway.writes, 18);

@@ -5,18 +5,23 @@ import { ChevronLeft, ChevronRight, Download, LogOut } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { expireSession, logoutSession, sessionEpoch } from '../auth/session-cache';
+import { expireSession, logoutSession, onSessionClear, sessionEpoch } from '../auth/session-cache';
 
 import { DeviceFilters } from './device-filters';
 import { ConnectDevice } from './connect-device';
+import { DeviceTools } from './device-tools';
+import type { ConnectionLogEvent } from './connection-log';
 import { DeviceRecord, DeviceStatus, formatLastSeen, type DeviceStatusState } from './device-record';
 import { isUnauthorized, useDevices, type DeviceDirectoryService, type DeviceFiltersValue } from './use-devices';
 
 export type { DeviceDirectoryService } from './use-devices';
 
-function DeviceRows({ devices, statusState, service, canConnect }: { devices: DeviceView[]; statusState: DeviceStatusState; service: DeviceDirectoryService; canConnect(organizationId: string): boolean }) {
-  const action = (device: DeviceView) => service.connectDevice && canConnect(device.organizationId)
-    ? <ConnectDevice deviceId={device.id} enabled={device.enabled && device.status === 'ONLINE' && statusState === 'current'} service={{ connectDevice: service.connectDevice }} /> : null;
+function DeviceRows({ devices, statusState, service, canConnect, onDetails, onEvent, onSessionExpired }: { devices: DeviceView[]; statusState: DeviceStatusState; service: DeviceDirectoryService; canConnect(organizationId: string): boolean; onDetails(device: DeviceView): void; onEvent(deviceId: string, event: ConnectionLogEvent): void; onSessionExpired(): void }) {
+  const action = (device: DeviceView) => <div className="device-actions">
+    {service.connectDevice && canConnect(device.organizationId) && <ConnectDevice deviceId={device.id} enabled={device.enabled && device.status === 'ONLINE' && statusState === 'current'}
+      service={{ connectDevice: service.connectDevice, recordConnectionEvent: service.recordConnectionEvent }} onEvent={(event) => onEvent(device.id, event)} onHelp={() => onDetails(device)} onSessionExpired={onSessionExpired} />}
+    {service.getDeviceDetails && service.getConnectionHistory && <button type="button" className="text-button" onClick={() => onDetails(device)}>Detalhes e opções</button>}
+  </div>;
   return <>
     <div className="device-table-wrap">
       <table className="device-table" aria-label="Dispositivos remotos">
@@ -38,9 +43,16 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   const queryClient = useQueryClient();
   const [epoch] = useState(() => sessionEpoch(queryClient));
   const [filters, setFilters] = useState<DeviceFiltersValue>({ organizationId: '', status: '', search: '' });
+  const [selected, setSelected] = useState<DeviceView>();
+  const [connectionEvents, setConnectionEvents] = useState<Record<string, ConnectionLogEvent[]>>({});
   const [logoutPending, setLogoutPending] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
   const query = useDevices(service, filters);
+  useEffect(() => onSessionClear(queryClient, () => { setSelected(undefined); setConnectionEvents({}); }), [queryClient]);
+  const addEvent = (deviceId: string, event: ConnectionLogEvent) => {
+    if (sessionEpoch(queryClient) !== epoch) return;
+    setConnectionEvents((old) => ({ ...old, [deviceId]: [...(old[deviceId] ?? []), event].slice(-200) }));
+  };
   const handledExpiry = useRef(false);
   const logoutLock = useRef(false);
   const navigationHandled = useRef(false);
@@ -58,6 +70,12 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       if (expired) finishSession();
     });
   }, [epoch, finishSession, queryClient, service, unauthorized]);
+
+  function handleExpiredAction() {
+    if (handledExpiry.current || sessionEpoch(queryClient) !== epoch) return;
+    handledExpiry.current = true;
+    void expireSession(queryClient, epoch, () => service.expireSession()).then((expired) => { if (expired) finishSession(); });
+  }
 
   async function handleLogout() {
     if (logoutLock.current) return;
@@ -105,11 +123,14 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       {query.backgroundError && <p className="refresh-error" role="alert">Nao foi possivel atualizar os dispositivos. Os status estao indisponiveis.</p>}
       {query.isPageLoading ? <section className="device-state" role="status">Carregando dispositivos...</section>
         : query.rows.length === 0 ? <section className="device-state">{emptyMessage}</section>
-          : <DeviceRows devices={query.rows} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} />}
+          : <DeviceRows devices={query.rows} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} onDetails={setSelected} onEvent={addEvent} onSessionExpired={handleExpiredAction} />}
       {!query.isPageLoading && (query.hasPreviousPage || query.hasNextPage) && <nav className="pagination" aria-label="Paginacao de dispositivos">
         {query.hasPreviousPage && <button className="command-button" type="button" aria-label="Pagina anterior" disabled={query.isRefreshing || Boolean(query.backgroundError)} onClick={query.previousPage}><ChevronLeft aria-hidden="true" size={18} />Anterior</button>}
         {query.hasNextPage && <button className="command-button" type="button" aria-label="Proxima pagina" disabled={query.isRefreshing || Boolean(query.backgroundError)} onClick={query.nextPage}>Proxima<ChevronRight aria-hidden="true" size={18} /></button>}
       </nav>}
     </>}
+    {selected && <DeviceTools device={query.rows.find((row) => row.id === selected.id) ?? selected} service={service}
+      canConnect={query.canConnect(selected.organizationId)} canManage={query.canManage(selected.organizationId)}
+      events={connectionEvents[selected.id] ?? []} onEvent={(event) => addEvent(selected.id, event)} onClose={() => setSelected(undefined)} onSaved={() => query.refresh()} onSessionExpired={handleExpiredAction} />}
   </main>;
 }

@@ -1,15 +1,18 @@
 'use client';
 
-import type { DeviceListQuery } from '@appremoto/contracts';
+import type { DeviceListQuery, DeviceDetailsResponse, UpdateDeviceResponse, ConnectionHistoryEvent } from '@appremoto/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 
 import { ApiClientError, type DevicePage, type OrganizationView, type TechnicianView } from '../../lib/api';
+import type { ConnectionService } from './connect-device';
 import { sessionEpoch } from '../auth/session-cache';
 
-export interface DeviceDirectoryService {
+export interface DeviceDirectoryService extends Partial<ConnectionService> {
   getMe?(): Promise<TechnicianView>;
-  connectDevice?(deviceId: string): Promise<{ launchUri: string }>;
+  getDeviceDetails?(deviceId: string): Promise<DeviceDetailsResponse>;
+  updateDevice?(deviceId: string, input: { displayName: string; notes: string }): Promise<UpdateDeviceResponse>;
+  getConnectionHistory?(deviceId: string): Promise<{ events: ConnectionHistoryEvent[] }>;
   getOrganizations(): Promise<OrganizationView[]>;
   getDevices(query: DeviceListQuery): Promise<DevicePage>;
   expireSession(): Promise<void>;
@@ -49,6 +52,7 @@ export function isUnauthorized(error: unknown): boolean {
 export function useDevices(service: DeviceDirectoryService, filters: DeviceFiltersValue) {
   const queryClient = useQueryClient();
   const [epoch] = useState(() => sessionEpoch(queryClient));
+  const currentSession = sessionEpoch(queryClient) === epoch;
   const filterKey = `${filters.organizationId}\u0000${filters.status}\u0000${filters.search}`;
   const [pagination, setPagination] = useState<PaginationState>(() => firstPage(filterKey));
   const activePagination = pagination.filterKey === filterKey ? pagination : firstPage(filterKey);
@@ -63,6 +67,7 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
   const organizations = useQuery({
     queryKey: ['session', epoch, 'organizations'],
     queryFn: () => service.getOrganizations(),
+    enabled: currentSession,
     retry: false,
     staleTime: 0,
     refetchOnWindowFocus: false,
@@ -71,10 +76,10 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
   const profile = useQuery({
     queryKey: ['session', epoch, 'connection-permissions'],
     queryFn: () => service.getMe!(),
-    enabled: Boolean(service.getMe), retry: false,
+    enabled: currentSession && Boolean(service.getMe), retry: false,
     staleTime: 0, refetchOnWindowFocus: false, refetchOnReconnect: false,
   });
-  const canLoadDevices = organizations.isSuccess && organizations.data.length > 0;
+  const canLoadDevices = currentSession && organizations.isSuccess && organizations.data.length > 0;
   const devices = useQuery({
     queryKey: ['session', epoch, 'devices', filterKey, activePagination.snapshot, cursor ?? null],
     queryFn: () => service.getDevices(deviceQuery(filters, cursor)),
@@ -119,14 +124,16 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
     : devices.isError && page ? devices.error : null;
 
   return {
-    canConnect: (organizationId: string) => !profile.isError && !profile.isFetching && (profile.data?.globalRole === 'super_admin'
+    canConnect: (organizationId: string) => currentSession && !profile.isError && (profile.data?.globalRole === 'super_admin'
       || Boolean(profile.data?.authorization.some((permission) => permission.organizationId === organizationId && permission.canConnect))),
+    canManage: (organizationId: string) => currentSession && !profile.isError && (profile.data?.globalRole === 'super_admin'
+      || Boolean(profile.data?.authorization.some((permission) => permission.organizationId === organizationId && permission.canManageDevices))),
     organizations,
     devices,
-    rows: page?.devices ?? [],
+    rows: currentSession ? page?.devices ?? [] : [],
     error: organizationInitialError ? organizations.error : deviceInitialError ? devices.error : null,
     backgroundError,
-    isOrganizationLoading: organizations.isPending,
+    isOrganizationLoading: !currentSession || organizations.isPending,
     isPageLoading: canLoadDevices && devices.isPending && !page,
     isRefreshing: (organizations.isFetching && !organizations.isPending)
       || (devices.isFetching && Boolean(page)),

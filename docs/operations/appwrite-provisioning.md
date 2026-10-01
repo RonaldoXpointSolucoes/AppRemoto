@@ -4,6 +4,10 @@ This runbook provisions the Remote Platform foundation using the repository CLI.
 
 The console route prefix `project-default-` is not part of the API project ID. The exact-target guard rejects `default-6abc5640003cb361b809` and unrelated project IDs before writes.
 
+## Current device-notes delta
+
+The canonical schema now has 11 collections, 70 attributes and 27 indexes: 109 resources including the database. The older foundation/receipt counts below are historical. From the deployed 108-resource schema, the only new action is `devices/notes`, an optional string of 2048 characters with no default. Add this attribute before deploying the device editing API, wait for `available`, and verify 109 unchanged / 0 create / 0 conflict. This scoped migration needs no administrator reconciliation, credential change, permission change or document rewrite. See `device-tools-release.md` for deployment order and acceptance checks.
+
 ## Prerequisites and credentials
 
 - Use Node.js 24, the pnpm version declared in `package.json`, and Windows with a usable CurrentUser DPAPI profile.

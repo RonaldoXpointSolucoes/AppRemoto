@@ -170,10 +170,10 @@ export function AutomaticSetup() {
       <p>Para instalar novamente, baixe um novo pacote para o mesmo cliente e escolha o nome desejado. Você não precisa lembrar o nome anterior. O computador já cadastrado é atualizado sem duplicar o registro em <Link href="/devices">Dispositivos</Link>.</p>
       {pollError && <p role="alert">Não foi possível consultar o progresso. Tentando novamente; não reinstale enquanto isso.</p>}
       {expired && <p role="status">Se a instalação já começou, confira a mensagem no computador antes de gerar outro pacote. O prazo limita novos cadastros, sem desligar computadores já cadastrados.</p>}
-      {status?.device && connectOrganizations.includes(installation.organizationId) && <ConnectDevice deviceId={status.device.id} enabled={currentlyOnline && status.device.enabled} service={api} />}
+      {status?.device && connectOrganizations.includes(installation.organizationId) && <ConnectDevice deviceId={status.device.id} enabled={currentlyOnline && status.device.enabled} service={api} onSessionExpired={() => void handleTerminalSession(new ApiClientError({ code: 'SESSION_EXPIRED', status: 401, message: 'Sessao expirada.' }))} />}
       {status?.device && <Link className="command-button guide-link" href="/devices">Ver todos os dispositivos</Link>}
       <button className="command-button" type="button" onClick={() => { setInstallation(null); setStatus(null); setDeviceDisplayName(''); }}>Gerar novo instalador</button>
     </div>}
-    <aside className="technician-note"><strong>No computador do técnico</strong><p>Instale o <a href="https://rustdesk.com/download" target="_blank" rel="noreferrer">RustDesk</a> uma vez. O botão Conectar do painel abrirá esse aplicativo. O navegador pode pedir confirmação para abri-lo.</p></aside>
+    <aside className="technician-note"><strong>No computador do técnico</strong><p>Instale o <a href="https://rustdesk.com/download" target="_blank" rel="noreferrer">RustDesk também no computador do técnico</a> e abra-o uma vez. O botão Conectar abre o aplicativo neste computador, onde você usa o painel. Confirme a abertura no navegador. Em Dispositivos → Detalhes e opções você encontra o teste de abertura e o diagnóstico.</p></aside>
   </section>;
 }

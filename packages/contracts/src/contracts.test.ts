@@ -5,6 +5,8 @@ import { test } from 'node:test';
 import {
   ApiErrorSchema, DeviceListQuerySchema, DeviceViewSchema,
   EnrollRequestSchema, EnrollResponseSchema, HeartbeatRequestSchema,
+  ConnectDeviceRequestSchema, ConnectDeviceLaunchResponseSchema, UpdateDeviceRequestSchema, ConnectionEventRequestSchema,
+  ConnectionHistoryResponseSchema,
 } from './index.ts';
 
 const uuid = '550e8400-e29b-41d4-a716-446655440000';
@@ -24,6 +26,30 @@ const device = {
   agentVersion: null, rustdeskVersion: null, lastSeenAt: null,
   enabled: true, status: 'OFFLINE',
 };
+
+test('connection requests never accept passwords, arbitrary event messages or mismatched launch modes', () => {
+  assert.equal(ConnectDeviceRequestSchema.safeParse({ attemptId: uuid, mode: 'manual' }).success, true);
+  assert.equal(ConnectDeviceRequestSchema.safeParse({ attemptId: uuid, mode: 'manual', password: 'private' }).success, false);
+  assert.equal(ConnectDeviceRequestSchema.safeParse({ attemptId: 'invalid', mode: 'automatic' }).success, false);
+  const launchUri = 'rustdesk://connect/123456789@179.199.142.157:21116?key=public';
+  assert.equal(ConnectDeviceLaunchResponseSchema.safeParse({ attemptId: uuid, mode: 'manual', launchUri }).success, true);
+  assert.equal(ConnectDeviceLaunchResponseSchema.safeParse({ attemptId: uuid, mode: 'automatic', launchUri }).success, false);
+  assert.equal(ConnectDeviceLaunchResponseSchema.safeParse({ attemptId: uuid, mode: 'manual', launchUri: `${launchUri}&password=private` }).success, false);
+  assert.equal(ConnectionEventRequestSchema.safeParse({ attemptId: uuid, mode: 'manual', event: 'not_opened', message: 'private' }).success, false);
+  assert.equal(ConnectionEventRequestSchema.safeParse({ attemptId: uuid, mode: 'manual', event: 'not_opened', code: 'UNKNOWN_DETAIL' }).success, false);
+  assert.equal(ConnectionHistoryResponseSchema.safeParse({ events: [], password: 'private' }).success, false);
+});
+
+test('operator editing accepts only name and bounded notes while identity remains immutable', () => {
+  assert.deepEqual(UpdateDeviceRequestSchema.parse({ displayName: ' New name ', notes: 'one\ntwo\tthree' }),
+    { displayName: 'New name', notes: 'one\ntwo\tthree' });
+  assert.equal(UpdateDeviceRequestSchema.safeParse({ displayName: 'PC', notes: 'a'.repeat(2048) }).success, true);
+  for (const value of [{ displayName: '', notes: '' }, { displayName: 'PC', notes: 'a'.repeat(2049) },
+    { displayName: 'PC\nother', notes: '' }, { displayName: 'PC', notes: '\u0000' },
+    { displayName: 'PC', notes: '', deviceUuid: uuid }, { displayName: 'PC', notes: '', enabled: false }]) {
+    assert.equal(UpdateDeviceRequestSchema.safeParse(value).success, false);
+  }
+});
 
 test('device list query validates filters and pagination boundaries', () => {
   assert.deepEqual(DeviceListQuerySchema.parse({}), { limit: 50 });
