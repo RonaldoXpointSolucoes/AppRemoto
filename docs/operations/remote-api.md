@@ -21,7 +21,11 @@ The API application has exactly the following 12 environment variable names. Thi
 | `TRUST_PROXY` | Network security configuration |
 | `NODE_ENV` | Runtime configuration |
 
-`ALLOWED_ORIGINS` is still a placeholder until the technician panel has its production domain. Replace it with the exact HTTPS origin before enabling browser use; do not use a wildcard. Keep the API pinned to one replica and one Node process. `TRUST_PROXY` must remain disabled or contain only explicit trusted proxy addresses/CIDRs.
+`ALLOWED_ORIGINS` is configured to the exact production panel origin:
+
+`https://hr1uqo4mlsw3sm7s2mehiaa2.179.199.142.157.sslip.io`
+
+Do not replace it with a wildcard, add an HTTP variant, or add unrelated origins. Any future change to this value must use the mandatory stop/zero-instance/start procedure below. Keep the API pinned to one replica and one Node process. `TRUST_PROXY` must remain disabled or contain only explicit trusted proxy addresses/CIDRs.
 
 ## Mandatory change procedure
 
@@ -77,5 +81,7 @@ Pending or indeterminate enrollment recovery must follow the [enrollment recover
 On 2026-09-30, deployment `nf1uxzd8reb5oorpeisk2kb1` was healthy on commit `f877eac978523bd20ddedf2d420cb075bb82bfab`. The first deployment failed because the container lacked `curl` for the Coolify health probe. The dependency was added, reviewed, and redeployed.
 
 The public HTTPS health check returned HTTP 200 with exact body `{"status":"ok"}`, and inspected logs were clean. The production smoke test passed organization setup, token creation, enrollment, heartbeat, persistence verification, `use_count=1`, and a retry returning HTTP 403 without credentials. Test-data identifiers and all secret values were intentionally omitted.
+
+Later on 2026-09-30, `ALLOWED_ORIGINS` was set to the exact production panel HTTPS origin using the mandatory stop/zero-instance/start procedure. Browser acceptance then returned HTTP 200 for the authorized profile, organizations, and devices requests. Auto-deploy remained disabled and no wildcard origin was introduced.
 
 This record is dated evidence, not permission to skip the mandatory change procedure on a later deployment.
