@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 
+import { ThemeToggle } from '../../components/theme-toggle';
 import { SessionBoundary } from '../../features/auth/session-boundary';
 import { SetupChecklist } from '../../features/setup/setup-checklist';
 import { GenericSetup } from '../../features/setup/generic-setup';
@@ -17,10 +18,16 @@ export default function SetupPage() {
     <SessionBoundary>
       <main className="setup-shell">
         <header className="setup-header">
-          <p className="product-name">AppRemoto · Instalar no cliente</p>
-          <Link className="command-button guide-link" href="/devices">
-            <ArrowLeft aria-hidden="true" size={18} />Voltar para dispositivos
-          </Link>
+          <div className="product-title-row">
+            <p className="product-name">AppRemoto · Instalar no cliente</p>
+            <span className="version-badge" title="Versão da Plataforma">v1.2.0</span>
+          </div>
+          <div className="devices-header-actions">
+            <ThemeToggle />
+            <Link className="command-button guide-link" href="/devices">
+              <ArrowLeft aria-hidden="true" size={18} />Voltar para dispositivos
+            </Link>
+          </div>
         </header>
         <GenericSetup />
         <details className="manual-setup" open={legacyOpen} onToggle={(event) => setLegacyOpen(event.currentTarget.open)}><summary>Configuração avançada: RustDesk já instalado</summary>{legacyOpen && <AutomaticSetup />}</details>

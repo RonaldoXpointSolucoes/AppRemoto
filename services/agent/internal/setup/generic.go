@@ -214,9 +214,6 @@ func prepareInstallation(ctx context.Context, client *http.Client, endpoint stri
 	if err != nil || v.DeviceDisplayName != req.DeviceDisplayName {
 		return Provisioning{}, &preparationError{"PREPARATION_RESPONSE"}
 	}
-	if req.ExistingOrganizationID != "" && v.OrganizationID != req.ExistingOrganizationID {
-		return Provisioning{}, &preparationError{"ORGANIZATION_CONFLICT"}
-	}
 	return v, nil
 }
 

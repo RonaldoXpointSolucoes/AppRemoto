@@ -4,7 +4,7 @@ import { createGenericInstallerPackage, loadCompleteInstallerArtifact } from './
 
 const config = { schemaVersion: 2 as const, installerId: 'installer-test', installerToken: 'a'.repeat(43) };
 const base = new Uint8Array([77, 90, 1, 2, 3]);
-const manifest = { version: '1.1.0', path: '/installers/xpoint-complete-1.1.0.exe',
+const manifest = { version: '1.2.0', path: '/installers/xpoint-complete-1.2.0.exe',
   sha256: createHash('sha256').update(base).digest('hex'), bytes: base.length };
 
 describe('complete installation package', () => {
@@ -25,8 +25,8 @@ describe('complete installation package', () => {
   });
   it.each([
     { path: 'https://untrusted.invalid/program.exe' },
-    { path: '/installers/xpoint-setup-1.1.0.exe' },
-    { version: '1.2.0' },
+    { path: '/installers/xpoint-setup-1.2.0.exe' },
+    { version: '1.3.0' },
     { bytes: 64 * 1024 * 1024 + 1 },
   ])('rejects an unapproved manifest before downloading its executable: %j', async (change) => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...manifest, ...change })));

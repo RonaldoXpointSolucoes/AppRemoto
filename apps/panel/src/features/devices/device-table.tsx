@@ -13,6 +13,7 @@ import { DeviceTools } from './device-tools';
 import type { ConnectionLogEvent } from './connection-log';
 import { DeviceRecord, DeviceStatus, formatLastSeen, type DeviceStatusState } from './device-record';
 import { isUnauthorized, useDevices, type DeviceDirectoryService, type DeviceFiltersValue } from './use-devices';
+import { ThemeToggle } from '../../components/theme-toggle';
 
 export type { DeviceDirectoryService } from './use-devices';
 
@@ -103,8 +104,15 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
 
   return <main className="devices-shell">
     <header className="devices-header">
-      <div><p className="product-name">AppRemoto</p><h1>Dispositivos</h1></div>
+      <div>
+        <div className="product-title-row">
+          <p className="product-name">AppRemoto</p>
+          <span className="version-badge" title="Versão da Plataforma">v1.2.0</span>
+        </div>
+        <h1>Dispositivos</h1>
+      </div>
       <div className="devices-header-actions">
+        <ThemeToggle />
         <Link className="command-button guide-link" href="/setup"><Download aria-hidden="true" size={19} />Instalar no cliente</Link>
         <button className="icon-button" type="button" title="Sair da conta" aria-label="Sair da conta" aria-busy={logoutPending} disabled={logoutPending} onClick={() => void handleLogout()}>
           <LogOut aria-hidden="true" size={19} />

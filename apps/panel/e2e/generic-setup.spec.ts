@@ -12,9 +12,9 @@ async function authenticate(page: Page, admin = true) {
     id: 'tech-1', displayName: 'Tecnico', globalRole: admin ? 'super_admin' : null, authorization: [],
   } }));
   await page.route('**/installers/complete-manifest.json', (route) => route.fulfill({ json: {
-    version: '1.1.0', path: '/installers/xpoint-complete-1.1.0.exe', sha256: createHash('sha256').update(base).digest('hex'), bytes: base.length,
+    version: '1.2.0', path: '/installers/xpoint-complete-1.2.0.exe', sha256: createHash('sha256').update(base).digest('hex'), bytes: base.length,
   } }));
-  await page.route('**/installers/xpoint-complete-1.1.0.exe', (route) => route.fulfill({ body: base, contentType: 'application/octet-stream' }));
+  await page.route('**/installers/xpoint-complete-1.2.0.exe', (route) => route.fulfill({ body: base, contentType: 'application/octet-stream' }));
 }
 async function download(page: Page) {
   const event = page.waitForEvent('download');
@@ -89,7 +89,7 @@ test('a failed artifact check prevents issuing a capability', async ({ page }) =
     if (route.request().method() !== 'GET') issued = true;
     return route.fulfill({ json: { installers: [] } });
   });
-  await page.route('**/installers/xpoint-complete-1.1.0.exe', (route) => route.fulfill({ body: Buffer.from('bad') }));
+  await page.route('**/installers/xpoint-complete-1.2.0.exe', (route) => route.fulfill({ body: Buffer.from('bad') }));
   await page.goto('/setup');
   await page.getByRole('button', { name: 'Baixar instalador completo' }).click();
   await expect(page.getByRole('region', { name: 'Um instalador para todos os computadores.' }).getByRole('alert')).toContainText('Não foi possível preparar o instalador');

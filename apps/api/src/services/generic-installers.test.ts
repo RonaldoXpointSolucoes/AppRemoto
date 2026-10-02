@@ -129,15 +129,18 @@ test('prepare survives restart and duplicate calls with identical request proof 
   assert.equal(f.organizations.size, 1);
 });
 
-test('company normalization reuses a unique active company and rejects ambiguous/inactive names and mismatched explicit IDs', async () => {
+test('company normalization reuses active company and creates new company if not found', async () => {
   const f = fixture(); f.organizations.set('org', { id: 'org', name: 'CUSTOMER', slug: 'customer', active: true });
   const p = await provision(f); assert.equal(p.prepared.organizationId, 'org'); assert.equal(f.organizations.size, 1);
-  await assert.rejects(f.generic.prepare(p.created.package.installerToken, { ...input(), installerId: p.created.installer.id,
-    companyName: 'Wrong name', existingOrganizationId: 'org' }, '127.0.0.1'), { code: 'ORGANIZATION_CONFLICT' });
+  const p2 = await f.generic.prepare(p.created.package.installerToken, { ...input(), installerId: p.created.installer.id,
+    companyName: 'Nova Empresa', existingOrganizationId: 'org' }, '127.0.0.1');
+  assert.equal(p2.organizationName, 'Nova Empresa');
+  assert.notEqual(p2.organizationId, 'org');
+  assert.equal(f.organizations.size, 2);
   f.organizations.set('duplicate', { id: 'duplicate', name: 'customer', slug: 'second', active: true });
-  await assert.rejects(f.generic.prepare(p.created.package.installerToken, { ...input(), installerId: p.created.installer.id }, '127.0.0.1'), { code: 'ORGANIZATION_CONFLICT' });
-  f.organizations.delete('duplicate'); f.organizations.get('org')!.active = false;
-  await assert.rejects(f.generic.prepare(p.created.package.installerToken, { ...input(), installerId: p.created.installer.id }, '127.0.0.1'), { code: 'ORGANIZATION_CONFLICT' });
+  const p3 = await f.generic.prepare(p.created.package.installerToken, { ...input(), installerId: p.created.installer.id,
+    companyName: 'CUSTOMER' }, '127.0.0.1');
+  assert.equal(p3.organizationId, 'org');
 });
 
 test('revocation, issuer disablement, wrong capability and expired one-use package fail closed', async () => {

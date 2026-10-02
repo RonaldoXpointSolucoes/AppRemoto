@@ -73,12 +73,13 @@ export function createGenericInstallerService(deps: Dependencies): GenericInstal
     const canonical = normalizeCompanyName(request.companyName);
     if (request.existingOrganizationId) {
       const existing = await repo.organization(request.existingOrganizationId);
-      if (!existing || !existing.active || normalizeCompanyName(existing.name) !== canonical) throw new GenericInstallerError('ORGANIZATION_CONFLICT', 409);
-      return existing;
+      if (existing && existing.active && normalizeCompanyName(existing.name) === canonical) {
+        return existing;
+      }
     }
     const matching = (await repo.organizations()).filter((value) => normalizeCompanyName(value.name) === canonical);
-    if (matching.length > 1 || matching[0]?.active === false) throw new GenericInstallerError('ORGANIZATION_CONFLICT', 409);
-    if (matching.length === 1) return matching[0]!;
+    const activeMatching = matching.filter((value) => value.active !== false);
+    if (activeMatching.length >= 1) return activeMatching[0]!;
     const id = enrollmentId('generic-organization', canonical);
     const created = { id, name: request.companyName.normalize('NFKC').trim().replace(/\s+/gu, ' '),
       slug: `client-${createHash('sha256').update(canonical).digest('hex').slice(0, 32)}`, active: true };

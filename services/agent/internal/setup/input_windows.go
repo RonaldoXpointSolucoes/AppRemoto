@@ -107,35 +107,40 @@ func promptInstallation(report *Report) (*InstallationInput, error) {
 	defer user.NewProc("UnregisterClassW").Call(uintptr(unsafe.Pointer(name)), instance)
 	screenX, _, _ := user.NewProc("GetSystemMetrics").Call(0)
 	screenY, _, _ := user.NewProc("GetSystemMetrics").Call(1)
-	hwnd, _, _ := create.Call(0, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(ptr("XPoint Remote — Instalação completa "+Version))), 0x10C80000, (screenX-720)/2, (screenY-570)/2, 720, 570, 0, 0, instance, 0)
+	hwnd, _, _ := create.Call(0, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(ptr("XPoint Remote — Instalação "+Version))), 0x10C80000, (screenX-720)/2, (screenY-620)/2, 720, 620, 0, 0, instance, 0)
 	if hwnd == 0 {
 		return nil, errors.New("input window unavailable")
 	}
-	font, _, _ := gdi.NewProc("CreateFontW").Call(uintptr(int32ToPtr(-18)), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 0, 0, uintptr(unsafe.Pointer(ptr("Segoe UI"))))
-	if font != 0 {
-		defer gdi.NewProc("DeleteObject").Call(font)
+	titleFont, _, _ := gdi.NewProc("CreateFontW").Call(uintptr(int32ToPtr(-20)), 0, 0, 0, 700, 0, 0, 0, 1, 0, 0, 0, 0, uintptr(unsafe.Pointer(ptr("Segoe UI"))))
+	labelFont, _, _ := gdi.NewProc("CreateFontW").Call(uintptr(int32ToPtr(-15)), 0, 0, 0, 600, 0, 0, 0, 1, 0, 0, 0, 0, uintptr(unsafe.Pointer(ptr("Segoe UI"))))
+	bodyFont, _, _ := gdi.NewProc("CreateFontW").Call(uintptr(int32ToPtr(-14)), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 0, 0, uintptr(unsafe.Pointer(ptr("Segoe UI"))))
+	smallFont, _, _ := gdi.NewProc("CreateFontW").Call(uintptr(int32ToPtr(-12)), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 0, 0, uintptr(unsafe.Pointer(ptr("Segoe UI"))))
+	for _, f := range []uintptr{titleFont, labelFont, bodyFont, smallFont} {
+		if f != 0 {
+			defer gdi.NewProc("DeleteObject").Call(f)
+		}
 	}
-	control := func(class, text string, x, y, w, h int, id uintptr, extra uint32) uintptr {
+	controlWithFont := func(class, text string, x, y, w, h int, id uintptr, extra uint32, f uintptr) uintptr {
 		value, _, _ := create.Call(0, uintptr(unsafe.Pointer(ptr(class))), uintptr(unsafe.Pointer(ptr(text))), uintptr(0x50000000|extra), uintptr(x), uintptr(y), uintptr(w), uintptr(h), hwnd, id, instance, 0)
-		if font != 0 {
-			send.Call(value, 0x30, font, 1)
+		if f != 0 {
+			send.Call(value, 0x30, f, 1)
 		}
 		return value
 	}
-	control("STATIC", "Instale. Identifique. O computador aparece no painel.", 28, 22, 654, 36, 0, 0)
-	control("STATIC", "Este arquivo inclui o RustDesk e configura o suporte XPoint automaticamente.", 28, 62, 654, 46, 0, 0)
-	control("STATIC", "Nome da empresa", 28, 116, 654, 25, 0, 0)
-	company = control("EDIT", "", 28, 145, 646, 34, 10, 0x00810080)
-	control("STATIC", "Nome do computador no painel", 28, 194, 654, 25, 0, 0)
+	controlWithFont("STATIC", "XPoint Remote — Suporte & Acesso Remoto", 28, 22, 654, 28, 0, 0, titleFont)
+	controlWithFont("STATIC", "Configure este computador para permitir atendimento remoto profissional e seguro.", 28, 54, 654, 24, 0, 0, bodyFont)
+	controlWithFont("STATIC", "Nome da empresa / cliente:", 28, 98, 654, 22, 0, 0, labelFont)
+	company = controlWithFont("EDIT", "", 28, 124, 646, 32, 10, 0x00810080, bodyFont)
+	controlWithFont("STATIC", "Identificação deste computador no painel:", 28, 172, 654, 22, 0, 0, labelFont)
 	host, _ := os.Hostname()
-	machine = control("EDIT", host, 28, 224, 646, 34, 11, 0x00810080)
-	control("STATIC", "Acesso autorizado com a senha permanente padrão XPoint, início com o Windows, teclado, área de transferência e arquivos. O Windows mantém suas permissões e a confirmação de administrador.", 28, 282, 646, 66, 0, 0)
-	status = control("STATIC", "Você pode verificar a conexão antes de instalar. O log fica ao lado deste arquivo.", 28, 360, 646, 48, 0, 0)
-	checkButton = control("BUTTON", "Verificar conexão", 28, 428, 174, 36, 3, 0x00010000)
-	control("BUTTON", "Abrir log", 214, 428, 118, 36, 4, 0x00010000)
-	control("BUTTON", "Cancelar", 426, 428, 110, 36, 2, 0x00010000)
-	installButton = control("BUTTON", "Instalar", 548, 428, 126, 36, 1, 0x00010001)
-	control("STATIC", "RustDesk 1.4.9 • GNU AGPLv3 • rustdesk.com  |  XPoint Remote "+Version, 28, 480, 646, 24, 0, 0)
+	machine = controlWithFont("EDIT", host, 28, 198, 646, 32, 11, 0x00810080, bodyFont)
+	controlWithFont("STATIC", "Acesso autorizado com senha padrão XPoint, inicialização automática com o Windows, teclado, área de transferência e transferência de arquivos. Se o RustDesk já estiver instalado, ele é reaproveitado com segurança.", 28, 248, 646, 52, 0, 0, smallFont)
+	status = controlWithFont("STATIC", "Status: Pronto para instalar. Você pode testar a conexão com os servidores antes.", 28, 312, 646, 44, 0, 0, bodyFont)
+	checkButton = controlWithFont("BUTTON", "Verificar conexão", 28, 470, 168, 38, 3, 0x00010000, bodyFont)
+	controlWithFont("BUTTON", "Abrir log", 206, 470, 118, 38, 4, 0x00010000, bodyFont)
+	controlWithFont("BUTTON", "Cancelar", 418, 470, 108, 38, 2, 0x00010000, bodyFont)
+	installButton = controlWithFont("BUTTON", "Instalar Acesso", 536, 470, 138, 38, 1, 0x00010001, labelFont)
+	controlWithFont("STATIC", "RustDesk 1.4.9 • GNU AGPLv3 • XPoint Remote v"+Version+" • XPoint Soluções", 28, 532, 646, 22, 0, 0, smallFont)
 	for _, edit := range []uintptr{machine, company} {
 		send.Call(edit, 0xC5, 256, 0)
 	} // EM_SETLIMITTEXT; UTF-16 can use two code units per character.

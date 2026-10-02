@@ -75,6 +75,12 @@ func ShowProgress(report *Report) (func(), error) {
 			ready <- errors.New("progress text unavailable")
 			return
 		}
+		gdi := windows.NewLazySystemDLL("gdi32.dll")
+		font, _, _ := gdi.NewProc("CreateFontW").Call(uintptr(int32ToPtr(-16)), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 0, 0, uintptr(unsafe.Pointer(ptr("Segoe UI"))))
+		if font != 0 {
+			defer gdi.NewProc("DeleteObject").Call(font)
+			user.NewProc("SendMessageW").Call(label, 0x30, font, 1)
+		}
 		user.NewProc("UpdateWindow").Call(hwnd)
 		ready <- nil
 		peek := user.NewProc("PeekMessageW")
