@@ -9,11 +9,12 @@ import {
   ShieldCheck,
   ChevronLeft,
   ChevronRight,
+  Terminal,
 } from 'lucide-react';
 import Link from 'next/link';
 import { ThemeToggle } from '../../components/theme-toggle';
 
-export type TeamViewerTab = 'devices' | 'history';
+export type TeamViewerTab = 'devices' | 'history' | 'cockpit';
 
 export function TeamViewerSidebar({
   activeTab,
@@ -42,7 +43,7 @@ export function TeamViewerSidebar({
           {!collapsed && (
             <div className="tv-brand-text">
               <span className="tv-brand-title">XPoint Remote</span>
-              <span className="tv-brand-badge">v1.2.7</span>
+              <span className="tv-brand-badge">v1.3.0</span>
             </div>
           )}
         </div>
@@ -82,6 +83,17 @@ export function TeamViewerSidebar({
 
         <button
           type="button"
+          className={`tv-nav-item ${activeTab === 'cockpit' ? 'active' : ''}`}
+          onClick={() => onTabChange('cockpit')}
+          title="Antigravity Cockpit & Dev Logger"
+        >
+          <Terminal size={20} className="tv-nav-icon text-emerald-400" />
+          {!collapsed && <span className="tv-nav-label">Cockpit Dev Logger</span>}
+          {activeTab === 'cockpit' && <span className="tv-active-pill" />}
+        </button>
+
+        <button
+          type="button"
           className="tv-nav-item"
           onClick={onOpenQuickConnect}
           title="Conectar Imediatamente por ID"
@@ -102,7 +114,11 @@ export function TeamViewerSidebar({
 
       <div className="tv-sidebar-footer">
         {!collapsed && (
-          <div className="tv-server-status-card">
+          <div
+            className="tv-server-status-card cursor-pointer hover:border-emerald-500/50 transition-colors"
+            onClick={() => onTabChange('cockpit')}
+            title="Clique para abrir o Cockpit Dev Logger do Servidor"
+          >
             <ShieldCheck size={16} className="text-emerald-400" />
             <div className="tv-server-info">
               <span className="server-label">Servidor XPoint</span>

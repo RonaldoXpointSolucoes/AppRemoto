@@ -21,6 +21,8 @@ import { ActiveSessionTracker, type ActiveSession } from './active-session-track
 import { AddConnectionDialog } from './add-connection-dialog';
 import { saveRecentConnection, type RecentConnectionRecord } from './teamviewer-storage';
 
+import { AntigravityCockpit } from '../cockpit/antigravity-cockpit';
+
 export type { DeviceDirectoryService } from './use-devices';
 
 function DeviceRows({ devices, statusState, service, canConnect, canManage, onDetails, onDeletePrompt, onEvent, onSessionExpired, onSessionStarted }: {
@@ -240,8 +242,14 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
 
         <header className="tv-top-toolbar">
           <div className="tv-view-title-wrap">
-            <h1>{activeTab === 'devices' ? 'Dispositivos' : 'Histórico de Acessos'}</h1>
-            <span className="version-badge" title="Versão da Plataforma">v1.2.7</span>
+            <h1>
+              {activeTab === 'devices'
+                ? 'Dispositivos'
+                : activeTab === 'cockpit'
+                ? 'Cockpit Dev Logger'
+                : 'Histórico de Acessos'}
+            </h1>
+            <span className="version-badge" title="Versão da Plataforma">v1.3.0</span>
           </div>
 
           {activeTab === 'devices' && (
@@ -283,15 +291,17 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               </div>
             )}
 
-            <button
-              type="button"
-              className="tv-btn-primary"
-              onClick={() => setIsAddOpen(true)}
-              title="Adicionar conexão manual ou novo grupo"
-            >
-              <Plus size={18} />
-              Adicionar
-            </button>
+            {activeTab === 'devices' && (
+              <button
+                type="button"
+                className="tv-btn-primary"
+                onClick={() => setIsAddOpen(true)}
+                title="Adicionar conexão manual ou novo grupo"
+              >
+                <Plus size={18} />
+                Adicionar
+              </button>
+            )}
           </div>
         </header>
 
@@ -299,6 +309,8 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
 
         {activeTab === 'history' ? (
           <ConnectionHistoryView onConnectAgain={handleConnectAgainFromHistory} />
+        ) : activeTab === 'cockpit' ? (
+          <AntigravityCockpit service={service} onBackToDevices={() => setActiveTab('devices')} />
         ) : (
           <>
             {query.isOrganizationLoading && <section className="device-state" role="status">Carregando dispositivos...</section>}
