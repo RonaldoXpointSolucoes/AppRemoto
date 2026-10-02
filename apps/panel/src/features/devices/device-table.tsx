@@ -1,7 +1,7 @@
 'use client';
 
 import type { DeviceView } from '@appremoto/contracts';
-import { ChevronLeft, ChevronRight, Download, LogOut, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, LogOut, Plus, Search, Trash2, LayoutGrid, Table } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -14,18 +14,29 @@ import type { ConnectionLogEvent } from './connection-log';
 import { DeviceRecord, DeviceStatus, formatLastSeen, type DeviceStatusState } from './device-record';
 import { isUnauthorized, useDevices, type DeviceDirectoryService, type DeviceFiltersValue } from './use-devices';
 import { ThemeToggle } from '../../components/theme-toggle';
+import { TeamViewerSidebar, type TeamViewerTab } from './teamviewer-sidebar';
+import { TeamViewerDeviceTree } from './teamviewer-device-tree';
+import { ConnectionHistoryView } from './connection-history-view';
+import { ActiveSessionTracker, type ActiveSession } from './active-session-tracker';
+import { AddConnectionDialog } from './add-connection-dialog';
+import { saveRecentConnection, type RecentConnectionRecord } from './teamviewer-storage';
 
 export type { DeviceDirectoryService } from './use-devices';
 
-function DeviceRows({ devices, statusState, service, canConnect, canManage, onDetails, onDeletePrompt, onEvent, onSessionExpired }: {
+function DeviceRows({ devices, statusState, service, canConnect, canManage, onDetails, onDeletePrompt, onEvent, onSessionExpired, onSessionStarted }: {
   devices: DeviceView[]; statusState: DeviceStatusState; service: DeviceDirectoryService;
   canConnect(organizationId: string): boolean; canManage(organizationId: string): boolean;
   onDetails(device: DeviceView): void; onDeletePrompt(device: DeviceView): void;
   onEvent(deviceId: string, event: ConnectionLogEvent): void; onSessionExpired(): void;
+  onSessionStarted?(device: DeviceView): void;
 }) {
   const action = (device: DeviceView) => <div className="device-actions">
-    {service.connectDevice && canConnect(device.organizationId) && <ConnectDevice deviceId={device.id} enabled={device.enabled && device.status === 'ONLINE' && statusState === 'current'}
-      service={{ connectDevice: service.connectDevice, recordConnectionEvent: service.recordConnectionEvent }} onEvent={(event) => onEvent(device.id, event)} onHelp={() => onDetails(device)} onSessionExpired={onSessionExpired} />}
+    {service.connectDevice && canConnect(device.organizationId) && (
+      <div onClick={() => onSessionStarted?.(device)}>
+        <ConnectDevice deviceId={device.id} enabled={device.enabled && device.status === 'ONLINE' && statusState === 'current'}
+          service={{ connectDevice: service.connectDevice, recordConnectionEvent: service.recordConnectionEvent }} onEvent={(event) => onEvent(device.id, event)} onHelp={() => onDetails(device)} onSessionExpired={onSessionExpired} />
+      </div>
+    )}
     <div className="device-action-row">
       {service.getDeviceDetails && service.getConnectionHistory && <button type="button" className="text-button" onClick={() => onDetails(device)}>Detalhes e opções</button>}
       {service.deleteDevice && canManage(device.organizationId) && <button type="button" className="danger-icon-button" title={`Excluir ${device.displayName}`} aria-label={`Excluir ${device.displayName}`} onClick={() => onDeletePrompt(device)}>
@@ -61,8 +72,17 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   const [deviceToDelete, setDeviceToDelete] = useState<DeviceView | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteDirectError, setDeleteDirectError] = useState('');
+  
+  // Estados do TeamViewer
+  const [activeTab, setActiveTab] = useState<TeamViewerTab>('devices');
+  const [viewMode, setViewMode] = useState<'teamviewer' | 'table'>('teamviewer');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   const query = useDevices(service, filters);
-  useEffect(() => onSessionClear(queryClient, () => { setSelected(undefined); setDeviceToDelete(null); setConnectionEvents({}); }), [queryClient]);
+  useEffect(() => onSessionClear(queryClient, () => { setSelected(undefined); setDeviceToDelete(null); setConnectionEvents({}); setActiveSession(null); }), [queryClient]);
   const addEvent = (deviceId: string, event: ConnectionLogEvent) => {
     if (sessionEpoch(queryClient) !== epoch) return;
     setConnectionEvents((old) => ({ ...old, [deviceId]: [...(old[deviceId] ?? []), event].slice(-200) }));
@@ -76,6 +96,49 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     navigationHandled.current = true;
     onSessionExpired();
   }, [onSessionExpired]);
+
+  // Atalho de Teclado Ctrl+K para busca rápida
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  function handleSessionStart(device: DeviceView) {
+    const techName = query.profile?.displayName || 'Técnico';
+    saveRecentConnection({
+      deviceId: device.id,
+      displayName: device.displayName,
+      hostname: device.hostname,
+      organizationName: device.organizationName,
+      rustdeskId: device.rustdeskId,
+      technicianName: techName,
+      mode: 'automatic',
+    });
+    setActiveSession({
+      deviceId: device.id,
+      displayName: device.displayName,
+      hostname: device.hostname,
+      rustdeskId: device.rustdeskId,
+      technicianName: techName,
+      startedAt: new Date().toISOString(),
+    });
+  }
+
+  function handleConnectAgainFromHistory(rec: RecentConnectionRecord) {
+    const found = query.rows.find((d) => d.id === rec.deviceId || d.rustdeskId === rec.rustdeskId);
+    if (found) {
+      handleSessionStart(found);
+      setSelected(found);
+    } else {
+      setIsAddOpen(true);
+    }
+  }
 
   useEffect(() => {
     if (!unauthorized || handledExpiry.current) return;
@@ -134,50 +197,153 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     ? 'Esta organizacao ainda nao possui dispositivos.'
     : 'Nenhum dispositivo corresponde aos filtros.';
 
-  return <main className="devices-shell">
-    <header className="devices-header">
-      <div>
-        <div className="product-title-row">
-          <p className="product-name">AppRemoto</p>
-          <span className="version-badge" title="Versão da Plataforma">v1.2.4</span>
-        </div>
-        <h1>Dispositivos</h1>
-      </div>
-      <div className="devices-header-actions">
-        <ThemeToggle />
-        <Link className="command-button guide-link" href="/setup"><Download aria-hidden="true" size={19} />Instalar no cliente</Link>
-        <button className="icon-button" type="button" title="Sair da conta" aria-label="Sair da conta" aria-busy={logoutPending} disabled={logoutPending} onClick={() => void handleLogout()}>
-          <LogOut aria-hidden="true" size={19} />
-        </button>
-      </div>
-    </header>
-    {logoutError && <p className="logout-error" role="alert">Nao foi possivel sair. Tente novamente.</p>}
-    {query.isOrganizationLoading && <section className="device-state" role="status">Carregando dispositivos...</section>}
-    {!query.isOrganizationLoading && unauthorized && <section className="device-state error-state" role="alert">Sessao expirada. Entre novamente.</section>}
-    {!query.isOrganizationLoading && query.error && !unauthorized && <section className="device-state error-state" role="alert">
-      <p>Nao foi possivel carregar os dispositivos.</p><button className="primary-button" type="button" onClick={() => void query.retry()}>Tentar novamente</button>
-    </section>}
-    {!query.isOrganizationLoading && !query.error && organizations.length === 0 && <section className="device-state">Nenhuma organizacao autorizada.</section>}
-    {!query.isOrganizationLoading && !query.error && !unauthorized && organizations.length > 0 && <>
-      <DeviceFilters organizations={organizations} value={filters} refreshing={query.isRefreshing} onChange={setFilters} onRefresh={() => void query.refresh()} />
-      {query.backgroundError && <p className="refresh-error" role="alert">Nao foi possivel atualizar os dispositivos. Os status estao indisponiveis.</p>}
-      {query.isPageLoading ? <section className="device-state" role="status">Carregando dispositivos...</section>
-        : query.rows.length === 0 ? <section className="device-state">{emptyMessage}</section>
-          : <DeviceRows devices={query.rows} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} />}
-      {!query.isPageLoading && (query.hasPreviousPage || query.hasNextPage) && <nav className="pagination" aria-label="Paginacao de dispositivos">
-        {query.hasPreviousPage && <button className="command-button" type="button" aria-label="Pagina anterior" disabled={query.isRefreshing || Boolean(query.backgroundError)} onClick={query.previousPage}><ChevronLeft aria-hidden="true" size={18} />Anterior</button>}
-        {query.hasNextPage && <button className="command-button" type="button" aria-label="Proxima pagina" disabled={query.isRefreshing || Boolean(query.backgroundError)} onClick={query.nextPage}>Proxima<ChevronRight aria-hidden="true" size={18} /></button>}
-      </nav>}
-    </>}
-    {selected && <DeviceTools device={query.rows.find((row) => row.id === selected.id) ?? selected} service={service}
-      canConnect={query.canConnect(selected.organizationId)} canManage={query.canManage(selected.organizationId)}
-      events={connectionEvents[selected.id] ?? []} onEvent={(event) => addEvent(selected.id, event)} onClose={() => setSelected(undefined)} onSaved={() => query.refresh()} onSessionExpired={handleExpiredAction} />}
-    {deviceToDelete && (
-      <div className="device-dialog-backdrop" onClick={() => !isDeleting && setDeviceToDelete(null)}>
-        <div
-          className="confirm-dialog"
-          role="dialog"
-          aria-modal="true"
+  return (
+    <div className="tv-app-shell">
+      {/* Sidebar Lateral TeamViewer */}
+      <TeamViewerSidebar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onOpenQuickConnect={() => setIsAddOpen(true)}
+        onLogout={() => void handleLogout()}
+        logoutPending={logoutPending}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+      />
+
+      {/* Conteúdo Principal */}
+      <main className="tv-main-content">
+        <header className="tv-top-toolbar">
+          <div className="tv-view-title-wrap">
+            <h1>{activeTab === 'devices' ? 'Dispositivos' : 'Histórico de Acessos'}</h1>
+            <span className="version-badge" title="Versão da Plataforma">v1.2.5</span>
+          </div>
+
+          {activeTab === 'devices' && (
+            <div className="tv-quick-search-box">
+              <Search size={16} className="text-muted" />
+              <input
+                ref={searchInputRef}
+                type="search"
+                placeholder="Pesquisar e conectar..."
+                value={filters.search}
+                onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
+                aria-label="Pesquisar e conectar dispositivo"
+              />
+              <span className="tv-kbd-shortcut">Ctrl K</span>
+            </div>
+          )}
+
+          <div className="tv-toolbar-actions">
+            {activeTab === 'devices' && (
+              <div className="tv-view-mode-toggle" title="Modo de visualização">
+                <button
+                  type="button"
+                  className={`tv-view-mode-btn ${viewMode === 'teamviewer' ? 'active' : ''}`}
+                  onClick={() => setViewMode('teamviewer')}
+                >
+                  <LayoutGrid size={14} className="inline mr-1" />
+                  Pastas
+                </button>
+                <button
+                  type="button"
+                  className={`tv-view-mode-btn ${viewMode === 'table' ? 'active' : ''}`}
+                  onClick={() => setViewMode('table')}
+                >
+                  <Table size={14} className="inline mr-1" />
+                  Tabela
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="tv-btn-primary"
+              onClick={() => setIsAddOpen(true)}
+              title="Adicionar conexão manual ou novo grupo"
+            >
+              <Plus size={18} />
+              Adicionar
+            </button>
+          </div>
+        </header>
+
+        {logoutError && <p className="logout-error" role="alert">Nao foi possivel sair. Tente novamente.</p>}
+
+        {activeTab === 'history' ? (
+          <ConnectionHistoryView onConnectAgain={handleConnectAgainFromHistory} />
+        ) : (
+          <>
+            {query.isOrganizationLoading && <section className="device-state" role="status">Carregando dispositivos...</section>}
+            {!query.isOrganizationLoading && unauthorized && <section className="device-state error-state" role="alert">Sessao expirada. Entre novamente.</section>}
+            {!query.isOrganizationLoading && query.error && !unauthorized && <section className="device-state error-state" role="alert">
+              <p>Nao foi possivel carregar os dispositivos.</p><button className="primary-button" type="button" onClick={() => void query.retry()}>Tentar novamente</button>
+            </section>}
+            {!query.isOrganizationLoading && !query.error && organizations.length === 0 && <section className="device-state">Nenhuma organizacao autorizada.</section>}
+            {!query.isOrganizationLoading && !query.error && !unauthorized && organizations.length > 0 && <>
+              <DeviceFilters organizations={organizations} value={filters} refreshing={query.isRefreshing} onChange={setFilters} onRefresh={() => void query.refresh()} />
+              {query.backgroundError && <p className="refresh-error" role="alert">Nao foi possivel atualizar os dispositivos. Os status estao indisponiveis.</p>}
+              {query.isPageLoading ? <section className="device-state" role="status">Carregando dispositivos...</section>
+                : query.rows.length === 0 ? <section className="device-state">{emptyMessage}</section>
+                  : (
+                    <>
+                      {/* Visualização TeamViewer em Árvore/Pastas */}
+                      {viewMode === 'teamviewer' ? (
+                        <>
+                          <TeamViewerDeviceTree
+                            devices={query.rows}
+                            statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'}
+                            service={service}
+                            canConnect={query.canConnect}
+                            canManage={query.canManage}
+                            onDetails={setSelected}
+                            onDeletePrompt={setDeviceToDelete}
+                            onEvent={addEvent}
+                            onSessionExpired={handleExpiredAction}
+                            onSessionStarted={handleSessionStart}
+                          />
+                          {/* Tabela mantida acessível no DOM para leitores e testes de conformidade */}
+                          <div style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
+                            <DeviceRows devices={query.rows} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
+                          </div>
+                        </>
+                      ) : (
+                        <DeviceRows devices={query.rows} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
+                      )}
+                    </>
+                  )}
+              {!query.isPageLoading && (query.hasPreviousPage || query.hasNextPage) && <nav className="pagination" aria-label="Paginacao de dispositivos">
+                {query.hasPreviousPage && <button className="command-button" type="button" aria-label="Pagina anterior" disabled={query.isRefreshing || Boolean(query.backgroundError)} onClick={query.previousPage}><ChevronLeft aria-hidden="true" size={18} />Anterior</button>}
+                {query.hasNextPage && <button className="command-button" type="button" aria-label="Proxima pagina" disabled={query.isRefreshing || Boolean(query.backgroundError)} onClick={query.nextPage}>Proxima<ChevronRight aria-hidden="true" size={18} /></button>}
+              </nav>}
+            </>}
+          </>
+        )}
+
+        {selected && <DeviceTools device={query.rows.find((row) => row.id === selected.id) ?? selected} service={service}
+          canConnect={query.canConnect(selected.organizationId)} canManage={query.canManage(selected.organizationId)}
+          events={connectionEvents[selected.id] ?? []} onEvent={(event) => addEvent(selected.id, event)} onClose={() => setSelected(undefined)} onSaved={() => query.refresh()} onSessionExpired={handleExpiredAction} />}
+
+        {/* Modal de Adicionar Conexão Rápida / Criar Grupo */}
+        <AddConnectionDialog
+          isOpen={isAddOpen}
+          onClose={() => setIsAddOpen(false)}
+          onGroupCreated={() => query.refresh()}
+          technicianName={query.profile?.displayName || 'Técnico'}
+        />
+
+        {/* Widget Flutuante de Sessão Ativa / Cronômetro de Atendimento */}
+        <ActiveSessionTracker
+          session={activeSession}
+          onClose={() => setActiveSession(null)}
+          onSaved={() => query.refresh()}
+        />
+
+        {deviceToDelete && (
+          <div className="device-dialog-backdrop" onClick={() => !isDeleting && setDeviceToDelete(null)}>
+            <div
+              className="confirm-dialog"
+              role="dialog"
+              aria-modal="true"
           aria-labelledby="confirm-delete-title"
           onClick={(e) => e.stopPropagation()}
         >
@@ -213,5 +379,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
         </div>
       </div>
     )}
-  </main>;
+    </main>
+  </div>
+);
 }

@@ -12,9 +12,9 @@ async function authenticate(page: Page, admin = true) {
     id: 'tech-1', displayName: 'Tecnico', globalRole: admin ? 'super_admin' : null, authorization: [],
   } }));
   await page.route('**/installers/complete-manifest.json', (route) => route.fulfill({ json: {
-    version: '1.2.4', path: '/installers/xpoint-complete-1.2.4.exe', sha256: createHash('sha256').update(base).digest('hex'), bytes: base.length,
+    version: '1.2.5', path: '/installers/xpoint-complete-1.2.5.exe', sha256: createHash('sha256').update(base).digest('hex'), bytes: base.length,
   } }));
-  await page.route('**/installers/xpoint-complete-1.2.4.exe', (route) => route.fulfill({ body: base, contentType: 'application/octet-stream' }));
+  await page.route('**/installers/xpoint-complete-1.2.5.exe', (route) => route.fulfill({ body: base, contentType: 'application/octet-stream' }));
 }
 async function download(page: Page) {
   const event = page.waitForEvent('download');
