@@ -20,6 +20,7 @@ import {
   Check,
   Loader2,
   FileText,
+  Copy,
 } from 'lucide-react';
 import { ConnectDevice } from './connect-device';
 import type { ConnectionLogEvent } from './connection-log';
@@ -86,6 +87,7 @@ export function TeamViewerDeviceTree({
   });
   const [groups, setGroups] = useState<DeviceGroup[]>(() => getDeviceGroups());
   const [menuOpenForDevice, setMenuOpenForDevice] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Estados dos Modais
   const [editingDevice, setEditingDevice] = useState<DeviceView | null>(null);
@@ -540,10 +542,25 @@ export function TeamViewerDeviceTree({
                     </div>
                     <div className="tv-col-id">
                       <span className="tv-id-text">{formatRustDeskId(rec.rustdeskId)}</span>
+                      <button
+                        type="button"
+                        className="tv-copy-id-btn"
+                        title={copiedId === rec.rustdeskId ? 'Copiado!' : 'Copiar ID do RustDesk'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void navigator.clipboard.writeText(rec.rustdeskId.replace(/\s+/g, '')).then(() => {
+                            setCopiedId(rec.rustdeskId);
+                            setTimeout(() => setCopiedId(null), 2500);
+                          });
+                        }}
+                      >
+                        {copiedId === rec.rustdeskId ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                      </button>
                     </div>
                     <div className="tv-col-status">
                       <span className={`tv-pill-status ${isOnline ? 'status-online' : 'status-offline'}`}>
-                        {isOnline ? 'Online' : 'Offline'}
+                        <span className="tv-pill-dot" />
+                        <span>{isOnline ? 'Online' : 'Offline'}</span>
                       </span>
                     </div>
                     <div className="tv-col-actions">
@@ -564,24 +581,24 @@ export function TeamViewerDeviceTree({
                           </div>
                         ) : null}
                         {liveDevice && (
-                          <button
-                            type="button"
-                            className="tv-icon-action-btn"
-                            title="Editar dados do computador"
-                            onClick={() => void handleOpenEditDevice(liveDevice)}
-                          >
-                            <Pencil size={15} />
-                          </button>
-                        )}
-                        {liveDevice && (
-                          <button
-                            type="button"
-                            className="tv-icon-action-btn"
-                            title="Detalhes técnicos"
-                            onClick={() => onDetails(liveDevice)}
-                          >
-                            <Sliders size={15} />
-                          </button>
+                          <div className="tv-action-toolbar">
+                            <button
+                              type="button"
+                              className="tv-icon-action-btn"
+                              title="Editar dados do computador"
+                              onClick={() => void handleOpenEditDevice(liveDevice)}
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              className="tv-icon-action-btn"
+                              title="Detalhes técnicos"
+                              onClick={() => onDetails(liveDevice)}
+                            >
+                              <Sliders size={14} />
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -645,7 +662,8 @@ export function TeamViewerDeviceTree({
                       )}
                       <span className="tv-folder-name">{group.name}</span>
                       <span className="tv-folder-stats">
-                        ({onlineCount} online / {groupDevs.length} total)
+                        {onlineCount > 0 && <span className="tv-stats-online-dot" />}
+                        {onlineCount} online / {groupDevs.length} total
                       </span>
                     </button>
 
@@ -752,10 +770,25 @@ export function TeamViewerDeviceTree({
                               </div>
                               <div className="tv-col-id">
                                 <span className="tv-id-text">{formatRustDeskId(dev.rustdeskId)}</span>
+                                <button
+                                  type="button"
+                                  className="tv-copy-id-btn"
+                                  title={copiedId === dev.rustdeskId ? 'Copiado!' : 'Copiar ID do RustDesk'}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
+                                      setCopiedId(dev.rustdeskId);
+                                      setTimeout(() => setCopiedId(null), 2500);
+                                    });
+                                  }}
+                                >
+                                  {copiedId === dev.rustdeskId ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                                </button>
                               </div>
                               <div className="tv-col-status">
                                 <span className={`tv-pill-status ${isOnline ? 'status-online' : 'status-offline'}`}>
-                                  {isOnline ? 'Online' : 'Offline'}
+                                  <span className="tv-pill-dot" />
+                                  <span>{isOnline ? 'Online' : 'Offline'}</span>
                                 </span>
                               </div>
                               <div className="tv-col-actions">
@@ -775,58 +808,60 @@ export function TeamViewerDeviceTree({
                                       />
                                     </div>
                                   )}
-                                  <button
-                                    type="button"
-                                    className="tv-icon-action-btn"
-                                    title="Editar nome, pasta e observações"
-                                    onClick={() => void handleOpenEditDevice(dev)}
-                                  >
-                                    <Pencil size={16} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="tv-icon-action-btn"
-                                    title="Detalhes técnicos e histórico"
-                                    onClick={() => onDetails(dev)}
-                                  >
-                                    <Sliders size={16} />
-                                  </button>
-                                  {canManage(dev.organizationId) && (
-                                    <button
-                                      type="button"
-                                      className="tv-icon-action-btn danger"
-                                      title="Excluir dispositivo"
-                                      onClick={() => onDeletePrompt(dev)}
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  )}
-                                  {/* Menu de pasta rápida */}
-                                  <div className="tv-menu-container">
+                                  <div className="tv-action-toolbar">
                                     <button
                                       type="button"
                                       className="tv-icon-action-btn"
-                                      title="Mover rapidamente para outra pasta"
-                                      onClick={() => setMenuOpenForDevice(isMenuOpen ? null : dev.id)}
+                                      title="Editar nome, pasta e observações"
+                                      onClick={() => void handleOpenEditDevice(dev)}
                                     >
-                                      <MoreVertical size={16} />
+                                      <Pencil size={14} />
                                     </button>
-                                    {isMenuOpen && (
-                                      <div className="tv-dropdown-menu">
-                                        <p className="tv-dropdown-title">Mover para pasta:</p>
-                                        {groups.map((tg) => (
-                                          <button
-                                            key={tg.id}
-                                            type="button"
-                                            className={`tv-dropdown-item ${tg.id === group.id ? 'active' : ''}`}
-                                            onClick={() => void handleAssignGroup(dev, tg.id)}
-                                          >
-                                            <Folder size={14} />
-                                            <span>{tg.name}</span>
-                                          </button>
-                                        ))}
-                                      </div>
+                                    <button
+                                      type="button"
+                                      className="tv-icon-action-btn"
+                                      title="Detalhes técnicos e histórico"
+                                      onClick={() => onDetails(dev)}
+                                    >
+                                      <Sliders size={14} />
+                                    </button>
+                                    {canManage(dev.organizationId) && (
+                                      <button
+                                        type="button"
+                                        className="tv-icon-action-btn danger"
+                                        title="Excluir dispositivo"
+                                        onClick={() => onDeletePrompt(dev)}
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
                                     )}
+                                    {/* Menu de pasta rápida */}
+                                    <div className="tv-menu-container">
+                                      <button
+                                        type="button"
+                                        className="tv-icon-action-btn"
+                                        title="Mover rapidamente para outra pasta"
+                                        onClick={() => setMenuOpenForDevice(isMenuOpen ? null : dev.id)}
+                                      >
+                                        <MoreVertical size={14} />
+                                      </button>
+                                      {isMenuOpen && (
+                                        <div className="tv-dropdown-menu">
+                                          <p className="tv-dropdown-title">Mover para pasta:</p>
+                                          {groups.map((tg) => (
+                                            <button
+                                              key={tg.id}
+                                              type="button"
+                                              className={`tv-dropdown-item ${tg.id === group.id ? 'active' : ''}`}
+                                              onClick={() => void handleAssignGroup(dev, tg.id)}
+                                            >
+                                              <Folder size={14} />
+                                              <span>{tg.name}</span>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                               </div>
