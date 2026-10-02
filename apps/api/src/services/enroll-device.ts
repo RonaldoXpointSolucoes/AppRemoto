@@ -141,7 +141,7 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
             device.enabled !== true || !deviceToken || deviceToken.device_id !== deviceId || !credential ||
             credential.device_id !== deviceId || token.use_count < (expectedCount as number)) return deny('identity_mismatch');
       } else {
-        if (receipt || device || deviceToken || credential) return deny('identity_mismatch');
+        if (receipt && (receipt.enrollment_token_id === token.id && receipt.status === 'committed')) return deny('already_enrolled');
         if (token.use_count >= token.max_uses) return deny('token_exhausted');
       }
       const deviceTokenPlaintext = deriveDeviceToken(encryptionKey, { organizationId: token.organization_id,
@@ -217,6 +217,9 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
         const finalToken = await repo.snapshot('enrollment_tokens', token.id);
         if (!finalToken || finalToken.active !== true || finalToken.revoked_at !== null) throw new EnrollmentError();
         if (dependencies.genericPassword) await dependencies.genericPassword(token);
+        if (dependencies.reconfigurationGuard) {
+          try { await dependencies.reconfigurationGuard.endHeartbeatGuard({ deviceId, deviceTokenId: deviceId, startedAt: now().toISOString() }); } catch {}
+        }
         uncertainWrites.delete(tokenHash);
         return response;
       } catch {

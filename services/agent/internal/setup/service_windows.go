@@ -141,7 +141,7 @@ func runAgent(ctx context.Context) (err error) {
 	step = 5
 	r.Record(5, operation, "START", nil)
 	en, e := enroll.NewService(enroll.Options{StateDirectory: ps.Agent, API: reportedAPI{apiClient, r}, RustDesk: reportedRustDesk{rd, r}, GenericInstallation: reg.GenericInstallation,
-		Progress: func(op, result string, err error) { r.Record(5, op, result, err) }})
+		AllowReenrollFallback: true, Progress: func(op, result string, err error) { r.Record(5, op, result, err) }})
 	if e != nil {
 		return e
 	}

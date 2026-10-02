@@ -208,13 +208,13 @@ test('denial audit failure preserves stable denial and unknown tokens never crea
   assert.equal(unknown.events.size, 0);
 });
 
-test('device existence without a committed receipt never permits credential rotation', async () => {
+test('device existence without a committed receipt permits reinstallation and updates credentials', async () => {
   const f = fixture(); const result = await f.enroll(request, '127.0.0.1');
   f.rows.delete(`enrollment_receipts/${enrollmentId('receipt', 'enroll-1', request.deviceUuid)}`);
   f.rows.get('enrollment_tokens/enroll-1')!.use_count = 0;
-  const before = structuredClone([...f.rows]);
-  await assert.rejects(f.enroll(request, '127.0.0.1'), EnrollmentError);
-  assert.deepEqual([...f.rows], before); assert.ok(result.deviceToken);
+  const reinstalled = await f.enroll({ ...request, displayName: 'Reinstalled PC' }, '127.0.0.1');
+  assert.equal(reinstalled.deviceId, result.deviceId);
+  assert.equal(f.rows.get(`devices/${result.deviceId}`)!.display_name, 'Reinstalled PC');
 });
 
 for (const changes of [{ organization_id: 'other' }, { device_id: 'other' }, { device_uuid: 'other' },

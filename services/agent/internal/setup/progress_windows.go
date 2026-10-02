@@ -53,8 +53,12 @@ func ShowProgress(report *Report) (func(), error) {
 			return r
 		})
 		instance, _, _ := kernel.NewProc("GetModuleHandleW").Call(0)
+		icon, _, _ := user.NewProc("LoadIconW").Call(instance, 1)
+		if icon == 0 {
+			icon, _, _ = user.NewProc("LoadIconW").Call(0, 32512)
+		}
 		name := ptr("XPointRemoteSetupProgress")
-		wc := windowClass{Size: uint32(unsafe.Sizeof(windowClass{})), Procedure: procedure, Instance: instance, Background: 6, Name: name}
+		wc := windowClass{Size: uint32(unsafe.Sizeof(windowClass{})), Procedure: procedure, Instance: instance, Icon: icon, SmallIcon: icon, Background: 6, Name: name}
 		atom, _, _ := user.NewProc("RegisterClassExW").Call(uintptr(unsafe.Pointer(&wc)))
 		if atom == 0 {
 			ready <- errors.New("progress window unavailable")
@@ -64,10 +68,14 @@ func ShowProgress(report *Report) (func(), error) {
 		screenX, _, _ := user.NewProc("GetSystemMetrics").Call(0)
 		screenY, _, _ := user.NewProc("GetSystemMetrics").Call(1)
 		create := user.NewProc("CreateWindowExW")
-		hwnd, _, _ := create.Call(0, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(ptr("XPoint Remote - Configurando RustDesk"))), 0x10C80000, (screenX-700)/2, (screenY-420)/2, 700, 420, 0, 0, instance, 0)
+		hwnd, _, _ := create.Call(0, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(ptr("XPoint Remote — Configurando Acesso Remoto"))), 0x10C80000, (screenX-700)/2, (screenY-420)/2, 700, 420, 0, 0, instance, 0)
 		if hwnd == 0 {
 			ready <- errors.New("progress window unavailable")
 			return
+		}
+		if icon != 0 {
+			user.NewProc("SendMessageW").Call(hwnd, 0x80, 1, icon)
+			user.NewProc("SendMessageW").Call(hwnd, 0x80, 0, icon)
 		}
 		defer destroy.Call(hwnd)
 		label, _, _ = create.Call(0, uintptr(unsafe.Pointer(ptr("STATIC"))), uintptr(unsafe.Pointer(ptr(report.ProgressText()))), 0x50000000, 22, 20, 650, 345, hwnd, 0, instance, 0)

@@ -16,6 +16,15 @@ export function createSetupReceiptRepository(databases: Databases): SetupReceipt
       try { await databases.deleteDocument('remote_management', 'device_credentials', deviceId); } catch {}
       try { await databases.deleteDocument('remote_management', 'device_tokens', deviceId); } catch {}
       try { await databases.deleteDocument('remote_management', 'heartbeat_guards', deviceId); } catch {}
+      try {
+        const receipts = await databases.listDocuments('remote_management', 'enrollment_receipts', [
+          Query.equal('device_id', deviceId),
+          Query.limit(100),
+        ]);
+        for (const doc of receipts.documents) {
+          try { await databases.deleteDocument('remote_management', 'enrollment_receipts', doc.$id); } catch {}
+        }
+      } catch {}
     },
     async updateDeviceFields(deviceId, fields) {
       let acknowledged = false;

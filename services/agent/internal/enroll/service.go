@@ -62,18 +62,20 @@ type Options struct {
 	Protector           Protector
 	Progress            func(operation, result string, err error)
 	GenericInstallation bool
+	AllowReenrollFallback bool
 }
 
 type Service struct {
-	api                 APIClient
-	rustdesk            RustDeskClient
-	artifacts           artifactStore
-	protector           Protector
-	prepareIdentity     func(string) error
-	loadIdentity        func(string) (state.Identity, error)
-	stateDirectory      string
-	progress            func(operation, result string, err error)
-	genericInstallation bool
+	api                   APIClient
+	rustdesk              RustDeskClient
+	artifacts             artifactStore
+	protector             Protector
+	prepareIdentity       func(string) error
+	loadIdentity          func(string) (state.Identity, error)
+	stateDirectory        string
+	progress              func(operation, result string, err error)
+	genericInstallation   bool
+	allowReenrollFallback bool
 }
 
 // StageError preserves the OS cause for safe numeric diagnostics without
@@ -127,7 +129,8 @@ func NewService(options Options) (*Service, error) {
 	}
 	return &Service{api: options.API, rustdesk: options.RustDesk, protector: protector,
 		artifacts: fileArtifacts{directory: options.StateDirectory}, prepareIdentity: state.PrepareIdentityDirectory,
-		loadIdentity: state.LoadOrCreateIdentity, stateDirectory: options.StateDirectory, progress: options.Progress, genericInstallation: options.GenericInstallation}, nil
+		loadIdentity: state.LoadOrCreateIdentity, stateDirectory: options.StateDirectory, progress: options.Progress,
+		genericInstallation: options.GenericInstallation, allowReenrollFallback: options.AllowReenrollFallback}, nil
 }
 
 type marker struct {
@@ -234,18 +237,42 @@ func (service *Service) Run(ctx context.Context, enrollmentToken []byte, metadat
 			return nil
 		})
 		if err != nil {
-			clear(result.DeviceToken)
-			return Result{}, err
-		}
-		if service.genericInstallation {
-			if err = service.rotateGenericPassword(ctx, identity.DeviceUUID, result, reconfigureRequest); err != nil {
+			if service.allowReenrollFallback && len(enrollmentToken) > 0 {
+				_ = service.stage("DEVICE_RECONFIGURE_FALLBACK_ENROLL", func() error {
+					if service.stateDirectory != "" {
+						_ = os.Remove(filepath.Join(service.stateDirectory, credentialsArtifact))
+						_ = os.Remove(filepath.Join(service.stateDirectory, configuredArtifact))
+						_ = os.Remove(filepath.Join(service.stateDirectory, pendingArtifact))
+					}
+					return nil
+				})
+				clear(result.DeviceToken)
+				result = Result{}
+				credentialsExist = false
+				configuredExists = false
+				pendingExists = false
+			} else {
 				clear(result.DeviceToken)
 				return Result{}, err
 			}
+		} else {
+			if service.genericInstallation {
+				if err = service.rotateGenericPassword(ctx, identity.DeviceUUID, result, reconfigureRequest); err != nil {
+					clear(result.DeviceToken)
+					return Result{}, err
+				}
+			}
+			return result, nil
 		}
-		return result, nil
 	}
-	if configuredExists || pendingExists {
+	if service.allowReenrollFallback && len(enrollmentToken) > 0 && (configuredExists || pendingExists) {
+		if service.stateDirectory != "" {
+			_ = os.Remove(filepath.Join(service.stateDirectory, configuredArtifact))
+			_ = os.Remove(filepath.Join(service.stateDirectory, pendingArtifact))
+		}
+		configuredExists = false
+		pendingExists = false
+	} else if configuredExists || pendingExists {
 		return Result{}, ErrManualReconciliation
 	}
 

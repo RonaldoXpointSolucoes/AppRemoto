@@ -333,6 +333,10 @@ func FailureMessage(code string) string {
 		return "Uma tentativa anterior pode ter enviado o cadastro, mas nao salvou a resposta. Preserve os dados e encaminhe o log ao tecnico para reconciliar o cadastro."
 	case "IDENTITY_DIRECTORY_PREPARE", "IDENTITY_LOAD_CREATE":
 		return "O Windows impediu a preparacao da identidade protegida deste computador. O cadastro ainda nao foi enviado ao painel. Consulte a operacao e o codigo do Windows no log."
+	case "DEVICE_RECONFIGURE_REQUEST":
+		return "A reconexão do computador anterior falhou no servidor. Execute o instalador novamente para forçar a reinstalação e o novo registro automático no painel."
+	case "DEVICE_ENROLL_REQUEST":
+		return "O servidor não aceitou o cadastro deste computador. Verifique a conexão com a internet ou gere um novo instalador no painel."
 	default:
 		return "A configuracao nao foi concluida. O log identifica a ultima operacao e o erro. Os dados de recuperacao foram preservados."
 	}

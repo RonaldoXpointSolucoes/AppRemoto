@@ -257,13 +257,27 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 			case "REPLACE_UNUSED":
 				r.Record(3, "REPLACE_UNUSED_ATTEMPT", "START", nil)
 			default:
-				return fail(decision, errStage)
+				if pkg.Generic.SchemaVersion == 2 {
+					r.Record(3, "FORCE_REINSTALL_CLEANUP", "START", nil)
+					_ = os.Remove(filepath.Join(ps.Agent, "enrollment-pending.json"))
+					_ = os.Remove(filepath.Join(ps.Agent, "enrollment-credentials.json"))
+					_ = os.Remove(filepath.Join(ps.Agent, "rustdesk-configured.json"))
+				} else {
+					return fail(decision, errStage)
+				}
 			}
 		}
 	} else if !errors.Is(e, windows.ERROR_FILE_NOT_FOUND) {
 		return fail("STATE", e)
 	} else if pending || credentials {
-		return fail("RECONCILIATION", errStage)
+		if pkg.Generic.SchemaVersion == 2 {
+			_ = os.Remove(filepath.Join(ps.Agent, "enrollment-pending.json"))
+			_ = os.Remove(filepath.Join(ps.Agent, "enrollment-credentials.json"))
+			_ = os.Remove(filepath.Join(ps.Agent, "rustdesk-configured.json"))
+			r.Record(3, "STALE_ARTIFACTS_CLEARED", "OK", nil)
+		} else {
+			return fail("RECONCILIATION", errStage)
+		}
 	}
 	{
 		start(3, "NEW_PACKAGE_STATE_WRITE")

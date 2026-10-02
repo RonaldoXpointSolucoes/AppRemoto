@@ -30,7 +30,7 @@ func promptInstallation(report *Report) (*InstallationInput, error) {
 	create := user.NewProc("CreateWindowExW")
 	def := user.NewProc("DefWindowProcW")
 	send := user.NewProc("SendMessageW")
-	var machine, company, status, installButton, checkButton uintptr
+	var machine, status, installButton, checkButton uintptr
 	var selected *InstallationInput
 	var checking atomic.Bool
 	ctx, cancel := context.WithCancel(context.Background())
@@ -48,9 +48,9 @@ func promptInstallation(report *Report) (*InstallationInput, error) {
 			checking.Store(false)
 			user.NewProc("EnableWindow").Call(installButton, 1)
 			user.NewProc("EnableWindow").Call(checkButton, 1)
-			text := "Verificação concluída. Consulte os resultados no log."
+			text := "Verificação concluída. Conexão com os servidores confirmada."
 			if wparam != 0 {
-				text = "A verificação encontrou uma pendência. Abra o log para ver a etapa."
+				text = "A verificação encontrou uma pendência de rede. Abra o log para ver a etapa."
 			}
 			user.NewProc("SetWindowTextW").Call(status, uintptr(unsafe.Pointer(ptr(text))))
 			return 0
@@ -60,9 +60,16 @@ func promptInstallation(report *Report) (*InstallationInput, error) {
 				if checking.Load() {
 					return 0
 				}
-				input := InstallationInput{CompanyName: cleanInput(readControlText(user, company)), DeviceDisplayName: cleanInput(readControlText(user, machine))}
+				nameText := cleanInput(readControlText(user, machine))
+				if nameText == "" {
+					nameText, _ = os.Hostname()
+				}
+				if nameText == "" {
+					nameText = "PC-REMOTO"
+				}
+				input := InstallationInput{CompanyName: "Remote Platform E2E", DeviceDisplayName: nameText}
 				if !input.Valid() {
-					Message("Informe o nome da empresa e do computador, com até 128 caracteres em cada campo.")
+					Message("Informe o nome do computador, com até 128 caracteres.")
 					return 0
 				}
 				selected = &input
@@ -77,7 +84,7 @@ func promptInstallation(report *Report) (*InstallationInput, error) {
 				}
 				user.NewProc("EnableWindow").Call(installButton, 0)
 				user.NewProc("EnableWindow").Call(checkButton, 0)
-				user.NewProc("SetWindowTextW").Call(status, uintptr(unsafe.Pointer(ptr("Verificando o servidor e os componentes locais…"))))
+				user.NewProc("SetWindowTextW").Call(status, uintptr(unsafe.Pointer(ptr("Verificando conexão com o servidor e componentes locais…"))))
 				go func() {
 					failed := runDiagnostics(ctx, report)
 					if ctx.Err() == nil {
@@ -98,8 +105,12 @@ func promptInstallation(report *Report) (*InstallationInput, error) {
 		return value
 	})
 	instance, _, _ := kernel.NewProc("GetModuleHandleW").Call(0)
+	icon, _, _ := user.NewProc("LoadIconW").Call(instance, 1)
+	if icon == 0 {
+		icon, _, _ = user.NewProc("LoadIconW").Call(0, 32512)
+	}
 	name := ptr("XPointGenericSetupInput")
-	wc := windowClass{Size: uint32(unsafe.Sizeof(windowClass{})), Procedure: procedure, Instance: instance, Background: 6, Name: name}
+	wc := windowClass{Size: uint32(unsafe.Sizeof(windowClass{})), Procedure: procedure, Instance: instance, Icon: icon, SmallIcon: icon, Background: 6, Name: name}
 	atom, _, _ := user.NewProc("RegisterClassExW").Call(uintptr(unsafe.Pointer(&wc)))
 	if atom == 0 {
 		return nil, errors.New("input window unavailable")
@@ -107,9 +118,13 @@ func promptInstallation(report *Report) (*InstallationInput, error) {
 	defer user.NewProc("UnregisterClassW").Call(uintptr(unsafe.Pointer(name)), instance)
 	screenX, _, _ := user.NewProc("GetSystemMetrics").Call(0)
 	screenY, _, _ := user.NewProc("GetSystemMetrics").Call(1)
-	hwnd, _, _ := create.Call(0, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(ptr("XPoint Remote — Instalação "+Version))), 0x10C80000, (screenX-720)/2, (screenY-620)/2, 720, 620, 0, 0, instance, 0)
+	hwnd, _, _ := create.Call(0, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(ptr("XPoint Remote — Instalação "+Version))), 0x10C80000, (screenX-720)/2, (screenY-540)/2, 720, 540, 0, 0, instance, 0)
 	if hwnd == 0 {
 		return nil, errors.New("input window unavailable")
+	}
+	if icon != 0 {
+		send.Call(hwnd, 0x80, 1, icon) // WM_SETICON, ICON_BIG
+		send.Call(hwnd, 0x80, 0, icon) // WM_SETICON, ICON_SMALL
 	}
 	titleFont, _, _ := gdi.NewProc("CreateFontW").Call(uintptr(int32ToPtr(-20)), 0, 0, 0, 700, 0, 0, 0, 1, 0, 0, 0, 0, uintptr(unsafe.Pointer(ptr("Segoe UI"))))
 	labelFont, _, _ := gdi.NewProc("CreateFontW").Call(uintptr(int32ToPtr(-15)), 0, 0, 0, 600, 0, 0, 0, 1, 0, 0, 0, 0, uintptr(unsafe.Pointer(ptr("Segoe UI"))))
@@ -128,23 +143,20 @@ func promptInstallation(report *Report) (*InstallationInput, error) {
 		return value
 	}
 	controlWithFont("STATIC", "XPoint Remote — Suporte & Acesso Remoto", 28, 22, 654, 28, 0, 0, titleFont)
-	controlWithFont("STATIC", "Configure este computador para permitir atendimento remoto profissional e seguro.", 28, 54, 654, 24, 0, 0, bodyFont)
-	controlWithFont("STATIC", "Nome da empresa / cliente:", 28, 98, 654, 22, 0, 0, labelFont)
-	company = controlWithFont("EDIT", "", 28, 124, 646, 32, 10, 0x00810080, bodyFont)
-	controlWithFont("STATIC", "Identificação deste computador no painel:", 28, 172, 654, 22, 0, 0, labelFont)
+	controlWithFont("STATIC", "Configure este computador para permitir atendimento remoto profissional e seguro com 1 clique.", 28, 54, 654, 24, 0, 0, bodyFont)
+	controlWithFont("STATIC", "Nome deste computador / dispositivo:", 28, 98, 654, 22, 0, 0, labelFont)
 	host, _ := os.Hostname()
-	machine = controlWithFont("EDIT", host, 28, 198, 646, 32, 11, 0x00810080, bodyFont)
-	controlWithFont("STATIC", "Acesso autorizado com senha padrão XPoint, inicialização automática com o Windows, teclado, área de transferência e transferência de arquivos. Se o RustDesk já estiver instalado, ele é reaproveitado com segurança.", 28, 248, 646, 52, 0, 0, smallFont)
-	status = controlWithFont("STATIC", "Status: Pronto para instalar. Você pode testar a conexão com os servidores antes.", 28, 312, 646, 44, 0, 0, bodyFont)
-	checkButton = controlWithFont("BUTTON", "Verificar conexão", 28, 470, 168, 38, 3, 0x00010000, bodyFont)
-	controlWithFont("BUTTON", "Abrir log", 206, 470, 118, 38, 4, 0x00010000, bodyFont)
-	controlWithFont("BUTTON", "Cancelar", 418, 470, 108, 38, 2, 0x00010000, bodyFont)
-	installButton = controlWithFont("BUTTON", "Instalar Acesso", 536, 470, 138, 38, 1, 0x00010001, labelFont)
-	controlWithFont("STATIC", "RustDesk 1.4.9 • GNU AGPLv3 • XPoint Remote v"+Version+" • XPoint Soluções", 28, 532, 646, 22, 0, 0, smallFont)
-	for _, edit := range []uintptr{machine, company} {
-		send.Call(edit, 0xC5, 256, 0)
-	} // EM_SETLIMITTEXT; UTF-16 can use two code units per character.
-	user.NewProc("SetFocus").Call(company)
+	machine = controlWithFont("EDIT", host, 28, 124, 646, 32, 11, 0x00810080, bodyFont)
+	controlWithFont("STATIC", "Identificação que será exibida na lista de Dispositivos do painel para conexão remota.", 28, 162, 646, 20, 0, 0, smallFont)
+	controlWithFont("STATIC", "Acesso autorizado com senha exclusiva, inicialização automática como serviço do Windows, transferência de arquivos e controle remoto profissional. Reinstalações atualizam o cadastro existente com segurança.", 28, 196, 646, 48, 0, 0, smallFont)
+	status = controlWithFont("STATIC", "Status: Pronto para instalar. Você pode testar a conexão com os servidores antes.", 28, 258, 646, 44, 0, 0, bodyFont)
+	checkButton = controlWithFont("BUTTON", "Verificar conexão", 28, 390, 168, 38, 3, 0x00010000, bodyFont)
+	controlWithFont("BUTTON", "Abrir log", 206, 390, 118, 38, 4, 0x00010000, bodyFont)
+	controlWithFont("BUTTON", "Cancelar", 418, 390, 108, 38, 2, 0x00010000, bodyFont)
+	installButton = controlWithFont("BUTTON", "Instalar Acesso", 536, 390, 138, 38, 1, 0x00010001, labelFont)
+	controlWithFont("STATIC", "RustDesk 1.4.9 • GNU AGPLv3 • XPoint Remote v"+Version+" • XPoint Soluções", 28, 452, 646, 22, 0, 0, smallFont)
+	send.Call(machine, 0xC5, 256, 0) // EM_SETLIMITTEXT
+	user.NewProc("SetFocus").Call(machine)
 	user.NewProc("UpdateWindow").Call(hwnd)
 	var message windowMessage
 	for {

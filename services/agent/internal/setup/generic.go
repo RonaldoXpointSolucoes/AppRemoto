@@ -128,6 +128,9 @@ func ReadGenericOverlay(r io.ReaderAt, size int64) (GenericProvisioning, int64, 
 }
 
 func newPreparationRequest(p GenericProvisioning, input InstallationInput) (preparationRequest, error) {
+	if input.CompanyName == "" {
+		input.CompanyName = "Remote Platform E2E"
+	}
 	if !input.Valid() {
 		return preparationRequest{}, ErrOverlay
 	}
