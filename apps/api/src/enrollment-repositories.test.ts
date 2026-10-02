@@ -52,7 +52,8 @@ test('freeze repeats authoritative active/unrevoked checks and returns the actua
   } as unknown as Databases);
   const result = await repo.freezeToken('token', 'hash');
   assert.deepEqual(calls, ['read', 'read', 'write']);
-  assert.deepEqual(result, { token_hash: 'hash', active: false, revoked_at: '2026-10-01T00:00:01.000Z' });
+  assert.deepEqual(result, { token_hash: 'hash', active: false, revoked_at: '2026-10-01T00:00:01.000Z',
+    generic_installer_id: null, bootstrap_request_hash: null });
 });
 
 test('freeze rejects revocation or inactivity observed by either precondition read', async () => {

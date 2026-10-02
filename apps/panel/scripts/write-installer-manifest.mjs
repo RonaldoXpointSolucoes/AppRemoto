@@ -1,12 +1,8 @@
-import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
+import { artifactManifest, installerVersion } from './installer-artifacts.mjs';
 
-const version = '1.0.3';
 const directory = new URL('../public/installers/', import.meta.url);
-const filename = `xpoint-setup-${version}.exe`;
+const filename = `xpoint-setup-${installerVersion}.exe`;
 const bytes = readFileSync(new URL(filename, directory));
-if (bytes.length < 2 || bytes.length > 64 * 1024 * 1024 || bytes[0] !== 77 || bytes[1] !== 90) throw new Error('Invalid Windows installer artifact');
-writeFileSync(new URL('manifest.json', directory), JSON.stringify({
-  version, path: `/installers/${filename}`, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length,
-}) + '\n');
+writeFileSync(new URL('manifest.json', directory), JSON.stringify(artifactManifest(bytes, filename)) + '\n');
 console.log(`Installer manifest written (${bytes.length} bytes)`);

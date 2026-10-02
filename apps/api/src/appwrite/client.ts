@@ -12,6 +12,8 @@ import { createEnrollmentService } from '../services/enroll-device.ts';
 import { createHeartbeatService } from '../services/record-heartbeat.ts';
 import { createOperatorSetupService } from '../services/operator-setup.ts';
 import { createSetupReceiptRepository } from '../repositories/operator-setup.ts';
+import { createGenericInstallerRepository } from '../repositories/generic-installers.ts';
+import { createGenericInstallerService } from '../services/generic-installers.ts';
 
 export function createAppwriteServices(config: ApiConfig): TechnicianServices {
   const dataClient = new Client().setEndpoint(config.appwriteEndpoint)
@@ -20,7 +22,11 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
 
   const enrollmentRepository = createEnrollmentRepository(databases);
   const auditRepository = createAuditRepository(databases);
+  const genericInstallers = createGenericInstallerService({ repository: createGenericInstallerRepository(databases),
+    enrollment: enrollmentRepository, audit: auditRepository, encryptionKey: config.masterEncryptionKey,
+    sharedPassword: config.genericInstallerSharedPassword });
   return {
+    genericInstallers,
     projectId: config.appwriteProjectId,
     jwtVerifier: {
       async verify(jwt) {
@@ -39,6 +45,7 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
     organizations: createOrganizationRepository(databases),
     devices: createDeviceRepository(databases),
     enrollDevice: createEnrollmentService({ repository: enrollmentRepository, reconfigurationGuard: enrollmentRepository,
+      genericPassword: genericInstallers.enrollmentPassword,
       audit: auditRepository, encryptionKey: config.masterEncryptionKey, keyVersion: config.encryptionKeyVersion }),
     recordHeartbeat: createHeartbeatService({ repository: enrollmentRepository, audit: auditRepository }),
     operatorSetup: createOperatorSetupService({ repository: enrollmentRepository,

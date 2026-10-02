@@ -56,22 +56,24 @@ type Result struct {
 }
 
 type Options struct {
-	StateDirectory string
-	API            APIClient
-	RustDesk       RustDeskClient
-	Protector      Protector
-	Progress       func(operation, result string, err error)
+	StateDirectory      string
+	API                 APIClient
+	RustDesk            RustDeskClient
+	Protector           Protector
+	Progress            func(operation, result string, err error)
+	GenericInstallation bool
 }
 
 type Service struct {
-	api             APIClient
-	rustdesk        RustDeskClient
-	artifacts       artifactStore
-	protector       Protector
-	prepareIdentity func(string) error
-	loadIdentity    func(string) (state.Identity, error)
-	stateDirectory  string
-	progress        func(operation, result string, err error)
+	api                 APIClient
+	rustdesk            RustDeskClient
+	artifacts           artifactStore
+	protector           Protector
+	prepareIdentity     func(string) error
+	loadIdentity        func(string) (state.Identity, error)
+	stateDirectory      string
+	progress            func(operation, result string, err error)
+	genericInstallation bool
 }
 
 // StageError preserves the OS cause for safe numeric diagnostics without
@@ -125,7 +127,7 @@ func NewService(options Options) (*Service, error) {
 	}
 	return &Service{api: options.API, rustdesk: options.RustDesk, protector: protector,
 		artifacts: fileArtifacts{directory: options.StateDirectory}, prepareIdentity: state.PrepareIdentityDirectory,
-		loadIdentity: state.LoadOrCreateIdentity, stateDirectory: options.StateDirectory, progress: options.Progress}, nil
+		loadIdentity: state.LoadOrCreateIdentity, stateDirectory: options.StateDirectory, progress: options.Progress, genericInstallation: options.GenericInstallation}, nil
 }
 
 type marker struct {
@@ -193,11 +195,20 @@ func (service *Service) Run(ctx context.Context, enrollmentToken []byte, metadat
 			return Result{}, ErrManualReconciliation
 		}
 		result, err := service.resume(ctx, identity.DeviceUUID, credentials, configuredExists)
-		if err != nil || len(enrollmentToken) == 0 {
+		if err != nil {
 			return result, err
+		}
+		if err = service.resumeGenericPassword(ctx, identity.DeviceUUID, result); err != nil {
+			clear(result.DeviceToken)
+			return Result{}, err
+		}
+		if len(enrollmentToken) == 0 {
+			return result, nil
 		}
 		// A fresh installer may change the label, while the saved machine identity
 		// and credentials remain authoritative. Acknowledgement contains no secrets.
+		var reconfigureRequest api.EnrollRequest
+		defer func() { reconfigureRequest.EnrollmentToken = "" }()
 		err = service.stage("DEVICE_RECONFIGURE_REQUEST", func() error {
 			client, ok := service.api.(interface {
 				Reconfigure(context.Context, []byte, api.EnrollRequest) (api.ReconfigureResponse, error)
@@ -209,10 +220,11 @@ func (service *Service) Run(ctx context.Context, enrollmentToken []byte, metadat
 			if err != nil {
 				return err
 			}
-			response, err := client.Reconfigure(ctx, result.DeviceToken, api.EnrollRequest{
+			reconfigureRequest = api.EnrollRequest{
 				EnrollmentToken: string(enrollmentToken), DeviceUUID: identity.DeviceUUID,
 				DisplayName: metadata.DisplayName, Hostname: metadata.Hostname, OperatingSystem: metadata.OperatingSystem,
-				OSVersion: metadata.OSVersion, AgentVersion: metadata.AgentVersion, RustDeskID: info.ID, RustDeskVersion: info.Version})
+				OSVersion: metadata.OSVersion, AgentVersion: metadata.AgentVersion, RustDeskID: info.ID, RustDeskVersion: info.Version}
+			response, err := client.Reconfigure(ctx, result.DeviceToken, reconfigureRequest)
 			if err != nil {
 				return err
 			}
@@ -224,6 +236,12 @@ func (service *Service) Run(ctx context.Context, enrollmentToken []byte, metadat
 		if err != nil {
 			clear(result.DeviceToken)
 			return Result{}, err
+		}
+		if service.genericInstallation {
+			if err = service.rotateGenericPassword(ctx, identity.DeviceUUID, result, reconfigureRequest); err != nil {
+				clear(result.DeviceToken)
+				return Result{}, err
+			}
 		}
 		return result, nil
 	}

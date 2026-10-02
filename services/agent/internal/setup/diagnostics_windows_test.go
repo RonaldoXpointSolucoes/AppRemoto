@@ -122,7 +122,7 @@ func TestConfigurationTimeoutReportsExactOperation(t *testing.T) {
 }
 
 func TestRecoveryDecisionPreservesEnrollment(t *testing.T) {
-	r := receipt{"old", "org", "pc"}
+	r := receipt{EnrollmentID: "old", OrganizationID: "org", DeviceDisplayName: "pc"}
 	p := Provisioning{EnrollmentID: "new", OrganizationID: "org", DeviceDisplayName: "pc"}
 	if recoveryDecision(r, p, false, false) != "REPLACE_UNUSED" {
 		t.Fatal("unused attempt not recoverable")

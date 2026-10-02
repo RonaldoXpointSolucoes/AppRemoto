@@ -213,6 +213,13 @@ func diagnostic(err error) string {
 	if errors.Is(err, ErrOverlay) {
 		return "INVALID_OR_EXPIRED_PACKAGE"
 	}
+	if errors.Is(err, ErrBundle) {
+		return "BUNDLE_INTEGRITY"
+	}
+	var preparation *preparationError
+	if errors.As(err, &preparation) && safeIdentifier(preparation.Code) {
+		return preparation.Code
+	}
 	if errors.Is(err, errUnattended) {
 		return "UNATTENDED_POLICY"
 	}
@@ -223,7 +230,7 @@ func diagnostic(err error) string {
 	return "FAILED"
 }
 
-var stepLabels = []string{"Validar pacote e permissao", "Verificar RustDesk instalado", "Preparar servico XPoint", "Configurar servidores e acesso", "Cadastrar computador e senha", "Confirmar comunicacao com o painel"}
+var stepLabels = []string{"Validar pacote e autorizar cadastro", "Preparar RustDesk e servico automatico", "Preparar servico XPoint", "Configurar servidores e permissoes", "Cadastrar computador e senha", "Confirmar comunicacao com o painel"}
 
 func (r *Report) ProgressText() string {
 	events := r.Events()
@@ -302,8 +309,24 @@ func FailureMessage(code string) string {
 		return "O Windows recusou o controle da instalacao. Consulte o codigo Win32 no log."
 	case "RUSTDESK_MISSING":
 		return "Instale o RustDesk no computador (incluindo o servico) e execute novamente este arquivo. Este configurador nao baixa nem instala o RustDesk."
+	case "RUSTDESK_CONFLICT":
+		return "O servico RustDesk existente usa um caminho diferente do esperado. A instalacao foi preservada. Encaminhe o log ao suporte XPoint."
+	case "RUSTDESK_INSTALL", "RUSTDESK_INSTALL_FAILED":
+		return "O instalador incluido nao confirmou o servico RustDesk. Verifique a ultima operacao no log e execute novamente para retomar."
+	case "BUNDLE_INTEGRITY":
+		return "O arquivo de instalacao esta incompleto ou foi alterado. Baixe novamente o instalador completo no painel XPoint."
+	case "GENERIC_INSTALLER_DENIED", "INSTALLER_NOT_AUTHORIZED":
+		return "A autorizacao deste instalador foi revogada ou nao e valida. Obtenha um novo instalador completo no painel XPoint."
+	case "GENERIC_INSTALLER_EXPIRED":
+		return "A preparacao anterior venceu. Execute novamente o instalador para preparar uma nova tentativa; os dados de recuperacao serao preservados."
+	case "ORGANIZATION_CONFLICT":
+		return "A empresa informada nao corresponde ao cadastro atual ou ha empresas com esse nome. Nenhuma identidade foi substituida. Consulte o suporte XPoint."
+	case "PREPARATION_NETWORK", "PREPARATION_TIMEOUT", "PREPARATION_UNAVAILABLE", "GENERIC_INSTALLER_UNAVAILABLE":
+		return "Nao foi possivel autorizar o cadastro no servidor XPoint. Verifique a internet e execute novamente; a mesma tentativa sera retomada com seguranca."
+	case "PREPARATION_INPUT":
+		return "Informe os nomes da empresa e do computador, com ate 128 caracteres em cada campo."
 	case "PACKAGE":
-		return "Pacote invalido ou vencido. Baixe um novo instalador no painel para o cliente desejado. O nome pode ser diferente do anterior."
+		return "Pacote invalido, incompleto ou vencido. Baixe um novo instalador no painel XPoint. O instalador completo pede empresa e nome ao iniciar."
 	case "EXISTING_INSTALLATION":
 		return "Este computador pertence a outro cliente. Baixe o instalador para o cliente correto; o nome do computador pode ser alterado livremente."
 	case "RECONCILIATION":

@@ -108,6 +108,7 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
           <li>Teste a abertura abaixo e autorize o navegador a abrir o RustDesk.</li>
           <li>Volte ao painel e clique em Conectar. A máquina do cliente deve estar ligada e com o RustDesk pronto.</li>
         </ol>
+        <p>Depois de conectar, para ajustar a imagem à janela, abra o menu de exibição da sessão RustDesk e selecione <strong>Escala adaptada (Scale adaptive)</strong>.</p>
         <button type="button" className="command-button" onClick={testOpening}>Testar abertura do RustDesk</button>
         {probe && <p role="status">{probe}</p>}
         <details className="connection-server-help"><summary>Abriu, mas não conectou?</summary><p>O acesso pelo painel já inclui o servidor XPoint. Se você conectar digitando o ID diretamente no RustDesk, confira os mesmos dados de servidor nos dois computadores.</p><RustDeskServerConfig /></details>

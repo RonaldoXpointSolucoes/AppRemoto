@@ -7,7 +7,7 @@ import "testing"
 // Display names are operator labels. They must not identify a Windows
 // installation or require a technician to remember an earlier test name.
 func TestNewPackageAcceptsNewDisplayName(t *testing.T) {
-	previous := receipt{"old-package", "same-customer", "Forgotten first name"}
+	previous := receipt{EnrollmentID: "old-package", OrganizationID: "same-customer", DeviceDisplayName: "Forgotten first name"}
 	next := Provisioning{EnrollmentID: "new-package", OrganizationID: "same-customer", DeviceDisplayName: "New computer name"}
 	for _, scenario := range []struct {
 		name                 string

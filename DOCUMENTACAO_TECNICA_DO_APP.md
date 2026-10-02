@@ -26,7 +26,7 @@ Antes de implementar qualquer demanda:
 
 Nao crie uma colecao apenas porque o nome do novo recurso parece diferente. Primeiro responda:
 
-- O dado ja pertence a uma das 11 colecoes documentadas na secao 8?
+- O dado ja pertence a uma das colecoes documentadas na secao 8?
 - O campo ja existe com outro nome canonico?
 - O requisito pode ser atendido por um novo endpoint/projecao sem mudar persistencia?
 - O dado e calculado, como `ONLINE`/`OFFLINE`, e portanto nao deve ser persistido?
@@ -114,9 +114,10 @@ O Appwrite Console e o Coolify sao consoles administrativos, nao telas alternati
 - API Fastify com autenticacao de tecnico, listagem de organizacoes/dispositivos, enrollment e heartbeat.
 - Painel Next.js com login, listagem responsiva, filtros, busca, paginacao, polling e logout com revogacao de sessao.
 - Ferramentas do dispositivo: editar nome/observacoes com permissao de gestao, diagnostico e historico de tentativas em `audit_logs`. Conexao automatica preserva a entrega autorizada existente; modo manual recebe a senha RustDesk somente na memoria do navegador. O RustDesk precisa estar instalado tambem no computador do tecnico.
-- `/setup` prepara um EXE Windows para cliente/nome selecionados e acompanha o receipt/heartbeat daquela instalacao. O checklist manual de 6 etapas e 20 itens fica recolhido para suporte.
+- `/setup` oferece o instalador completo reutilizavel 1.1.0: empresa e nome sao digitados no Windows, sem login no cliente. O configurador personalizado e o checklist manual continuam em secoes avancadas. A publicacao desta versao exige a migracao e os aceites descritos em `docs/operations/generic-installer.md`.
 - Endpoint de operador cria enrollment token de 256 bits, uso unico e validade de 30 minutos; apenas hash e auditoria persistidos. Status correlaciona receipt committed e heartbeat confirmado, sem busca pelo nome. Nao exige alteracao de schema.
-- Configurador Windows x64 1.0.3 em `services/agent/cmd/remote-setup`: exige RustDesk ja instalado com servico automatico LocalSystem, verifica o executavel confiavel, configura acesso e cadastra o servico XPoint com estado DPAPI. Nao baixa nem instala RustDesk. Janela com seis etapas e log com mesmo nome/pasta do EXE, sem argumentos, tokens ou senhas. Distribuicao base gerada no Docker do painel; personalizacao em memoria no navegador com token de uso unico. Nao e um instalador assinado.
+- Instalador Windows x64 1.1.0 em `services/agent/cmd/remote-setup`: inclui RustDesk oficial 1.4.9 com tamanho/hash fixados, aproveita instalacao confiavel existente e instala o servico quando ausente. Formulario empresa/nome, verificacao de conexao, abertura do log, etapas visiveis e estado DPAPI. O log conserva o mesmo nome/pasta do EXE, sem argumentos, tokens ou senhas. O bundle publico nao contem autorizacao; o painel acrescenta uma capability de cadastro reutilizavel para distribuicao interna. O servico recebe somente o runtime Go. Configuracao V1 continua compativel. Nao e um instalador assinado.
+- Autorizacoes genericas sao emitidas/rebaixadas/revogadas somente por superadministrador. A API cria/reutiliza empresas e prepara enrollment temporario de forma idempotente. O usuario escolheu expressamente senha permanente comum e instalacao sem login; `GENERIC_INSTALLER_SHARED_PASSWORD` pertence somente ao runtime da API. Executar o fluxo generico sobre instalacao anterior migra a senha daquele endpoint mediante prova atual, journal protegido e confirmacao; nao altera outros dispositivos silenciosamente.
 - Agente Windows manual com identidade estavel, DPAPI, discovery do RustDesk, configuracao de senha unattended, enrollment e heartbeat resiliente.
 - Protecoes de recuperacao para escritas de enrollment/heartbeat incertas.
 - MCP local `appwrite-xpoint` com perfis separados e credenciais DPAPI.
@@ -178,7 +179,7 @@ Responsavel por:
 
 - contas e sessoes dos tecnicos;
 - emissao/validacao de JWT por meio dos SDKs;
-- armazenamento das 11 colecoes do database `remote_management`;
+- armazenamento das colecoes canonicas do database `remote_management`;
 - indices, unicidade e persistencia.
 
 Nao e responsabilidade do Appwrite:
@@ -200,7 +201,7 @@ Responsavel por:
 - proteger isolamento entre organizacoes;
 - emitir projecoes seguras ao painel;
 - validar/consumir enrollment tokens;
-- gerar device token e senha unattended;
+- gerar device token e selecionar a senha unattended (exclusiva no legado; comum no instalador generico, por escolha expressa do usuario);
 - cifrar senha com AES-256-GCM;
 - registrar dispositivos, heartbeats e auditoria;
 - falhar fechado quando uma escrita distribuida fica incerta.
@@ -307,7 +308,7 @@ Se houver falha depois de consumir token, preserve artefatos e receipts. Nao apa
 - Database: `remote_management`.
 - Fonte canonica: `infra/appwrite/src/schema.ts`.
 - Documento gerado: `infra/appwrite/schema.md`.
-- Estado desejado atual, calculado diretamente de `schema.ts`: 11 colecoes, 70 atributos e 27 indices, totalizando 109 recursos incluindo o database. O campo opcional `devices.notes` acrescenta uma unica definicao ao inventario anterior de 108 recursos.
+- Estado desejado atual, calculado diretamente de `schema.ts`: 12 colecoes, 82 atributos e 28 indices, totalizando 123 recursos incluindo o database. A versao 1.1.0 acrescenta a autorizacao pre-tenant `generic_installers`, dois campos opcionais de origem em enrollment tokens, quatro campos opcionais de recuperacao de senha em receipts e o vinculo opcional da guarda a sua operacao. Documentos legados continuam validos. A contagem descreve o schema desejado; a implantacao exige plano/apply e leitura posterior.
 - O runbook de provisionamento ainda contem referencias historicas a 104 recursos, anteriores a `heartbeat_guards`. Nao remova recursos para fazer a producao coincidir com essa contagem antiga; atualize o runbook quando o proximo card de schema for executado.
 - IDs relacionais sao strings de ate 36 caracteres; Appwrite nao cria foreign keys. A API garante integridade e tenant isolation.
 - Nao use documentos completos em respostas. Cada repositorio usa `Query.select` para projeÃ§Ãµes minimas.
@@ -387,6 +388,8 @@ Autentica heartbeats do agente.
 | `token_hash` | string(64), obrigatorio, unico | SHA-256 do device token |
 | `last_used_at` | datetime opcional | Ultimo uso autenticado |
 | `revoked_at` | datetime opcional | Revogacao administrativa imutavel |
+| `generic_installer_id` | string(36), opcional | Autorizacao reutilizavel que preparou este token |
+| `bootstrap_request_hash` | string(64), opcional | Vinculo criptografico a tentativa e aos dados de preparacao |
 
 O plaintext nunca e armazenado. Nao reutilize esta colecao para tokens de tecnico, enrollment ou conexao.
 
@@ -399,6 +402,7 @@ Guarda duravel de uma atualizacao de heartbeat em andamento/incerta.
 | `device_id` | string(36), obrigatorio | Device protegido pela guarda |
 | `device_token_id` | string(36), obrigatorio | Token participante |
 | `started_at` | datetime, obrigatorio | Inicio da operacao |
+| `operation_id` | string(36), opcional | Receipt dono da migracao de senha; ausente nas guardas normais de heartbeat |
 
 O `$id` e derivado para garantir uma guarda por device. Nao use como historico de heartbeat e nao apague guardas manualmente sem seguir o procedimento de recovery.
 
@@ -447,6 +451,10 @@ Registra a operacao de consumo para idempotencia, compensacao e recovery.
 | `token_use_consumed` | boolean, obrigatorio | Consumo comprovado |
 | `expected_use_count` | integer, obrigatorio | Contagem esperada apos commit |
 | `recovery_frozen` | boolean, obrigatorio | Bloqueio duravel de recovery incerto |
+| `password_rotation_started_at` | datetime opcional | Inicio da migracao autorizada para senha comum |
+| `password_rotation_target_hash` | string(64), opcional | Verificacao do alvo sem persistir plaintext |
+| `password_rotation_completed` | boolean opcional | Confirmacao duravel da migracao |
+| `password_rotation_write_started` | boolean opcional | Protege contra repeticao de escrita indeterminada de credencial |
 
 Indices: unico por `enrollment_token_id + device_uuid`; buscas por organizacao, device e status.  
 Esta colecao nao e fila generica. Nunca force `pending -> committed`, altere contadores ou limpe `recovery_frozen` sem prova exata dos artefatos descrita em `apps/api/ENROLLMENT.md`.
@@ -487,6 +495,26 @@ Registro de seguranca para enrollment e heartbeat, extensivel a futuras acoes.
 Indices por organizacao, device e action.  
 Nao grave payloads integrais, Authorization, cookies, tokens, senhas, chaves, ciphertext ou respostas SDK nesta colecao.
 
+### 8.12 `generic_installers`
+
+Autorizacao reutilizavel para preparar instalacoes antes de existir um tenant
+selecionado. Essa responsabilidade nao cabe em `enrollment_tokens` (exige
+organizacao) nem em `audit_logs` ou `connection_sessions`. A colecao e privada.
+
+| Campo | Tipo | Uso |
+| --- | --- | --- |
+| `name` | string(128), obrigatorio | Rotulo administrativo da distribuicao |
+| `token_hash` | string(64), obrigatorio, unico | Hash da capability derivada no servidor |
+| `active` | boolean, obrigatorio | Autoriza novos usos |
+| `created_by_user_id` | string(36), obrigatorio | Superadministrador emissor, revalidado nos novos usos |
+| `revoked_at` | datetime opcional | Revogacao permanente desta distribuicao |
+
+Senha comum nao pertence a esta colecao nem ao pacote distribuido. A capability
+autoriza novos cadastros; quem recebe o EXE deve ser confiavel. Com senha comum,
+cadastrar uma maquina permite obter essa senha durante o enrollment. Revogar
+a capability nao revoga uma senha que ja foi entregue. Consulte o runbook do
+instalador generico antes de distribuir ou alterar a politica de senha.
+
 ### Relacionamentos logicos
 
 ```text
@@ -519,6 +547,12 @@ technician + organization + device ---- connection_sessions (planejado)
 | --- | --- | --- | --- |
 | `GET /health` | Nenhuma | Implementado | Health exato `{"status":"ok"}` |
 | `GET /v1/me` | JWT tecnico | Implementado | Perfil e autorizacao efetiva |
+| `GET/POST /v1/generic-installers` | JWT superadmin | Implementado | Listar/criar autorizacoes reutilizaveis |
+| `POST /v1/generic-installers/:installerId/package` | JWT superadmin | Implementado | Rebaixar a mesma autorizacao ativa |
+| `POST /v1/generic-installers/:installerId/revoke` | JWT superadmin | Implementado | Impedir novos usos sem remover dispositivos |
+| `POST /v1/agent/prepare-installation` | Capability do instalador | Implementado | Empresa/nome e enrollment temporario idempotente |
+| `POST /v1/agent/generic-password` | Pacote + credencial atual | Implementado | Preparar/retomar senha comum com guarda duravel |
+| `POST /v1/agent/generic-password/confirm` | Mesmas provas | Implementado | Confirmar aplicacao e liberar presenca/conexao |
 | `GET /v1/organizations` | JWT tecnico | Implementado | Organizacoes visiveis |
 | `GET /v1/devices` | JWT tecnico | Implementado | Busca, filtro e paginacao segura |
 | `POST /v1/agent/enroll` | Enrollment token no body | Implementado | Primeiro cadastro e credenciais |
@@ -546,6 +580,7 @@ Conectar aceita `{}` para compatibilidade e `{mode,attemptId}` para correlacao. 
 | `APPWRITE_API_KEY` | Segredo |
 | `MASTER_ENCRYPTION_KEY` | Segredo AES-256 |
 | `MASTER_ENCRYPTION_KEY_VERSION` | Configuracao versionada |
+| `GENERIC_INSTALLER_SHARED_PASSWORD` | Segredo de runtime; nunca build/painel/EXE; necessario ao fluxo generico |
 | `ALLOWED_ORIGINS` | Origem HTTPS exata do painel |
 | `PORT` | Porta do container |
 | `API_REPLICAS` | Deve permanecer `1` |
@@ -553,7 +588,9 @@ Conectar aceita `{}` para compatibilidade e `{mode,attemptId}` para correlacao. 
 | `TRUST_PROXY` | `false` ou IPs/CIDRs explicitos |
 | `NODE_ENV` | Runtime |
 
-O runbook menciona inventario de 12 nomes; antes de alterar, confira `docs/operations/remote-api.md` e o estado vivo do Coolify, pois a documentacao historica pode divergir de uma contagem textual.
+O inventario anterior tinha 12 nomes. O instalador generico acrescenta um segredo
+de runtime. Antes de alterar, confira `docs/operations/remote-api.md` e o estado
+vivo do Coolify; nao troque a senha comum enquanto houver migracao pendente.
 
 ### Variaveis publicas do painel
 
@@ -758,6 +795,7 @@ Posteriormente, neste chat, o usuario solicitou diretamente automatizar os seis 
 | Desenho do MVP | `docs/superpowers/specs/2026-09-29-remote-platform-mvp-design.md` |
 | Desenho futuro do Setup | `docs/superpowers/specs/2026-10-01-technician-setup-design.md` |
 | Instalacao automatica Windows | `services/agent/SETUP.md` e `docs/superpowers/specs/2026-10-01-automatic-installer-design.md` |
+| Instalador completo reutilizavel | `docs/operations/generic-installer.md` |
 | Fila futura | Quadro App Acesso Remoto |
 
 ## 18. Checklist antes de entregar uma alteracao

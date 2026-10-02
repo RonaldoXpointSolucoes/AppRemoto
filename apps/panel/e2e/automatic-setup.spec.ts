@@ -43,8 +43,9 @@ test('download contains the exact single-use enrollment and monitors its receipt
     ? { status: 'online', expiresAt, device: enrolledDevice }
     : { status: 'waiting', expiresAt, device: null } }));
   await page.goto('/setup');
+  await page.getByText('Configuração avançada: RustDesk já instalado', { exact: true }).click();
   await expect(page.getByText('Pré-requisito:', { exact: true })).toBeVisible();
-  await expect(page.getByText('Configurador 1.0.3 · Windows 64 bits')).toBeVisible();
+  await expect(page.getByText('Configurador avançado · Windows 64 bits')).toBeVisible();
   await expect(page.getByLabel('Cliente', { exact: true })).toHaveValue('org-a');
   await expect(page.getByRole('option', { name: 'Cliente B' })).toHaveCount(0);
   await expect(page.getByRole('checkbox')).toHaveCount(0);
@@ -84,6 +85,7 @@ test('artifact integrity failure prevents issuing a provisioning token', async (
   let issued = false;
   await page.route('**/v1/enrollment-tokens', (route) => { issued = true; return route.abort(); });
   await page.goto('/setup');
+  await page.getByText('Configuração avançada: RustDesk já instalado', { exact: true }).click();
   await page.getByRole('textbox', { name: 'Nome do computador', exact: true }).fill('Recepção');
   await page.getByRole('button', { name: 'Baixar instalador do cliente' }).click();
   await expect(page.getByRole('region', { name: 'Configure. O computador aparece aqui.' }).getByRole('alert')).toContainText('Não foi possível preparar o instalador');
@@ -94,6 +96,7 @@ test('a viewer cannot generate installation packages and the compact page fits m
   await page.setViewportSize({ width: 320, height: 780 });
   await authenticate(page, false);
   await page.goto('/setup');
+  await page.getByText('Configuração avançada: RustDesk já instalado', { exact: true }).click();
   await expect(page.getByText('Sua conta não tem clientes com permissão para cadastrar computadores.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Baixar instalador do cliente' })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
@@ -114,6 +117,7 @@ test('confirmed installation masks failed checks, survives provisioning expiry a
     return route.fulfill({ json: { status: 'online', expiresAt, device: enrolledDevice } });
   });
   await page.goto('/setup');
+  await page.getByText('Configuração avançada: RustDesk já instalado', { exact: true }).click();
   await page.getByRole('textbox', { name: 'Nome do computador', exact: true }).fill('Recepção');
   await page.getByRole('button', { name: 'Baixar instalador do cliente' }).click();
   await expect(page.getByRole('heading', { name: 'Computador conectado ao painel' })).toBeVisible();
@@ -146,6 +150,7 @@ test('technician can generate another installer with a new name and monitor its 
       ? { status: 'online', expiresAt, device: { ...enrolledDevice, displayName: 'Burguer Servidor' } }
       : { status: 'waiting', expiresAt, device: null } }));
   await page.goto('/setup');
+  await page.getByText('Configuração avançada: RustDesk já instalado', { exact: true }).click();
   await page.getByRole('textbox', { name: 'Nome do computador', exact: true }).fill('Primeiro teste');
   await page.getByRole('button', { name: 'Baixar instalador do cliente' }).click();
   await expect(page.getByText('Você não precisa lembrar o nome anterior.', { exact: false })).toBeVisible();

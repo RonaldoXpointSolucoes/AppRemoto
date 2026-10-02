@@ -1,18 +1,61 @@
 # Native setup distribution interface
 
-Version: 1.0.3. Windows x64. Build from services/agent:
+Version: 1.1.0. Windows x64. Build the runtime from services/agent:
 
 ```sh
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -H=windowsgui" -o xpoint-setup-base.exe ./cmd/remote-setup
 ```
 
-The panel build publishes the versioned base EXE and a manifest with the exact byte length and SHA256. No Authenticode certificate is included. The downloaded personalized EXE includes a one-use enrollment token; protect/delete that download after confirmed installation.
+The panel build publishes both the base EXE and the complete bundle with exact
+byte length and SHA256 manifests. Use `node apps/panel/scripts/build-installer.mjs`
+at repository root to build both. The complete bundle contains the unchanged,
+pinned RustDesk 1.4.9 executable. No Authenticode certificate is provisioned.
 
-## Prerequisite and workflow
+## Generic complete installer (1.1.0)
+
+The same downloaded file is reusable across customer PCs. After normal UAC,
+the native form asks company and display name; the hostname is only a default
+label. No customer-side panel session is needed. The form also offers bounded
+HTTPS/TCP diagnostics and an Open log button. Form cancellation precedes changes.
+
+A valid installed RustDesk service is reused and reconfigured, without running
+the bundled installer or downgrading the existing version. When absent, the
+official payload is verified, extracted into a protected staging directory and
+silently installed with a three-minute deadline and service/path readback.
+Unexpected paths/accounts are reported as conflicts. XPoint remains an automatic
+LocalSystem service. Only the Go runtime segment is copied into Program Files.
+The official license and source/build references accompany the installation.
+
+The public bundle contains no capability. A superadmin download appends a strict
+V2 overlay with a revocable registration capability; treat the resulting file
+as private distribution material. The shared permanent password requested by the
+user remains in API runtime configuration and is delivered to the authorized
+agent over TLS. It is absent from the distributed EXE, URLs and logs. Capability
+holders can enroll a computer and thus obtain the common password; endpoint
+scoping does not remove that inherent shared-password risk.
+
+Before preparation, the installer saves a random attempt ID and secret with
+machine DPAPI. Retries recover the same organization/package. The SYSTEM service
+keeps its existing identity and credentials. Migration from an older per-device
+password uses a separate protected journal, API stage/confirm and a durable
+guard; pending work resumes before a fresh reconfiguration. Setup does not report
+success before acknowledgement and a fresh heartbeat. An initial enrollment
+response lost after commit still requires the documented reconciliation path.
+
+Keyboard, clipboard, file transfer and support permissions are explicitly
+configured with readback. Servers/key are compiled constants. OSS administrators
+can still change their local RustDesk settings. Adaptive scaling belongs to the
+technician's viewer settings, as explained in the panel.
+
+See [generic installer operations](../../docs/operations/generic-installer.md)
+for binary layout, capability revocation, API/schema release and real acceptance
+limits. The following V1 configuration/recovery protocol remains compatible.
+
+## Legacy V1 prerequisite and workflow
 
 RustDesk must already be installed with its automatic LocalSystem Windows service, in Program Files/RustDesk or Program Files (x86)/RustDesk. Portable copies are insufficient. The configurator does not download, install, reinstall or remove RustDesk. It validates the service path and the trusted executable, starts the existing service if necessary, and fails before writing XPoint registration when the prerequisite is absent.
 
-Double-click requests normal UAC. The window shows six stages: package/permission, installed RustDesk, XPoint service, server/access settings, enrollment/password, confirmed heartbeat. Closing the window hides progress without cancelling a service-owned operation. RustDesk commands have bounded timeouts; service startup has a 30-second limit, setup monitoring eight minutes. A stopped/failed service is reported promptly rather than waiting the full monitoring timeout.
+Double-click requests normal UAC. The window shows six stages: package/permission, installed RustDesk, XPoint service, server/access settings, enrollment/password, confirmed heartbeat. Closing the window hides progress without cancelling a service-owned operation. RustDesk commands have bounded timeouts; service startup has a 30-second limit, setup monitoring ten minutes after form submission. A stopped/failed service is reported promptly rather than waiting the full monitoring timeout.
 
 The XPoint service is automatic LocalSystem, dependent on RustDesk, with recovery after 30/60/120 seconds. It uses dedicated Program Files/XPointRemoteAgent and ProgramData/XPointRemoteAgent directories. Only the base EXE is copied to the runtime, without provisioning data. SYSTEM enrolls and runs, keeping CurrentUser DPAPI consistent. Bootstrap uses machine DPAPI and SYSTEM/Administrators-only ACLs, and is removed after successful enrollment/password configuration. Runtime is readable/executable by Users; recovery state remains private.
 

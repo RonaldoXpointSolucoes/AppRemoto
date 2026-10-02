@@ -32,6 +32,7 @@ const fields: Record<string, readonly (readonly [string, string, number | null, 
   heartbeat_guards: [
     ['device_id', 'string', 36, true, null], ['device_token_id', 'string', 36, true, null],
     ['started_at', 'datetime', null, true, null],
+    ['operation_id', 'string', 36, false, null],
   ],
   device_credentials: [
     ['device_id', 'string', 36, true, null], ['password_ciphertext', 'string', 4096, true, null],
@@ -44,6 +45,7 @@ const fields: Record<string, readonly (readonly [string, string, number | null, 
     ['use_count', 'integer', null, true, null], ['active', 'boolean', null, true, null],
     ['created_by_user_id', 'string', 36, true, null],
     ['revoked_at', 'datetime', null, false, null],
+    ['generic_installer_id', 'string', 36, false, null], ['bootstrap_request_hash', 'string', 64, false, null],
   ],
   enrollment_receipts: [
     ['organization_id', 'string', 36, true, null], ['enrollment_token_id', 'string', 36, true, null],
@@ -52,6 +54,8 @@ const fields: Record<string, readonly (readonly [string, string, number | null, 
     ['token_use_consumed', 'boolean', null, true, null],
     ['expected_use_count', 'integer', null, true, null],
     ['recovery_frozen', 'boolean', null, true, null],
+    ['password_rotation_started_at', 'datetime', null, false, null], ['password_rotation_target_hash', 'string', 64, false, null],
+    ['password_rotation_completed', 'boolean', null, false, null], ['password_rotation_write_started', 'boolean', null, false, null],
   ],
   connection_sessions: [
     ['organization_id', 'string', 36, true, null], ['device_id', 'string', 36, true, null],
@@ -66,6 +70,10 @@ const fields: Record<string, readonly (readonly [string, string, number | null, 
     ['actor_id', 'string', 36, true, null], ['device_id', 'string', 36, false, null],
     ['action', 'string', 64, true, null], ['result', 'enum', null, true, ['success', 'failure']],
     ['source_ip', 'string', 45, true, null], ['metadata_json', 'string', 16384, true, null],
+  ],
+  generic_installers: [
+    ['name', 'string', 128, true, null], ['token_hash', 'string', 64, true, null], ['active', 'boolean', null, true, null],
+    ['created_by_user_id', 'string', 36, true, null], ['revoked_at', 'datetime', null, false, null],
   ],
 };
 
@@ -100,6 +108,7 @@ const indexes: Record<string, readonly (readonly [string, string, readonly strin
     ['q_organization_id', 'key', ['organization_id']], ['q_device_id', 'key', ['device_id']],
     ['q_action', 'key', ['action']],
   ],
+  generic_installers: [['u_token_hash', 'unique', ['token_hash']]],
 };
 
 test('database and collection order are stable and deny access by default', () => {
@@ -112,7 +121,7 @@ test('database and collection order are stable and deny access by default', () =
   }
 });
 
-test('heartbeat guard is a server-only direct-ID collection with three required identity fields', () => {
+test('heartbeat guard has three required identity fields and optional scoped operation ownership', () => {
   const guard = REMOTE_MANAGEMENT_SCHEMA.collections.find((collection) => collection.id === 'heartbeat_guards');
   assert.ok(guard);
   assert.deepEqual(guard.permissions, []);
@@ -121,6 +130,7 @@ test('heartbeat guard is a server-only direct-ID collection with three required 
     field.required]), [
     ['device_id', 'string', 36, true], ['device_token_id', 'string', 36, true],
     ['started_at', 'datetime', null, true],
+    ['operation_id', 'string', 36, false],
   ]);
   assert.deepEqual(guard.indexes, []);
 });

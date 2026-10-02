@@ -51,7 +51,7 @@ func PrepareIdentityDirectory(path string) error {
 
 func isKnownIdentityArtifact(name string) bool {
 	if name == "identity.json" || name == "enrollment-pending.json" ||
-		name == "enrollment-credentials.json" || name == "rustdesk-configured.json" {
+		name == "enrollment-credentials.json" || name == "rustdesk-configured.json" || name == "generic-password.json" {
 		return true
 	}
 	if !strings.HasPrefix(name, ".identity-") || !strings.HasSuffix(name, ".tmp") {
@@ -69,6 +69,63 @@ func isKnownIdentityArtifact(name string) bool {
 		}
 	}
 	return true
+}
+
+// ReplaceGenericPassword atomically advances the dedicated password-rotation
+// journal. The enrollment identity and original append-only credentials are
+// never replaced. Readers verify the same current-user/SYSTEM ownership rules.
+func ReplaceGenericPassword(directory string, data []byte) error {
+	canonical, err := filepath.Abs(directory)
+	if err != nil {
+		return errors.New("resolve rotation directory")
+	}
+	canonical = filepath.Clean(canonical)
+	dir, err := openIdentityDirectory(canonical)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	target := filepath.Join(canonical, "generic-password.json")
+	if err = validateIdentityPath(target); err != nil {
+		return err
+	}
+	if old, e := openValidatedIdentity(target); e == nil {
+		old.Close()
+	} else if !errors.Is(e, os.ErrNotExist) {
+		return e
+	}
+	tmp, path, err := createRestrictedIdentityTemp(canonical)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(path)
+	if _, err = tmp.Write(data); err == nil {
+		err = tmp.Sync()
+	}
+	if err == nil {
+		err = validateRestrictedIdentityHandle(tmp)
+	}
+	closeErr := tmp.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err = os.Rename(path, target); err != nil {
+		return err
+	}
+	verify, err := openValidatedIdentity(target)
+	if err != nil {
+		return err
+	}
+	defer verify.Close()
+	actual, err := io.ReadAll(io.LimitReader(verify, int64(len(data))+1))
+	defer clear(actual)
+	if err != nil || !bytes.Equal(actual, data) {
+		return errors.New("verify rotation journal")
+	}
+	return dir.Sync()
 }
 
 // PublishArtifact atomically publishes one append-only agent-state artifact in

@@ -1,5 +1,6 @@
 import { ApiErrorSchema, DeviceViewSchema, type DeviceListQuery, type DeviceView } from '@appremoto/contracts';
 import { CreateEnrollmentTokenResponseSchema, EnrollmentStatusResponseSchema, ConnectDeviceLaunchResponseSchema, DeviceDetailsResponseSchema, UpdateDeviceResponseSchema, ConnectionHistoryResponseSchema, RecordConnectionEventResponseSchema, type ConnectionMode, type ConnectionEventInput } from '@appremoto/contracts';
+import { GenericInstallerListResponseSchema, CreateGenericInstallerResponseSchema, GenericInstallerPackageResponseSchema, RevokeGenericInstallerResponseSchema } from '@appremoto/contracts';
 import { AppwriteException } from 'appwrite';
 import { z, type ZodType } from 'zod';
 
@@ -174,6 +175,10 @@ export function createApiClient(options: ApiClientOptions) {
 
   return {
     getMe: () => request('/v1/me', TechnicianViewSchema),
+    getGenericInstallers: () => request('/v1/generic-installers', GenericInstallerListResponseSchema),
+    createGenericInstaller: (name: string) => request('/v1/generic-installers', CreateGenericInstallerResponseSchema, { name }),
+    getGenericInstallerPackage: (installerId: string) => request(`/v1/generic-installers/${encodeURIComponent(installerId)}/package`, GenericInstallerPackageResponseSchema, {}),
+    revokeGenericInstaller: (installerId: string) => request(`/v1/generic-installers/${encodeURIComponent(installerId)}/revoke`, RevokeGenericInstallerResponseSchema, {}),
     getOrganizations: async () => (await request('/v1/organizations', OrganizationsResponseSchema)).organizations,
     createEnrollmentToken: (organizationId: string, deviceDisplayName: string) => request('/v1/enrollment-tokens', CreateEnrollmentTokenResponseSchema, { organizationId, deviceDisplayName }),
     getEnrollmentStatus: (enrollmentId: string) => request(`/v1/enrollment-tokens/${encodeURIComponent(enrollmentId)}/status`, EnrollmentStatusResponseSchema),

@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"github.com/RonaldoXpointSolucoes/AppRemoto/services/agent/internal/setup"
 	"os"
 	"time"
@@ -57,9 +58,20 @@ func main() {
 		setup.Message("Servico XPoint removido. RustDesk e dados de recuperacao foram preservados.")
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
-	defer cancel()
 	report.Record(1, "ADMINISTRATOR", "OK", nil)
+	input, err := setup.ReadInstallationInput(report)
+	if errors.Is(err, setup.ErrInputCancelled) {
+		report.Record(0, "CANCELLED_BEFORE_INSTALL", "OK", nil)
+		return
+	}
+	if err != nil {
+		report.Record(1, "PACKAGE", "ERROR", err)
+		report.Close()
+		setup.Message(setup.FailureMessage("PACKAGE") + "\n\nLog: " + report.Path())
+		os.Exit(1)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
 	stopProgress, err := setup.ShowProgress(report)
 	if err != nil {
 		report.Record(1, "PROGRESS_WINDOW", "ERROR", err)
@@ -67,7 +79,7 @@ func main() {
 		setup.Message("Nao foi possivel abrir o instalador. Codigo: UI. Log: " + report.Path())
 		os.Exit(1)
 	}
-	code := setup.Install(ctx, report)
+	code := setup.InstallWithInput(ctx, report, input)
 	stopProgress()
 	if code != "" {
 		report.Record(0, code, "ERROR", nil)

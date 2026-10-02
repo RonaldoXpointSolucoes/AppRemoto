@@ -32,6 +32,16 @@ const environment = { APPWRITE_ENDPOINT: 'https://appwrite.xpointsolucoes.com.br
   APPWRITE_API_KEY: 'synthetic', MASTER_ENCRYPTION_KEY: Buffer.alloc(32).toString('base64'),
   ALLOWED_ORIGINS: 'https://panel.example.test' };
 
+test('generic shared password is optional and respects the Windows 128-byte UTF-8 boundary without echoing values', () => {
+  assert.equal(readApiConfig(environment).genericInstallerSharedPassword, undefined);
+  const boundary = 'á'.repeat(64);
+  assert.equal(readApiConfig({ ...environment, GENERIC_INSTALLER_SHARED_PASSWORD: boundary }).genericInstallerSharedPassword, boundary);
+  for (const value of ['short', 'a'.repeat(129), 'á'.repeat(65), 'a'.repeat(16) + '\n', '\ud800'.repeat(16)]) {
+    assert.throws(() => readApiConfig({ ...environment, GENERIC_INSTALLER_SHARED_PASSWORD: value }),
+      (error: unknown) => error instanceof Error && !error.message.includes(value));
+  }
+});
+
 test('enrollment configuration defaults to one process and untrusted proxy with a versioned key', () => {
   const config = readApiConfig(environment);
   assert.equal(config.apiReplicas, 1); assert.equal(config.trustProxy, false); assert.equal(config.encryptionKeyVersion, 1);

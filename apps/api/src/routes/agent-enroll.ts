@@ -1,8 +1,10 @@
 import { isIP } from 'node:net';
 import type { FastifyInstance } from 'fastify';
-import { ReconfigureRequestSchema, ReconfigureResponseSchema, EnrollRequestSchema, EnrollResponseSchema } from '@appremoto/contracts';
+import { ReconfigureRequestSchema, ReconfigureResponseSchema, EnrollRequestSchema, EnrollResponseSchema,
+  GenericPasswordResponseSchema, ConfirmGenericPasswordResponseSchema } from '@appremoto/contracts';
 import { hashToken } from '../security/tokens.ts';
 import { EnrollmentError, type EnrollDevice } from '../services/enroll-device.ts';
+import { GenericPasswordError } from '../services/generic-password.ts';
 
 interface RateOptions { limit?: number; windowMs?: number; maxEntries?: number; now?: () => number }
 
@@ -23,8 +25,9 @@ export function registerAgentEnrollRoute(app: FastifyInstance, enroll: EnrollDev
   const maxEntries = options.maxEntries ?? 10_000; const now = options.now ?? Date.now;
   const sources = new Map<string, { count: number; expires: number; tokens: Map<string, number> }>();
   const errorBody = (code: string, message: string) => ({ error: { code, message } });
-  for (const reconfigure of [false, true]) {
-    const route = reconfigure ? '/v1/agent/reconfigure' : '/v1/agent/enroll';
+  for (const operation of ['enroll', 'reconfigure', 'generic-password', 'generic-password/confirm'] as const) {
+    const reconfigure = operation !== 'enroll';
+    const route = `/v1/agent/${operation}`;
     app.post(route, {
       bodyLimit: 8192,
       childLoggerFactory: (logger, bindings, options) => logger.child(bindings, {
@@ -54,6 +57,13 @@ export function registerAgentEnrollRoute(app: FastifyInstance, enroll: EnrollDev
       if (tokenCount >= limit) return reply.code(429).send(errorBody('ENROLLMENT_RATE_LIMITED', 'Enrollment rate limited'));
       bucket.tokens.set(tokenHash, tokenCount + 1);
       try {
+        if (operation === 'generic-password' || operation === 'generic-password/confirm') {
+          const confirm = operation === 'generic-password/confirm';
+          if (!enroll.stageGenericPassword || !enroll.confirmGenericPassword) throw new GenericPasswordError();
+          const input = ReconfigureRequestSchema.parse(body.data);
+          return confirm ? ConfirmGenericPasswordResponseSchema.parse(await enroll.confirmGenericPassword(input, sourceIp)) :
+            GenericPasswordResponseSchema.parse(await enroll.stageGenericPassword(input, sourceIp));
+        }
         if (reconfigure) {
           if (!enroll.reconfigure) throw new Error('Reconfiguration unavailable');
           return ReconfigureResponseSchema.parse(await enroll.reconfigure(ReconfigureRequestSchema.parse(body.data), sourceIp));
@@ -61,6 +71,11 @@ export function registerAgentEnrollRoute(app: FastifyInstance, enroll: EnrollDev
         return EnrollResponseSchema.parse(await enroll(body.data, sourceIp));
       }
       catch (error) {
+        if (error instanceof GenericPasswordError) {
+          request.log.warn({ code: error.code }, 'Generic password operation unavailable');
+          return reply.code(error.code === 'GENERIC_PASSWORD_DENIED' ? 403 : error.code === 'GENERIC_PASSWORD_POLICY_CHANGED' ? 409 : 503)
+            .send(errorBody(error.code, 'Generic password operation unavailable'));
+        }
         if (error instanceof EnrollmentError && error.code === 'ENROLLMENT_DENIED') {
           request.log.warn({ code: 'ENROLLMENT_DENIED' }, 'Enrollment denied');
           return reply.code(403).send(errorBody(error.code, 'Enrollment denied'));

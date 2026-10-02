@@ -122,6 +122,7 @@ empty collection permissions and document security disabled (server-only access)
 | `device_id` | string | 36 | yes | - |
 | `device_token_id` | string | 36 | yes | - |
 | `started_at` | datetime | - | yes | - |
+| `operation_id` | string | 36 | no | - |
 
 | Index ID | Type | Attributes |
 | --- | --- | --- |
@@ -160,6 +161,8 @@ empty collection permissions and document security disabled (server-only access)
 | `active` | boolean | - | yes | - |
 | `created_by_user_id` | string | 36 | yes | - |
 | `revoked_at` | datetime | - | no | - |
+| `generic_installer_id` | string | 36 | no | - |
+| `bootstrap_request_hash` | string | 64 | no | - |
 
 | Index ID | Type | Attributes |
 | --- | --- | --- |
@@ -182,6 +185,10 @@ empty collection permissions and document security disabled (server-only access)
 | `token_use_consumed` | boolean | - | yes | - |
 | `expected_use_count` | integer | - | yes | - |
 | `recovery_frozen` | boolean | - | yes | - |
+| `password_rotation_started_at` | datetime | - | no | - |
+| `password_rotation_target_hash` | string | 64 | no | - |
+| `password_rotation_completed` | boolean | - | no | - |
+| `password_rotation_write_started` | boolean | - | no | - |
 
 | Index ID | Type | Attributes |
 | --- | --- | --- |
@@ -236,3 +243,21 @@ empty collection permissions and document security disabled (server-only access)
 | `q_organization_id` | key | `organization_id` |
 | `q_device_id` | key | `device_id` |
 | `q_action` | key | `action` |
+
+## `generic_installers`
+
+- Name: `generic_installers`
+- Permissions: `[]`
+- Document security: `false`
+
+| Attribute | Type | Size | Required | Enum elements |
+| --- | --- | ---: | :---: | --- |
+| `name` | string | 128 | yes | - |
+| `token_hash` | string | 64 | yes | - |
+| `active` | boolean | - | yes | - |
+| `created_by_user_id` | string | 36 | yes | - |
+| `revoked_at` | datetime | - | no | - |
+
+| Index ID | Type | Attributes |
+| --- | --- | --- |
+| `u_token_hash` | unique | `token_hash` |

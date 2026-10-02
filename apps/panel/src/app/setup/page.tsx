@@ -1,14 +1,17 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 
 import { SessionBoundary } from '../../features/auth/session-boundary';
 import { SetupChecklist } from '../../features/setup/setup-checklist';
+import { GenericSetup } from '../../features/setup/generic-setup';
 import { AutomaticSetup } from '../../features/setup/automatic-setup';
 import { getPublicConfig } from '../../lib/config';
 
 export default function SetupPage() {
+  const [legacyOpen, setLegacyOpen] = useState(false);
   const { apiBaseUrl } = getPublicConfig();
   return (
     <SessionBoundary>
@@ -19,7 +22,8 @@ export default function SetupPage() {
             <ArrowLeft aria-hidden="true" size={18} />Voltar para dispositivos
           </Link>
         </header>
-        <AutomaticSetup />
+        <GenericSetup />
+        <details className="manual-setup" open={legacyOpen} onToggle={(event) => setLegacyOpen(event.currentTarget.open)}><summary>Configuração avançada: RustDesk já instalado</summary>{legacyOpen && <AutomaticSetup />}</details>
         <details className="manual-setup"><summary>Guia manual e solução de problemas</summary><SetupChecklist apiBaseUrl={apiBaseUrl} /></details>
         <footer className="setup-footer">
           <Link className="primary-button guide-link" href="/devices">Voltar para dispositivos</Link>

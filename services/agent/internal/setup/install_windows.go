@@ -25,9 +25,10 @@ const ServiceName = "XPointRemoteAgent"
 var errUnattended = errors.New("RustDesk unattended policy could not be confirmed")
 
 type receipt struct {
-	EnrollmentID      string `json:"enrollmentId"`
-	OrganizationID    string `json:"organizationId"`
-	DeviceDisplayName string `json:"deviceDisplayName"`
+	EnrollmentID        string `json:"enrollmentId"`
+	OrganizationID      string `json:"organizationId"`
+	DeviceDisplayName   string `json:"deviceDisplayName"`
+	GenericInstallation bool   `json:"genericInstallation,omitempty"`
 }
 
 func sameInstall(a receipt, p Provisioning) bool {
@@ -104,6 +105,9 @@ func replacePrivate(path string, data []byte, readable ...bool) error {
 	return windows.MoveFileEx(ptr(tmp), ptr(path), windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
 }
 func Install(ctx context.Context, r *Report) (code string) {
+	return InstallWithInput(ctx, r, nil)
+}
+func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) (code string) {
 	step, operation := 1, "PACKAGE"
 	fail := func(c string, e error) string { r.Record(step, operation, "ERROR", e); return c }
 	start := func(s int, op string) { step, operation = s, op; r.Record(s, op, "START", nil) }
@@ -121,11 +125,13 @@ func Install(ctx context.Context, r *Report) (code string) {
 	if e != nil {
 		return fail("PACKAGE", e)
 	}
-	p, base, e := ReadOverlay(f, st.Size(), time.Now())
+	pkg, e := ReadPackage(f, st.Size(), time.Now())
 	if e != nil {
 		return fail("PACKAGE", e)
 	}
-	defer func() { p.EnrollmentToken = "" }()
+	p := pkg.Provisioning
+	base := pkg.Bundle.RuntimeSize
+	defer func() { p.EnrollmentToken = ""; pkg.Provisioning.EnrollmentToken = ""; pkg.Generic.InstallerToken = "" }()
 	if ctx.Err() != nil {
 		return fail("CANCELLED", ctx.Err())
 	}
@@ -139,15 +145,36 @@ func Install(ctx context.Context, r *Report) (code string) {
 		return fail(c, e)
 	}
 	defer windows.CloseHandle(lock)
-	r.Record(1, "PACKAGE", "OK", nil)
-	start(2, "RUSTDESK_DETECT")
 	ps, e := paths()
 	if e != nil {
 		return fail("PATH", e)
 	}
-	ps.RustDesk, e = findInstalledRustDesk()
+	if pkg.Bundle.Size > 0 {
+		start(1, "BUNDLE_INTEGRITY")
+		if e = VerifyBundle(f, pkg.Bundle); e != nil {
+			return fail("BUNDLE_INTEGRITY", e)
+		}
+		r.Record(1, "BUNDLE_INTEGRITY", "OK", nil)
+	}
+	if pkg.Generic.SchemaVersion == 2 {
+		if input == nil || !input.Valid() {
+			return fail("PREPARATION_INPUT", ErrOverlay)
+		}
+		start(1, "PREPARE_INSTALLATION")
+		p, e = prepareGeneric(ctx, pkg.Generic, *input, ps, r)
+		if e != nil {
+			return fail(preparationFailure(e), e)
+		}
+	}
+	r.Record(1, "PACKAGE", "OK", nil)
+	start(2, "RUSTDESK_DETECT")
+	ps.RustDesk, e = ensureRustDesk(ctx, f, pkg.Bundle, ps, r)
 	if e != nil {
-		return fail("RUSTDESK_MISSING", e)
+		var pe *preparationError
+		if errors.As(e, &pe) {
+			return fail(pe.Code, e)
+		}
+		return fail("RUSTDESK_INSTALL", e)
 	}
 	if e = confirmRustDeskServiceReported(ctx, ps.RustDesk, r); e != nil {
 		return fail("RUSTDESK_SERVICE", e)
@@ -236,7 +263,7 @@ func Install(ctx context.Context, r *Report) (code string) {
 	}
 	{
 		start(3, "NEW_PACKAGE_STATE_WRITE")
-		b, _ := json.Marshal(receipt{p.EnrollmentID, p.OrganizationID, p.DeviceDisplayName})
+		b, _ := json.Marshal(receipt{EnrollmentID: p.EnrollmentID, OrganizationID: p.OrganizationID, DeviceDisplayName: p.DeviceDisplayName, GenericInstallation: pkg.Generic.SchemaVersion == 2})
 		if e = replacePrivate(registration, b); e != nil {
 			return fail("STATE", e)
 		}
@@ -265,6 +292,9 @@ func Install(ctx context.Context, r *Report) (code string) {
 		if e = replacePrivate(runtimePath, b, true); e != nil {
 			return fail("RUNTIME", e)
 		}
+	}
+	if e = writeLegalNotices(ps.Binary); e != nil {
+		return fail("LEGAL_NOTICES", e)
 	}
 	start(3, "SERVICE_REGISTER")
 	if s == nil {
@@ -315,6 +345,11 @@ func Install(ctx context.Context, r *Report) (code string) {
 				if r.Err() != nil {
 					return "LOG_WRITE"
 				}
+				if pkg.Generic.SchemaVersion == 2 {
+					if e = os.Remove(filepath.Join(ps.Data, "generic-request.dpapi")); e != nil && !errors.Is(e, os.ErrNotExist) {
+						return fail("PREPARATION_CLEANUP", e)
+					}
+				}
 				return ""
 			}
 		}
@@ -351,8 +386,8 @@ func configureWith(ctx context.Context, path string, runner rustdesk.CommandRunn
 	return configureReported(ctx, path, runner, nil)
 }
 func configureReported(ctx context.Context, path string, runner rustdesk.CommandRunner, r *Report) error {
-	for i, v := range [][2]string{{"custom-rendezvous-server", IDServer}, {"relay-server", RelayServer}, {"key", PublicKey}, {"api-server", ""}, {"approve-mode", "password"}, {"verification-method", "use-permanent-password"}} {
-		op := []string{"ID_SERVER", "RELAY_SERVER", "PUBLIC_KEY", "API_SERVER_EMPTY", "APPROVE_MODE", "PERMANENT_PASSWORD_MODE"}[i]
+	for _, v := range configuredOptions {
+		op := v[2]
 		r.Record(4, op+"_WRITE", "START", nil)
 		c, cancel := context.WithTimeout(ctx, 20*time.Second)
 		result, e := runner.Run(c, path, "--option", v[0], v[1])
@@ -384,6 +419,27 @@ func configureReported(ctx context.Context, path string, runner rustdesk.Command
 	r.Record(4, "RUSTDESK_CONFIGURED", "OK", nil)
 	return nil
 }
+
+// Explicit support permissions avoid enabling unrelated camera, tunnelling or
+// privacy features through access-mode=full. Display scale belongs to the
+// technician's per-user viewer settings and is deliberately not a server option.
+var configuredOptions = [][3]string{
+	{"custom-rendezvous-server", IDServer, "ID_SERVER"},
+	{"relay-server", RelayServer, "RELAY_SERVER"},
+	{"key", PublicKey, "PUBLIC_KEY"},
+	{"api-server", "", "API_SERVER_EMPTY"},
+	{"approve-mode", "password", "APPROVE_MODE"},
+	{"verification-method", "use-permanent-password", "PERMANENT_PASSWORD_MODE"},
+	{"access-mode", "custom", "SUPPORT_PERMISSIONS"},
+	{"enable-keyboard", "Y", "KEYBOARD_MOUSE"},
+	{"enable-clipboard", "Y", "CLIPBOARD"},
+	{"enable-file-transfer", "Y", "FILE_TRANSFER"},
+	{"enable-audio", "Y", "AUDIO"},
+	{"enable-terminal", "Y", "TERMINAL"},
+	{"enable-remote-restart", "Y", "REMOTE_RESTART"},
+	{"enable-block-input", "Y", "BLOCK_INPUT"},
+}
+
 func Uninstall() error {
 	ps, e := paths()
 	if e != nil {

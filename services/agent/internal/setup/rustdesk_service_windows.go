@@ -78,10 +78,15 @@ func confirmRustDeskServiceReported(ctx context.Context, path string, rp *Report
 	}
 	defer s.Close()
 	c, e := s.Config()
-	if e != nil || !strings.EqualFold(c.BinaryPathName, windows.EscapeArg(path)+" --service") || c.ServiceStartName != "LocalSystem" || c.StartType != mgr.StartAutomatic {
-		if e == nil {
-			e = errStage
-		}
+	if e != nil {
+		return e
+	}
+	if e = ensureRustDeskAutostart(path, c, func() error {
+		operation = "RUSTDESK_AUTOSTART_WRITE"
+		rp.Record(2, operation, "START", nil)
+		// Change only startup mode. Preserve the verified path, account and all other service settings.
+		return windows.ChangeServiceConfig(s.Handle, windows.SERVICE_NO_CHANGE, windows.SERVICE_AUTO_START, windows.SERVICE_NO_CHANGE, nil, nil, nil, nil, nil, nil, nil)
+	}, s.Config); e != nil {
 		return e
 	}
 	status, e := s.Query()
@@ -96,6 +101,33 @@ func confirmRustDeskServiceReported(ctx context.Context, path string, rp *Report
 		}
 	}
 	return waitForServiceRunning(check, s.Query)
+}
+
+// The caller verifies the executable's protected owner/ACL before reaching this service mutation.
+func ensureRustDeskAutostart(path string, config mgr.Config, setAutomatic func() error, readback func() (mgr.Config, error)) error {
+	valid := func(c mgr.Config) bool {
+		return strings.EqualFold(c.BinaryPathName, windows.EscapeArg(path)+" --service") && strings.EqualFold(c.ServiceStartName, "LocalSystem")
+	}
+	if !valid(config) {
+		return &preparationError{"RUSTDESK_CONFLICT"}
+	}
+	if config.StartType == mgr.StartAutomatic {
+		return nil
+	}
+	if config.StartType != mgr.StartManual && config.StartType != mgr.StartDisabled {
+		return &preparationError{"RUSTDESK_CONFLICT"}
+	}
+	if err := setAutomatic(); err != nil {
+		return err
+	}
+	actual, err := readback()
+	if err != nil {
+		return err
+	}
+	if !valid(actual) || actual.StartType != mgr.StartAutomatic {
+		return &preparationError{"RUSTDESK_CONFLICT"}
+	}
+	return nil
 }
 func waitForServiceRunning(check context.Context, query func() (svc.Status, error)) error {
 	for {
