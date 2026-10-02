@@ -1,7 +1,7 @@
 'use client';
 
 import type { ConnectionEventInput, ConnectionMode } from '@appremoto/contracts';
-import { MonitorUp } from 'lucide-react';
+import { MonitorUp, X } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiClientError } from '../../lib/api';
@@ -106,16 +106,33 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
     onClick={manual ? undefined : () => void connect()} title={!enabled ? 'Aguarde o dispositivo ficar online e a atualização terminar.' : 'Abrir RustDesk neste computador'}>
     <MonitorUp size={18} aria-hidden="true" />{pending ? 'Abrindo…' : manual ? 'Conectar com esta senha' : 'Conectar'}
   </button>;
+  const hasFeedback = Boolean(message || retryAvailable || (attempt && !pending));
   return <div className="device-connect">
     {manual ? <form className="device-manual-form" onSubmit={(event) => void connect(event)} autoComplete="off">
       <label className="field">ID RustDesk<input value={rustdeskId ?? ''} readOnly /></label>
       <label className="field">Senha do RustDesk<input ref={passwordInput} type="password" autoComplete="new-password" maxLength={256} required disabled={pending || !enabled} /></label>
       <p>Use a senha do RustDesk desse cliente. Não é o usuário ou a senha do Windows. Ela será usada apenas para abrir o aplicativo neste computador.</p>{button}
     </form> : button}
-    {message && <p role="status">{message}</p>}
-    {retryAvailable && <button type="button" className="command-button" onClick={retry}>Abrir RustDesk agora</button>}
-    {attempt && !pending && <div className="connection-outcomes">
-      <button type="button" className="text-button" onClick={() => operatorReport('not_opened')}>RustDesk não abriu</button>
-    </div>}
+    {hasFeedback && (
+      <div className="connection-feedback-card" role="region" aria-label="Status da tentativa de conexão">
+        <div className="connection-feedback-header">
+          <span className="connection-feedback-title">Status da Conexão</span>
+          <button
+            type="button"
+            className="connection-feedback-close"
+            onClick={() => { setMessage(''); setRetryAvailable(false); }}
+            title="Fechar aviso de conexão"
+            aria-label="Fechar aviso"
+          >
+            <X size={13} aria-hidden="true" />
+          </button>
+        </div>
+        {message && <p role="status">{message}</p>}
+        {retryAvailable && <button type="button" className="command-button" onClick={retry}>Abrir RustDesk agora</button>}
+        {attempt && !pending && <div className="connection-outcomes">
+          <button type="button" className="text-button" onClick={() => operatorReport('not_opened')}>RustDesk não abriu</button>
+        </div>}
+      </div>
+    )}
   </div>;
 }

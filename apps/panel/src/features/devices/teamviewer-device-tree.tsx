@@ -25,7 +25,7 @@ import {
 import { ConnectDevice } from './connect-device';
 import type { ConnectionLogEvent } from './connection-log';
 import type { DeviceDirectoryService } from './use-devices';
-import { type DeviceStatusState } from './device-record';
+import { type DeviceStatusState, formatLastSeen } from './device-record';
 import { parseSystemInfo } from './system-info';
 import {
   getRecentConnections,
@@ -494,7 +494,10 @@ export function TeamViewerDeviceTree({
                 const liveDevice = devices.find(
                   (d) => d.id === rec.deviceId || d.rustdeskId === rec.rustdeskId
                 );
-                const isOnline = liveDevice ? liveDevice.status === 'ONLINE' : false;
+                const recSeenAgeMs = liveDevice?.lastSeenAt ? Date.now() - new Date(liveDevice.lastSeenAt).getTime() : Infinity;
+                const isOnline = liveDevice
+                  ? liveDevice.status === 'ONLINE' || (liveDevice.enabled && Number.isFinite(recSeenAgeMs) && recSeenAgeMs >= 0 && recSeenAgeMs <= 95_000)
+                  : false;
                 const sys = liveDevice
                   ? parseSystemInfo(liveDevice.operatingSystem, liveDevice.osVersion)
                   : null;
@@ -644,7 +647,10 @@ export function TeamViewerDeviceTree({
             {groups.map((group) => {
               const groupDevs = groupedMap.get(group.id) || [];
               const isOpen = openGroups[group.id] !== false;
-              const onlineCount = groupDevs.filter((d) => d.status === 'ONLINE').length;
+              const onlineCount = groupDevs.filter((d) => {
+                const age = d.lastSeenAt ? Date.now() - new Date(d.lastSeenAt).getTime() : Infinity;
+                return d.status === 'ONLINE' || (d.enabled && Number.isFinite(age) && age >= 0 && age <= 95_000);
+              }).length;
 
               return (
                 <div key={group.id} className="tv-folder-block">
@@ -709,7 +715,8 @@ export function TeamViewerDeviceTree({
                         </div>
                       ) : (
                         groupDevs.map((dev) => {
-                          const isOnline = dev.status === 'ONLINE';
+                          const seenAgeMs = dev.lastSeenAt ? Date.now() - new Date(dev.lastSeenAt).getTime() : Infinity;
+                          const isOnline = dev.status === 'ONLINE' || (dev.enabled && Number.isFinite(seenAgeMs) && seenAgeMs >= 0 && seenAgeMs <= 95_000);
                           const isMenuOpen = menuOpenForDevice === dev.id;
                           const sys = parseSystemInfo(dev.operatingSystem, dev.osVersion);
                           const rawNotes = getDeviceNotes(dev, customMetaMap);
@@ -786,7 +793,14 @@ export function TeamViewerDeviceTree({
                                 </button>
                               </div>
                               <div className="tv-col-status">
-                                <span className={`tv-pill-status ${isOnline ? 'status-online' : 'status-offline'}`}>
+                                <span
+                                  className={`tv-pill-status ${isOnline ? 'status-online' : 'status-offline'}`}
+                                  title={
+                                    isOnline
+                                      ? `Computador Online · Sinal ativo recebido há ${Math.max(0, Math.round(seenAgeMs / 1000))}s`
+                                      : `Computador Offline · Visto pela última vez: ${formatLastSeen(dev.lastSeenAt)}`
+                                  }
+                                >
                                   <span className="tv-pill-dot" />
                                   <span>{isOnline ? 'Online' : 'Offline'}</span>
                                 </span>

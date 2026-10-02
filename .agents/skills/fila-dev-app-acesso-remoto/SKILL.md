@@ -71,3 +71,8 @@ Comentários intermediários são opcionais durante processamento autorizado. Us
 ```
 
 Ao finalizar, apresente cards consultados/concluídos/bloqueados, testes realizados, transições confirmadas e o que ainda depende do usuário. No modo de consulta, apresente contagem por coluna, título, ID e resumo dos cards relevantes.
+
+## Credenciais do Painel Web (Ambiente Local)
+
+Para testes autenticados na interface web (`https://remoto.xpointsolucoes.com.br`) e validações de ponta a ponta (E2E), as credenciais de administrador da plataforma estão armazenadas localmente fora do Git em `.local/fila-dev/admin-credentials.json` e `.local/credentials.json` (`panelAdmin`). O arquivo é protegido localmente e nunca deve ser versionado no Git.
+

@@ -115,7 +115,22 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
   refreshRef.current = refresh;
   useEffect(() => {
     const timer = setInterval(() => refreshRef.current(), 30_000);
-    return () => clearInterval(timer);
+    function handleVisibilityOrFocus() {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        refreshRef.current();
+      }
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleVisibilityOrFocus);
+      document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    }
+    return () => {
+      clearInterval(timer);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', handleVisibilityOrFocus);
+        document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      }
+    };
   }, []);
 
   const organizationInitialError = organizations.isError && !organizations.data;

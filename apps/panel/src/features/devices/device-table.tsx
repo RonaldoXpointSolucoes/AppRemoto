@@ -1,7 +1,7 @@
 'use client';
 
 import type { DeviceView } from '@appremoto/contracts';
-import { ChevronLeft, ChevronRight, Download, LogOut, Plus, Search, Trash2, LayoutGrid, Table, Monitor, History, Zap } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, LogOut, Plus, Search, Trash2, LayoutGrid, Table, Monitor, History, Zap, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -249,7 +249,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 ? 'Cockpit Dev Logger'
                 : 'Histórico de Acessos'}
             </h1>
-            <span className="version-badge" title="Versão da Plataforma">v1.3.0</span>
+            <span className="version-badge" title="Versão da Plataforma">v1.3.1</span>
           </div>
 
           {activeTab === 'devices' && (
@@ -268,6 +268,20 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
           )}
 
           <div className="tv-toolbar-actions">
+            {activeTab === 'devices' && (
+              <button
+                type="button"
+                className={`tv-btn-refresh-status ${query.isRefreshing ? 'refreshing' : ''}`}
+                onClick={() => void query.refresh()}
+                disabled={query.isRefreshing}
+                title="Atualizar status e conexões agora"
+                aria-label="Atualizar status dos dispositivos"
+              >
+                <RefreshCw size={14} className={query.isRefreshing ? 'animate-spin' : ''} />
+                <span>Atualizar</span>
+              </button>
+            )}
+
             <ThemeToggle />
 
             {activeTab === 'devices' && (

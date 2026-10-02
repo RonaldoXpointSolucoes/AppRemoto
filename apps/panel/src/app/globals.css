@@ -260,9 +260,89 @@ button, a, input, select { outline-offset: 3px; }
 .manual-setup { margin-top: 24px; }
 .manual-setup > summary { display: list-item; padding: 16px; min-height: 52px; color: var(--primary); cursor: pointer; font-weight: 700; }
 .manual-setup[open] > summary { margin-bottom: 20px; }
-.device-connect { display: grid; gap: 6px; }
+.device-connect { display: grid; gap: 6px; position: relative; }
 .device-connect .primary-button { font-size: .8125rem; padding: 8px; min-height: 44px; }
-.device-connect p { font-size: .75rem; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }
+.device-connect p { font-size: .75rem; line-height: 1.5; margin: 0; overflow-wrap: break-word; word-break: normal; white-space: normal; }
+
+/* Card de Feedback de Conexão - Estilo Popover / Toast Elegante */
+.connection-feedback-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: fadeInDown 0.18s ease-out;
+}
+
+.connection-feedback-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.connection-feedback-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--primary);
+}
+
+.connection-feedback-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.connection-feedback-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.connection-feedback-card p[role="status"] {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text);
+  margin: 0;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.connection-feedback-card .command-button {
+  height: 32px;
+  font-size: 0.78rem;
+  padding: 0 10px;
+  font-weight: 700;
+  width: 100%;
+  justify-content: center;
+}
+
+.connection-feedback-card .connection-outcomes {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.connection-feedback-card .connection-outcomes .text-button {
+  font-size: 0.75rem;
+  color: var(--primary);
+  text-decoration: underline;
+  padding: 2px 4px;
+  cursor: pointer;
+}
 @media (max-width: 480px) { .installer-form .primary-button { justify-self: stretch; } }
 @media (max-width: 480px) {
   .setup-shell { padding: 16px; }
@@ -1350,6 +1430,43 @@ button, a, input, select { outline-offset: 3px; }
   color: var(--text);
 }
 
+.tv-btn-refresh-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tv-btn-refresh-status:hover:not(:disabled) {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+  transform: translateY(-1px);
+}
+
+.tv-btn-refresh-status:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.tv-btn-refresh-status:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.tv-btn-refresh-status.refreshing {
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #10b981;
+}
+
 .tv-btn-danger {
   display: inline-flex;
   align-items: center;
@@ -1574,6 +1691,60 @@ button, a, input, select { outline-offset: 3px; }
 /* Botão Conectar Compacto e Moderno na Árvore */
 .tv-row .device-connect {
   display: inline-flex;
+  position: relative;
+}
+
+/* Card de Feedback Flutuante no modo Árvore (não quebra nem altera a altura da linha!) */
+.tv-row .connection-feedback-card {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 1200;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  background: rgba(15, 23, 42, 0.96) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(56, 189, 248, 0.35) !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), 0 0 20px rgba(56, 189, 248, 0.2) !important;
+  border-radius: 10px !important;
+  padding: 12px 14px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  text-align: left !important;
+}
+
+.tv-row .connection-feedback-card p[role="status"] {
+  font-size: 0.8rem !important;
+  line-height: 1.45 !important;
+  color: #f1f5f9 !important;
+  margin: 0 !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+}
+
+.tv-row .connection-feedback-card .command-button {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
+  border: 1px solid rgba(56, 189, 248, 0.4) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.3) !important;
+  font-size: 0.8rem !important;
+  height: 32px !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+}
+
+.tv-row .connection-feedback-card .command-button:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%) !important;
+}
+
+.tv-row .connection-feedback-card .connection-outcomes .text-button {
+  color: #38bdf8 !important;
+  font-size: 0.76rem !important;
+  text-decoration: underline !important;
+  cursor: pointer !important;
 }
 
 .tv-row .device-connect .primary-button {
