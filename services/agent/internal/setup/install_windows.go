@@ -241,13 +241,21 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 	if e != nil {
 		return fail("STATE", e)
 	}
+	if pkg.Generic.SchemaVersion == 2 {
+		r.Record(3, "FORCE_REINSTALL_CLEANUP", "START", nil)
+		_ = os.Remove(filepath.Join(ps.Agent, "enrollment-pending.json"))
+		_ = os.Remove(filepath.Join(ps.Agent, "enrollment-credentials.json"))
+		_ = os.Remove(filepath.Join(ps.Agent, "rustdesk-configured.json"))
+		pending = false
+		credentials = false
+	}
 	existing, e := readPrivate(registration, 4096)
 	if e == nil {
 		var reg receipt
 		if json.Unmarshal(existing, &reg) != nil || !idPattern.MatchString(reg.EnrollmentID) || !idPattern.MatchString(reg.OrganizationID) {
 			return fail("STATE", errStage)
 		}
-		if pkg.Generic.SchemaVersion == 2 && reg.OrganizationID != p.OrganizationID {
+		if pkg.Generic.SchemaVersion == 2 {
 			r.Record(3, "REPLACE_UNUSED_ATTEMPT", "START", nil)
 		} else {
 			decision := recoveryDecision(reg, p, pending, credentials)

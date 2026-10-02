@@ -290,6 +290,10 @@ func mergeServiceProgress(r *Report, b []byte, enrollmentID string, started, las
 			r.Accept(e)
 			last = e.At
 			if e.Result == "ERROR" {
+				if e.Operation == "DEVICE_RECONFIGURE_REQUEST" {
+					// Erro recuperável por fallback de novo enrollment. Não interrompe o instalador.
+					continue
+				}
 				if e.Detail == "RECONCILIATION" {
 					failure = "RECONCILIATION"
 				} else if failure == "" {

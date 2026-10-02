@@ -3,7 +3,7 @@ WORKDIR /agent
 COPY services/agent/go.mod services/agent/go.sum ./
 RUN go mod download
 COPY services/agent/ ./
-RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags='-s -w -H=windowsgui' -o /out/xpoint-setup-1.2.3.exe ./cmd/remote-setup
+RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags='-s -w -H=windowsgui' -o /out/xpoint-setup-1.2.4.exe ./cmd/remote-setup
 
 FROM node:24-alpine AS base
 ENV PNPM_HOME=/pnpm
@@ -28,7 +28,7 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /app/apps/panel/node_modules ./apps/panel/node_modules
 COPY --from=dependencies /app/packages/contracts/node_modules ./packages/contracts/node_modules
 COPY . .
-COPY --from=windows-installer /out/xpoint-setup-1.2.3.exe ./apps/panel/public/installers/xpoint-setup-1.2.3.exe
+COPY --from=windows-installer /out/xpoint-setup-1.2.4.exe ./apps/panel/public/installers/xpoint-setup-1.2.4.exe
 RUN node apps/panel/scripts/package-installer.mjs
 RUN pnpm --filter @appremoto/panel build
 
