@@ -15,6 +15,84 @@ import (
 	"time"
 )
 
+func isRustDeskServicePath(serviceBinaryPath, exePath string) bool {
+	clean := strings.Trim(strings.TrimSpace(serviceBinaryPath), `"`)
+	quoted := windows.EscapeArg(exePath) + " --service"
+	unquoted := exePath + " --service"
+	if strings.EqualFold(serviceBinaryPath, quoted) || strings.EqualFold(serviceBinaryPath, unquoted) || strings.EqualFold(clean, unquoted) {
+		return true
+	}
+	if strings.HasSuffix(strings.ToLower(serviceBinaryPath), "--service") {
+		prefix := strings.TrimSpace(strings.TrimSuffix(strings.ToLower(serviceBinaryPath), "--service"))
+		prefix = strings.Trim(prefix, `"`)
+		if strings.EqualFold(prefix, exePath) {
+			return true
+		}
+	}
+	return false
+}
+
+func findRustDeskExecutable() (string, error) {
+	for _, folder := range []*windows.KNOWNFOLDERID{windows.FOLDERID_ProgramFiles, windows.FOLDERID_ProgramFilesX86} {
+		root, e := windows.KnownFolderPath(folder, 0)
+		if e != nil {
+			continue
+		}
+		p := filepath.Join(root, "RustDesk", "RustDesk.exe")
+		if st, e := os.Stat(p); e == nil && st.Mode().IsRegular() {
+			return p, nil
+		}
+	}
+	return "", windows.ERROR_FILE_NOT_FOUND
+}
+
+func ensureRustDeskServiceInstalled(ctx context.Context, exePath string) error {
+	m, e := mgr.Connect()
+	if e != nil {
+		return e
+	}
+	defer m.Disconnect()
+	s, e := m.OpenService("RustDesk")
+	if e == nil {
+		s.Close()
+		return nil
+	}
+	serviceInstallCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	res, runErr := rustdesk.NewExecRunner(4096).Run(serviceInstallCtx, exePath, "--install-service")
+	clear(res.Stdout)
+	clear(res.Stderr)
+	s, e = m.OpenService("RustDesk")
+	if e == nil {
+		s.Close()
+		return nil
+	}
+	serviceBinary := windows.EscapeArg(exePath) + " --service"
+	newService, createErr := m.CreateService(
+		"RustDesk",
+		serviceBinary,
+		mgr.Config{
+			ServiceType:      windows.SERVICE_WIN32_OWN_PROCESS,
+			StartType:        windows.SERVICE_AUTO_START,
+			ErrorControl:     windows.SERVICE_ERROR_NORMAL,
+			DisplayName:      "RustDesk Service",
+			Description:      "RustDesk Remote Desktop Service",
+			ServiceStartName: "LocalSystem",
+		},
+	)
+	if createErr != nil {
+		if errors.Is(createErr, windows.ERROR_SERVICE_EXISTS) {
+			return nil
+		}
+		if runErr != nil {
+			return runErr
+		}
+		return createErr
+	}
+	newService.Close()
+	return nil
+}
+
 func findInstalledRustDesk() (string, error) {
 	m, e := mgr.Connect()
 	if e != nil {
@@ -37,7 +115,7 @@ func findInstalledRustDesk() (string, error) {
 			continue
 		}
 		p := filepath.Join(root, "RustDesk", "RustDesk.exe")
-		if st, e := os.Stat(p); e == nil && st.Mode().IsRegular() && strings.EqualFold(c.BinaryPathName, windows.EscapeArg(p)+" --service") {
+		if st, e := os.Stat(p); e == nil && st.Mode().IsRegular() && isRustDeskServicePath(c.BinaryPathName, p) {
 			return p, nil
 		}
 	}
@@ -106,7 +184,7 @@ func confirmRustDeskServiceReported(ctx context.Context, path string, rp *Report
 // The caller verifies the executable's protected owner/ACL before reaching this service mutation.
 func ensureRustDeskAutostart(path string, config mgr.Config, setAutomatic func() error, readback func() (mgr.Config, error)) error {
 	valid := func(c mgr.Config) bool {
-		return strings.EqualFold(c.BinaryPathName, windows.EscapeArg(path)+" --service") && strings.EqualFold(c.ServiceStartName, "LocalSystem")
+		return isRustDeskServicePath(c.BinaryPathName, path) && (strings.EqualFold(c.ServiceStartName, "LocalSystem") || c.ServiceStartName == "" || strings.EqualFold(c.ServiceStartName, ".\\LocalSystem"))
 	}
 	if !valid(config) {
 		return &preparationError{"RUSTDESK_CONFLICT"}

@@ -107,7 +107,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       <div>
         <div className="product-title-row">
           <p className="product-name">AppRemoto</p>
-          <span className="version-badge" title="Versão da Plataforma">v1.2.0</span>
+          <span className="version-badge" title="Versão da Plataforma">v1.2.1</span>
         </div>
         <h1>Dispositivos</h1>
       </div>

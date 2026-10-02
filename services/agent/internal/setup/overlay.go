@@ -15,7 +15,7 @@ import (
 
 const Marker = "XPOINT_SETUP_V1"
 const MaxOverlay = 16384
-const Version = "1.2.0"
+const Version = "1.2.1"
 const APIURL = "https://qyrjepou8xchzlfirsbrhwr9.179.199.142.157.sslip.io"
 const IDServer = "179.199.142.157:21116"
 const RelayServer = "179.199.142.157:21117"

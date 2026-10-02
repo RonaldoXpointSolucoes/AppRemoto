@@ -104,6 +104,21 @@ func installBundledRustDesk(ctx context.Context, r io.ReaderAt, b Bundle, ps Pat
 	report.Record(2, operation, "START", nil)
 	readback, cancelReadback := context.WithTimeout(ctx, 30*time.Second)
 	defer cancelReadback()
+	var exePath string
+	for {
+		exePath, e = findRustDeskExecutable()
+		if e == nil {
+			break
+		}
+		select {
+		case <-readback.Done():
+			return "", &preparationError{"RUSTDESK_INSTALL_FAILED"}
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+	if serviceErr := ensureRustDeskServiceInstalled(ctx, exePath); serviceErr != nil {
+		return "", &preparationError{"RUSTDESK_INSTALL_FAILED"}
+	}
 	var path string
 	for {
 		path, e = findInstalledRustDesk()

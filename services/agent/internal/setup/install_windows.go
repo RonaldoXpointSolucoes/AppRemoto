@@ -200,7 +200,7 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 		if json.Unmarshal(prior, &reg) != nil {
 			return fail("STATE", errStage)
 		}
-		if reg.OrganizationID != p.OrganizationID {
+		if reg.OrganizationID != p.OrganizationID && pkg.Generic.SchemaVersion != 2 {
 			return fail("EXISTING_INSTALLATION", errStage)
 		}
 	} else if !errors.Is(readErr, windows.ERROR_FILE_NOT_FOUND) {
@@ -247,14 +247,18 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 		if json.Unmarshal(existing, &reg) != nil || !idPattern.MatchString(reg.EnrollmentID) || !idPattern.MatchString(reg.OrganizationID) {
 			return fail("STATE", errStage)
 		}
-		decision := recoveryDecision(reg, p, pending, credentials)
-		switch decision {
-		case "RESUME":
-			r.Record(3, "RESUME_SAVED_CREDENTIALS", "START", nil)
-		case "REPLACE_UNUSED":
+		if pkg.Generic.SchemaVersion == 2 && reg.OrganizationID != p.OrganizationID {
 			r.Record(3, "REPLACE_UNUSED_ATTEMPT", "START", nil)
-		default:
-			return fail(decision, errStage)
+		} else {
+			decision := recoveryDecision(reg, p, pending, credentials)
+			switch decision {
+			case "RESUME":
+				r.Record(3, "RESUME_SAVED_CREDENTIALS", "START", nil)
+			case "REPLACE_UNUSED":
+				r.Record(3, "REPLACE_UNUSED_ATTEMPT", "START", nil)
+			default:
+				return fail(decision, errStage)
+			}
 		}
 	} else if !errors.Is(e, windows.ERROR_FILE_NOT_FOUND) {
 		return fail("STATE", e)

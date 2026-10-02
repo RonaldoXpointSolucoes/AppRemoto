@@ -1,6 +1,6 @@
 # Native setup distribution interface
 
-Version: 1.2.0. Windows x64. Build the runtime from services/agent:
+Version: 1.2.1. Windows x64. Build the runtime from services/agent:
 
 ```sh
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -H=windowsgui" -o xpoint-setup-base.exe ./cmd/remote-setup
@@ -11,7 +11,7 @@ byte length and SHA256 manifests. Use `node apps/panel/scripts/build-installer.m
 at repository root to build both. The complete bundle contains the unchanged,
 pinned RustDesk 1.4.9 executable. No Authenticode certificate is provisioned.
 
-## Generic complete installer (1.2.0)
+## Generic complete installer (1.2.1)
 
 The same downloaded file is reusable across customer PCs. After normal UAC,
 the native form asks company and display name; the hostname is only a default
