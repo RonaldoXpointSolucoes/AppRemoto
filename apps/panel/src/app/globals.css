@@ -355,3 +355,170 @@ button, a, input, select { outline-offset: 3px; }
 .generic-authorization-list { padding: 0; list-style: none; display: grid; gap: 12px; }
 .generic-authorization-list li { display: flex; gap: 16px; justify-content: space-between; align-items: center; flex-wrap: wrap; padding: 14px; background: var(--background); border: 1px solid var(--border); border-radius: 6px; overflow-wrap: anywhere; }
 .generic-authorization-list p { margin: 4px 0 0; color: var(--text-muted); font-size: .875rem; }
+
+/* Danger actions and Device deletion */
+.danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 16px;
+  color: #ffffff;
+  background: var(--danger);
+  border: 0;
+  border-radius: 6px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+.danger-button:hover:not(:disabled) { opacity: 0.9; }
+.danger-button:active:not(:disabled) { transform: scale(0.98); }
+.danger-button:disabled { cursor: wait; opacity: 0.65; }
+
+.danger-outline-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 14px;
+  color: var(--danger);
+  background: transparent;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.danger-outline-button:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.1);
+}
+.danger-outline-button:disabled { cursor: wait; opacity: 0.65; }
+
+.danger-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.danger-icon-button:hover:not(:disabled) {
+  color: var(--danger);
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.3);
+}
+.danger-icon-button:disabled { cursor: wait; opacity: 0.5; }
+
+.device-action-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.danger-zone {
+  margin-top: 14px;
+  padding: 16px;
+  background: rgba(220, 38, 38, 0.05);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+}
+.danger-zone h4 {
+  margin: 0;
+  color: var(--danger);
+  font-size: 1rem;
+}
+.danger-zone p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+/* RustDesk Alias Box */
+.rustdesk-alias-box {
+  margin-top: 14px;
+  padding: 16px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+}
+.rustdesk-alias-box h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+.rustdesk-alias-box p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.rustdesk-alias-code-wrap {
+  display: grid;
+  gap: 8px;
+}
+.rustdesk-alias-code {
+  display: block;
+  padding: 10px 12px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text);
+  max-height: 90px;
+  overflow-y: auto;
+}
+.copy-feedback-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8125rem;
+  color: var(--success);
+  font-weight: 600;
+}
+
+/* Modal de Confirmação Compacto */
+.confirm-dialog {
+  width: min(100%, 480px);
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: 0 20px 80px rgb(0 0 0 / 30%);
+  padding: 24px;
+  display: grid;
+  gap: 16px;
+}
+.confirm-dialog h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--danger);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.confirm-dialog p {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--text);
+}
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+

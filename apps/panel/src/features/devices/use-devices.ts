@@ -1,6 +1,6 @@
 'use client';
 
-import type { DeviceListQuery, DeviceDetailsResponse, UpdateDeviceResponse, ConnectionHistoryEvent } from '@appremoto/contracts';
+import type { DeviceListQuery, DeviceDetailsResponse, UpdateDeviceResponse, DeleteDeviceResponse, ConnectionHistoryEvent } from '@appremoto/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 
@@ -12,6 +12,7 @@ export interface DeviceDirectoryService extends Partial<ConnectionService> {
   getMe?(): Promise<TechnicianView>;
   getDeviceDetails?(deviceId: string): Promise<DeviceDetailsResponse>;
   updateDevice?(deviceId: string, input: { displayName: string; notes: string }): Promise<UpdateDeviceResponse>;
+  deleteDevice?(deviceId: string): Promise<DeleteDeviceResponse>;
   getConnectionHistory?(deviceId: string): Promise<{ events: ConnectionHistoryEvent[] }>;
   getOrganizations(): Promise<OrganizationView[]>;
   getDevices(query: DeviceListQuery): Promise<DevicePage>;

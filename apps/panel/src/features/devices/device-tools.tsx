@@ -2,6 +2,7 @@
 
 import type { DeviceDetailsResponse, DeviceView, ConnectionHistoryEvent } from '@appremoto/contracts';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Check, Copy, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { onSessionClear, sessionEpoch } from '../auth/session-cache';
 import { ApiClientError } from '../../lib/api';
@@ -28,6 +29,10 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
   const [readError, setReadError] = useState(false);
   const [probe, setProbe] = useState('');
   const [revision, setRevision] = useState(0);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [copiedCommand, setCopiedCommand] = useState(false);
   const active = useRef(true);
   const closeRef = useRef(onClose); closeRef.current = onClose;
   const expiredRef = useRef(onSessionExpired); expiredRef.current = onSessionExpired;
@@ -72,6 +77,33 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
     try { window.location.assign('rustdesk://'); setProbe('Tentamos abrir o RustDesk neste computador do técnico. Confirme a abertura no navegador. Este teste não acessa o cliente.'); }
     catch { setProbe('O navegador não conseguiu abrir o RustDesk. Confira a instalação neste computador e a permissão do navegador.'); }
   }
+  const targetAlias = device.hostname || device.displayName || 'SERVER';
+  const rustdeskAliasCommand = `$id="${device.rustdeskId}"; $name="${targetAlias.replace(/"/g, '`"')}"; $b=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($id)); $p="$env:APPDATA\\RustDesk\\config\\peers\\base64_$b.toml"; New-Item -Force -Path (Split-Path $p) -ItemType Directory | Out-Null; "[options]\`ralias = '$name'" | Set-Content -Encoding utf8 $p`;
+  function copyAliasCommand() {
+    void navigator.clipboard.writeText(rustdeskAliasCommand).then(() => {
+      setCopiedCommand(true);
+      setTimeout(() => setCopiedCommand(false), 3500);
+    });
+  }
+  async function handleDelete() {
+    if (!canManage || !service.deleteDevice || deleteBusy || !current()) return;
+    setDeleteBusy(true); setDeleteError('');
+    try {
+      await service.deleteDevice(device.id);
+      if (!current()) return;
+      onSaved();
+      onClose();
+    } catch (error) {
+      if (current() && error instanceof ApiClientError && error.status === 401 && expiredRef.current) {
+        expiredRef.current();
+        return;
+      }
+      if (current()) {
+        setDeleteError('Não foi possível excluir o computador. Verifique sua conexão e permissões.');
+        setDeleteBusy(false);
+      }
+    }
+  }
   const merged = new Map<string, ConnectionLogEvent>();
   for (const event of [...events, ...history]) merged.set(`${event.attemptId}:${event.source}:${event.stage}:${event.code}`, event);
   const allEvents = [...merged.values()].sort((a, b) => b.at.localeCompare(a.at));
@@ -111,6 +143,27 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
         <p>Depois de conectar, para ajustar a imagem à janela, abra o menu de exibição da sessão RustDesk e selecione <strong>Escala adaptada (Scale adaptive)</strong>.</p>
         <button type="button" className="command-button" onClick={testOpening}>Testar abertura do RustDesk</button>
         {probe && <p role="status">{probe}</p>}
+
+        <div className="rustdesk-alias-box">
+          <h4>Exibição do nome no topo da janela ({targetAlias})</h4>
+          <p>
+            O RustDesk exibe o ID ou servidor no topo por padrão. Para mostrar o nome correto <strong>{targetAlias}</strong> no topo da sua aba de sessão:
+          </p>
+          <ol className="connection-checklist" style={{ margin: '4px 0', paddingLeft: '20px' }}>
+            <li>No RustDesk deste seu computador, clique nos <strong>...</strong> (três pontinhos) da conexão recente e escolha <strong>Renomear</strong>.</li>
+            <li>Ou execute este comando rápido no PowerShell do seu Windows para definir o apelido automaticamente:</li>
+          </ol>
+          <div className="rustdesk-alias-code-wrap">
+            <code className="rustdesk-alias-code">{rustdeskAliasCommand}</code>
+            <div className="device-inline-actions">
+              <button type="button" className="command-button" onClick={copyAliasCommand}>
+                {copiedCommand ? <><Check size={16} aria-hidden="true" /> Comando copiado!</> : <><Copy size={16} aria-hidden="true" /> Copiar comando PowerShell</>}
+              </button>
+              {copiedCommand && <span className="copy-feedback-badge">Copiado para a área de transferência!</span>}
+            </div>
+          </div>
+        </div>
+
         <details className="connection-server-help"><summary>Abriu, mas não conectou?</summary><p>O acesso pelo painel já inclui o servidor XPoint. Se você conectar digitando o ID diretamente no RustDesk, confira os mesmos dados de servidor nos dois computadores.</p><RustDeskServerConfig /></details>
       </section>
       <section className="device-tools-section"><h3>Conectar com senha</h3>
@@ -149,6 +202,58 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
         </li>)}</ol>}
         <p>O arquivo contém códigos e horários, sem senhas, links de acesso ou tokens. Eventos ainda não salvos na API ficam apenas nesta página até encerrar a sessão ou recarregar.</p>
       </section>
+
+      {canManage && service.deleteDevice && (
+        <section className="device-tools-section">
+          <div className="device-section-heading">
+            <h3>Zona de exclusão</h3>
+          </div>
+          <div className="danger-zone">
+            <h4>Excluir computador do portal</h4>
+            <p>
+              Remove permanentemente <strong>{device.displayName}</strong> ({device.hostname}) da lista de computadores e revoga imediatamente todas as credenciais de acesso remoto do agente.
+            </p>
+            {!confirmDelete ? (
+              <div>
+                <button
+                  type="button"
+                  className="danger-outline-button"
+                  disabled={busy || deleteBusy}
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                  Excluir computador...
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: '10px' }}>
+                <p style={{ color: 'var(--danger)', fontWeight: 600 }}>
+                  Tem certeza que deseja excluir permanentemente este computador? Esta ação não pode ser desfeita.
+                </p>
+                {deleteError && <p className="field-error" role="alert">{deleteError}</p>}
+                <div className="device-inline-actions">
+                  <button
+                    type="button"
+                    className="danger-button"
+                    disabled={deleteBusy}
+                    onClick={() => void handleDelete()}
+                  >
+                    {deleteBusy ? 'Excluindo...' : 'Confirmar exclusão definitiva'}
+                  </button>
+                  <button
+                    type="button"
+                    className="command-button"
+                    disabled={deleteBusy}
+                    onClick={() => { setConfirmDelete(false); setDeleteError(''); }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
     </div>
   </div>;
 }

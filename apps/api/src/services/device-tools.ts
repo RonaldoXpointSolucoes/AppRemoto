@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { DeviceDetailsResponseSchema, UpdateDeviceRequestSchema, UpdateDeviceResponseSchema, ConnectionEventRequestSchema,
-  ConnectionHistoryResponseSchema, DeviceViewSchema, type DeviceDetailsResponse, type UpdateDeviceRequest,
+  ConnectionHistoryResponseSchema, DeviceViewSchema, DeleteDeviceResponseSchema, type DeviceDetailsResponse, type UpdateDeviceRequest,
   type UpdateDeviceResponse, type ConnectionEventInput, type ConnectionHistoryResponse,
-  type ConnectionHistoryEvent, type DeviceView } from '@appremoto/contracts';
+  type ConnectionHistoryEvent, type DeviceView, type DeleteDeviceResponse } from '@appremoto/contracts';
 import type { AuthenticatedTechnician } from '../plugins/technician-auth.ts';
 import { enrollmentId, IndeterminateEnrollmentWrite, type EnrollmentData, type EnrollmentRepository,
   type HeartbeatTokenRepository } from '../repositories/enrollment.ts';
@@ -13,6 +13,7 @@ import { OperatorSetupDenied, DeviceToolError } from './operator-errors.ts';
 export interface DeviceToolsService {
   details(technician: AuthenticatedTechnician, deviceId: string): Promise<DeviceDetailsResponse>;
   update(technician: AuthenticatedTechnician, deviceId: string, request: UpdateDeviceRequest, sourceIp: string): Promise<UpdateDeviceResponse>;
+  delete(technician: AuthenticatedTechnician, deviceId: string, sourceIp: string): Promise<DeleteDeviceResponse>;
   connectionHistory(technician: AuthenticatedTechnician, deviceId: string): Promise<ConnectionHistoryResponse>;
   connectionEvent(technician: AuthenticatedTechnician, deviceId: string, request: ConnectionEventInput, sourceIp: string): Promise<{ recorded: true }>;
 }
@@ -88,6 +89,14 @@ export function createDeviceTools(deps: Dependencies): DeviceToolsService {
         // An uncertain late PATCH must not race the heartbeat's consistency check.
         if (!uncertain && !await deps.guard.endHeartbeatGuard(guard)) throw unavailable();
       }
+    },
+    async delete(technician, deviceId, sourceIp) {
+      const { organization } = await authorizedDevice(technician, deviceId, 'canManageDevices');
+      if (!deps.receipts.deleteDevice) throw unavailable();
+      const event = { organizationId: organization.id, actorId: technician.userId, deviceId, sourceIp };
+      await audit.recordOperator(randomUUID(), { ...event, action: 'device.delete' });
+      await deps.receipts.deleteDevice(deviceId);
+      return DeleteDeviceResponseSchema.parse({ ok: true, deviceId });
     },
     async connectionHistory(technician, deviceId) {
       const { organization } = await authorizedDevice(technician, deviceId, 'canView');

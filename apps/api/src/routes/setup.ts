@@ -63,6 +63,22 @@ export function registerSetupRoutes(app: FastifyInstance, authenticate: Authenti
       return service.update(request.technician!, params.data.deviceId, body.data, request.ip);
     });
   });
+  app.post('/v1/devices/:deviceId/delete', { ...options, bodyLimit: 4096 }, async (request, reply) => {
+    const params = ConnectDeviceParamsSchema.safeParse(request.params);
+    if (!params.success || Object.keys(request.query as object).length) return invalid(reply);
+    return perform(reply, async () => {
+      if (!service.delete) throw new Error();
+      return service.delete(request.technician!, params.data.deviceId, request.ip);
+    });
+  });
+  app.delete('/v1/devices/:deviceId', options, async (request, reply) => {
+    const params = ConnectDeviceParamsSchema.safeParse(request.params);
+    if (!params.success || Object.keys(request.query as object).length) return invalid(reply);
+    return perform(reply, async () => {
+      if (!service.delete) throw new Error();
+      return service.delete(request.technician!, params.data.deviceId, request.ip);
+    });
+  });
   app.get('/v1/devices/:deviceId/connection-history', options, async (request, reply) => {
     const params = ConnectDeviceParamsSchema.safeParse(request.params);
     if (!params.success || Object.keys(request.query as object).length) return invalid(reply);

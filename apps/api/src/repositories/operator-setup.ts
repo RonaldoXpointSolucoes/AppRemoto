@@ -6,10 +6,17 @@ export interface SetupReceiptRepository {
   committedReceipts(enrollmentId: string): Promise<EnrollmentData[]>;
   heartbeatPending(deviceId: string): Promise<boolean>;
   updateDeviceFields?(deviceId: string, fields: { displayName: string; notes: string }): Promise<void>;
+  deleteDevice?(deviceId: string): Promise<void>;
 }
 
 export function createSetupReceiptRepository(databases: Databases): SetupReceiptRepository {
   return {
+    async deleteDevice(deviceId) {
+      await databases.deleteDocument('remote_management', 'devices', deviceId);
+      try { await databases.deleteDocument('remote_management', 'device_credentials', deviceId); } catch {}
+      try { await databases.deleteDocument('remote_management', 'device_tokens', deviceId); } catch {}
+      try { await databases.deleteDocument('remote_management', 'heartbeat_guards', deviceId); } catch {}
+    },
     async updateDeviceFields(deviceId, fields) {
       let acknowledged = false;
       try {

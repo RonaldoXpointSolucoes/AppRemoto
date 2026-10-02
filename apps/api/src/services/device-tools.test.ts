@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { AppwriteException, type Databases } from 'node-appwrite';
-import { createOperatorSetupService } from './operator-setup.ts';
+import { createOperatorSetupService, OperatorSetupDenied } from './operator-setup.ts';
 import { createConnectionLaunch } from './connection-launch.ts';
 import { createAuditRepository, type ConnectionAuditRecord, type OperatorAudit, type OperatorAuditRepository } from '../repositories/audit.ts';
 import { createSetupReceiptRepository } from '../repositories/operator-setup.ts';
@@ -39,6 +39,11 @@ function fixture() {
       assert.equal(locked, true);
       if (uncertain) throw new IndeterminateEnrollmentWrite();
       Object.assign(rows.get(`devices/${id}`)!, { display_name: data.displayName, notes: data.notes });
+    },
+    deleteDevice: async (id: string) => {
+      rows.delete(`devices/${id}`);
+      rows.delete(`device_tokens/${id}`);
+      rows.delete(`device_credentials/${id}`);
     } };
   const guard = { beginHeartbeatGuard: async () => { if (locked) return false; locked = true; return true; },
     endHeartbeatGuard: async () => { locked = false; return true; } };
@@ -220,3 +225,18 @@ test('optional notes normalize absent/null consistently and agent writes preserv
   await repo.write('devices', 'device', { ...old, display_name: 'New installer name' }, old);
   assert.deepEqual(patch, { display_name: 'New installer name' });
 });
+
+test('operator delete requires canManageDevices, removes device records and logs audit', async () => {
+  const f = fixture();
+  const result = await f.service.delete!(technician, 'device', '127.0.0.1');
+  assert.deepEqual(result, { ok: true, deviceId: 'device' });
+  assert.equal(f.rows.has('devices/device'), false);
+  const auditEntries = [...f.audits.values()];
+  assert.ok(auditEntries.some((a) => a.action === 'device.delete' && a.deviceId === 'device'));
+
+  const readOnlyTech = { ...technician, authorization: [{ organizationId: 'org', role: 'viewer', canView: true, canConnect: false, canManageDevices: false }] };
+  await assert.rejects(f.service.delete!(readOnlyTech, 'device', '127.0.0.1'), OperatorSetupDenied);
+
+  await assert.rejects(f.service.delete!(technician, 'non-existent', '127.0.0.1'), OperatorSetupDenied);
+});
+

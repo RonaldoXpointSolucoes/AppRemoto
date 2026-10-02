@@ -37,7 +37,7 @@ export interface OperatorAudit {
   deviceId?: string;
   enrollmentId?: string;
   sourceIp: string;
-  action: 'enrollment.create' | 'device.connect' | 'device.connect.event' | 'device.update.requested' | 'device.update' | 'installation.prepare';
+  action: 'enrollment.create' | 'device.connect' | 'device.connect.event' | 'device.update.requested' | 'device.update' | 'device.delete' | 'installation.prepare';
   result?: 'success' | 'failure';
   connection?: Omit<ConnectionHistoryEvent, 'id' | 'at'>;
 }

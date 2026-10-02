@@ -1,0 +1,6 @@
+interface:
+  display_name: "Fila dev — App Acesso Remoto"
+  short_description: "Executa a fila Kanban exclusiva do AppRemoto"
+  default_prompt: "Use $fila-dev-app-acesso-remoto para executar a fila dev deste projeto."
+policy:
+  allow_implicit_invocation: true

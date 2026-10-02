@@ -18,6 +18,7 @@ function createDeviceDirectoryService(): DeviceDirectoryService {
     connectDevice: api.connectDevice,
     getDeviceDetails: api.getDeviceDetails,
     updateDevice: api.updateDevice,
+    deleteDevice: api.deleteDevice,
     getConnectionHistory: api.getConnectionHistory,
     recordConnectionEvent: api.recordConnectionEvent,
     getOrganizations: api.getOrganizations,

@@ -1,6 +1,6 @@
 # Instalador completo e reutilizavel
 
-Versao: 1.2.1. Este documento descreve o contrato; a
+Versao: 1.2.2. Este documento descreve o contrato; a
 publicacao e a homologacao em Windows precisam de evidencia separada.
 
 ## Uso pelo tecnico
@@ -74,7 +74,7 @@ receipts ou guards para esconder um resultado incerto. Consulte
 
 ## Binarios e redistribuicao
 
-- Wrapper XPoint: Windows x64, Go, versao 1.2.1.
+- Wrapper XPoint: Windows x64, Go, versao 1.2.2.
 - RustDesk: binario oficial 1.4.9, `rustdesk-1.4.9-x86_64.exe`.
 - Tamanho RustDesk: 24.472.432 bytes.
 - SHA256: `eaedeb0088e687bf46f7c46a9c6ea5493ce51f3134dfd6acbedb47b5b9136274`.

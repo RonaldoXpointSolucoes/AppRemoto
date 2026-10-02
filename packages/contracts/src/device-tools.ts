@@ -48,3 +48,5 @@ export const ConnectionEventRequestSchema = z.object({
 }).strict();
 export type ConnectionEventInput = z.infer<typeof ConnectionEventRequestSchema>;
 export const RecordConnectionEventResponseSchema = z.object({ recorded: z.literal(true) }).strict();
+export const DeleteDeviceResponseSchema = z.object({ ok: z.literal(true), deviceId: z.string().min(1).max(36) }).strict();
+export type DeleteDeviceResponse = z.infer<typeof DeleteDeviceResponseSchema>;

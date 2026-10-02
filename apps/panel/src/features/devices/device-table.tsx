@@ -1,7 +1,7 @@
 'use client';
 
 import type { DeviceView } from '@appremoto/contracts';
-import { ChevronLeft, ChevronRight, Download, LogOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, LogOut, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -17,11 +17,21 @@ import { ThemeToggle } from '../../components/theme-toggle';
 
 export type { DeviceDirectoryService } from './use-devices';
 
-function DeviceRows({ devices, statusState, service, canConnect, onDetails, onEvent, onSessionExpired }: { devices: DeviceView[]; statusState: DeviceStatusState; service: DeviceDirectoryService; canConnect(organizationId: string): boolean; onDetails(device: DeviceView): void; onEvent(deviceId: string, event: ConnectionLogEvent): void; onSessionExpired(): void }) {
+function DeviceRows({ devices, statusState, service, canConnect, canManage, onDetails, onDeletePrompt, onEvent, onSessionExpired }: {
+  devices: DeviceView[]; statusState: DeviceStatusState; service: DeviceDirectoryService;
+  canConnect(organizationId: string): boolean; canManage(organizationId: string): boolean;
+  onDetails(device: DeviceView): void; onDeletePrompt(device: DeviceView): void;
+  onEvent(deviceId: string, event: ConnectionLogEvent): void; onSessionExpired(): void;
+}) {
   const action = (device: DeviceView) => <div className="device-actions">
     {service.connectDevice && canConnect(device.organizationId) && <ConnectDevice deviceId={device.id} enabled={device.enabled && device.status === 'ONLINE' && statusState === 'current'}
       service={{ connectDevice: service.connectDevice, recordConnectionEvent: service.recordConnectionEvent }} onEvent={(event) => onEvent(device.id, event)} onHelp={() => onDetails(device)} onSessionExpired={onSessionExpired} />}
-    {service.getDeviceDetails && service.getConnectionHistory && <button type="button" className="text-button" onClick={() => onDetails(device)}>Detalhes e opções</button>}
+    <div className="device-action-row">
+      {service.getDeviceDetails && service.getConnectionHistory && <button type="button" className="text-button" onClick={() => onDetails(device)}>Detalhes e opções</button>}
+      {service.deleteDevice && canManage(device.organizationId) && <button type="button" className="danger-icon-button" title={`Excluir ${device.displayName}`} aria-label={`Excluir ${device.displayName}`} onClick={() => onDeletePrompt(device)}>
+        <Trash2 size={16} aria-hidden="true" />
+      </button>}
+    </div>
   </div>;
   return <>
     <div className="device-table-wrap">
@@ -48,8 +58,11 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   const [connectionEvents, setConnectionEvents] = useState<Record<string, ConnectionLogEvent[]>>({});
   const [logoutPending, setLogoutPending] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
+  const [deviceToDelete, setDeviceToDelete] = useState<DeviceView | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteDirectError, setDeleteDirectError] = useState('');
   const query = useDevices(service, filters);
-  useEffect(() => onSessionClear(queryClient, () => { setSelected(undefined); setConnectionEvents({}); }), [queryClient]);
+  useEffect(() => onSessionClear(queryClient, () => { setSelected(undefined); setDeviceToDelete(null); setConnectionEvents({}); }), [queryClient]);
   const addEvent = (deviceId: string, event: ConnectionLogEvent) => {
     if (sessionEpoch(queryClient) !== epoch) return;
     setConnectionEvents((old) => ({ ...old, [deviceId]: [...(old[deviceId] ?? []), event].slice(-200) }));
@@ -95,6 +108,25 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     }
   }
 
+  async function handleDirectDelete(device: DeviceView) {
+    if (!service.deleteDevice || isDeleting) return;
+    setIsDeleting(true);
+    setDeleteDirectError('');
+    try {
+      await service.deleteDevice(device.id);
+      setDeviceToDelete(null);
+      query.refresh();
+    } catch (error) {
+      if (isUnauthorized(error)) {
+        handleExpiredAction();
+        return;
+      }
+      setDeleteDirectError('Não foi possível excluir o dispositivo. Verifique sua conexão e tente novamente.');
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   const organizations = query.organizations.data ?? [];
   const hasFilter = Boolean(filters.organizationId || filters.status || filters.search);
   let emptyMessage = 'Nenhum dispositivo cadastrado nas organizacoes autorizadas.';
@@ -107,7 +139,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       <div>
         <div className="product-title-row">
           <p className="product-name">AppRemoto</p>
-          <span className="version-badge" title="Versão da Plataforma">v1.2.1</span>
+          <span className="version-badge" title="Versão da Plataforma">v1.2.2</span>
         </div>
         <h1>Dispositivos</h1>
       </div>
@@ -131,7 +163,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       {query.backgroundError && <p className="refresh-error" role="alert">Nao foi possivel atualizar os dispositivos. Os status estao indisponiveis.</p>}
       {query.isPageLoading ? <section className="device-state" role="status">Carregando dispositivos...</section>
         : query.rows.length === 0 ? <section className="device-state">{emptyMessage}</section>
-          : <DeviceRows devices={query.rows} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} onDetails={setSelected} onEvent={addEvent} onSessionExpired={handleExpiredAction} />}
+          : <DeviceRows devices={query.rows} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} />}
       {!query.isPageLoading && (query.hasPreviousPage || query.hasNextPage) && <nav className="pagination" aria-label="Paginacao de dispositivos">
         {query.hasPreviousPage && <button className="command-button" type="button" aria-label="Pagina anterior" disabled={query.isRefreshing || Boolean(query.backgroundError)} onClick={query.previousPage}><ChevronLeft aria-hidden="true" size={18} />Anterior</button>}
         {query.hasNextPage && <button className="command-button" type="button" aria-label="Proxima pagina" disabled={query.isRefreshing || Boolean(query.backgroundError)} onClick={query.nextPage}>Proxima<ChevronRight aria-hidden="true" size={18} /></button>}
@@ -140,5 +172,46 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     {selected && <DeviceTools device={query.rows.find((row) => row.id === selected.id) ?? selected} service={service}
       canConnect={query.canConnect(selected.organizationId)} canManage={query.canManage(selected.organizationId)}
       events={connectionEvents[selected.id] ?? []} onEvent={(event) => addEvent(selected.id, event)} onClose={() => setSelected(undefined)} onSaved={() => query.refresh()} onSessionExpired={handleExpiredAction} />}
+    {deviceToDelete && (
+      <div className="device-dialog-backdrop" onClick={() => !isDeleting && setDeviceToDelete(null)}>
+        <div
+          className="confirm-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-delete-title"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h3 id="confirm-delete-title">
+            <Trash2 size={20} aria-hidden="true" />
+            Excluir dispositivo
+          </h3>
+          <p>
+            Tem certeza de que deseja excluir o computador <strong>{deviceToDelete.displayName}</strong> ({deviceToDelete.hostname}) da organização <em>{deviceToDelete.organizationName}</em>?
+          </p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+            Esta ação removerá o computador do portal e revogará todas as suas credenciais de acesso imediatamente.
+          </p>
+          {deleteDirectError && <p className="field-error" role="alert">{deleteDirectError}</p>}
+          <div className="confirm-dialog-actions">
+            <button
+              type="button"
+              className="command-button"
+              disabled={isDeleting}
+              onClick={() => { setDeviceToDelete(null); setDeleteDirectError(''); }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="danger-button"
+              disabled={isDeleting}
+              onClick={() => void handleDirectDelete(deviceToDelete)}
+            >
+              {isDeleting ? 'Excluindo...' : 'Excluir definitivamente'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   </main>;
 }
