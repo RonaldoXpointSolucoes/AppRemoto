@@ -328,6 +328,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                             onEvent={addEvent}
                             onSessionExpired={handleExpiredAction}
                             onSessionStarted={handleSessionStart}
+                            onSaved={() => void query.refresh()}
                           />
                           {/* Tabela mantida acessível no DOM para leitores e testes de conformidade */}
                           <div style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>

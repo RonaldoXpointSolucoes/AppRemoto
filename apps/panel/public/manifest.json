@@ -1,0 +1,30 @@
+{
+  "name": "XPoint Remote",
+  "short_name": "XPoint Remote",
+  "description": "Painel de Controle e Acesso Remoto Corporativo",
+  "start_url": "/devices",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b1320",
+  "theme_color": "#0284c7",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
