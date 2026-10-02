@@ -1,7 +1,7 @@
 'use client';
 
 import type { DeviceView } from '@appremoto/contracts';
-import { ChevronLeft, ChevronRight, Download, LogOut, Plus, Search, Trash2, LayoutGrid, Table } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, LogOut, Plus, Search, Trash2, LayoutGrid, Table, Monitor, History, Zap } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -212,10 +212,36 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
 
       {/* Conteúdo Principal */}
       <main className="tv-main-content">
+        {/* Barra Superior Mobile */}
+        <div className="tv-mobile-top-bar">
+          <div className="tv-mobile-brand">
+            <span className="tv-mobile-logo-box">
+              <Monitor size={18} className="text-white" />
+            </span>
+            <div className="tv-mobile-brand-meta">
+              <span className="tv-mobile-title">XPoint Remote</span>
+              <span className="version-badge">v1.2.6</span>
+            </div>
+          </div>
+          <div className="tv-mobile-top-actions">
+            <ThemeToggle className="tv-mobile-theme-btn" />
+            <button
+              type="button"
+              className="tv-mobile-logout-btn"
+              title="Sair da conta"
+              aria-label="Sair da conta (mobile)"
+              disabled={logoutPending}
+              onClick={() => void handleLogout()}
+            >
+              <LogOut size={18} />
+            </button>
+          </div>
+        </div>
+
         <header className="tv-top-toolbar">
           <div className="tv-view-title-wrap">
             <h1>{activeTab === 'devices' ? 'Dispositivos' : 'Histórico de Acessos'}</h1>
-            <span className="version-badge" title="Versão da Plataforma">v1.2.5</span>
+            <span className="version-badge" title="Versão da Plataforma">v1.2.6</span>
           </div>
 
           {activeTab === 'devices' && (
@@ -234,6 +260,8 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
           )}
 
           <div className="tv-toolbar-actions">
+            <ThemeToggle />
+
             {activeTab === 'devices' && (
               <div className="tv-view-mode-toggle" title="Modo de visualização">
                 <button
@@ -379,7 +407,42 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
         </div>
       </div>
     )}
-    </main>
-  </div>
-);
+
+    {/* Barra Inferior Mobile - Mobile First */}
+        <nav className="tv-mobile-bottom-nav" aria-label="Navegação móvel">
+          <button
+            type="button"
+            className={`tv-mobile-nav-item ${activeTab === 'devices' ? 'active' : ''}`}
+            onClick={() => setActiveTab('devices')}
+          >
+            <Monitor size={20} />
+            <span>Dispositivos</span>
+          </button>
+          <button
+            type="button"
+            className={`tv-mobile-nav-item ${activeTab === 'history' ? 'active' : ''}`}
+            onClick={() => setActiveTab('history')}
+          >
+            <History size={20} />
+            <span>Histórico</span>
+          </button>
+          <button
+            type="button"
+            className="tv-mobile-nav-item tv-mobile-nav-cta"
+            onClick={() => setIsAddOpen(true)}
+            title="Conexão Rápida"
+          >
+            <div className="tv-cta-circle">
+              <Zap size={20} />
+            </div>
+            <span>Conectar</span>
+          </button>
+          <Link href="/setup" className="tv-mobile-nav-item" title="Instalar no cliente">
+            <Download size={20} />
+            <span>Instalar</span>
+          </Link>
+        </nav>
+      </main>
+    </div>
+  );
 }

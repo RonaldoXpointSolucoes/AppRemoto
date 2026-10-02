@@ -1731,7 +1731,36 @@ button, a, input, select { outline-offset: 3px; }
   max-width: 440px;
 }
 
-/* Responsividade Mobile e Tablet */
+/* Estilos Base para Barras Mobile (Ocultas em Desktop e Tablet) */
+.tv-mobile-top-bar {
+  display: none;
+}
+
+.tv-mobile-bottom-nav {
+  display: none;
+}
+
+.theme-toggle-icon {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.theme-toggle-button:hover .theme-toggle-icon {
+  transform: rotate(20deg) scale(1.1);
+}
+
+.theme-toggle-button:active {
+  transform: scale(0.92);
+}
+
+.moon-icon {
+  color: #818cf8;
+}
+
+.sun-icon {
+  color: #f59e0b;
+}
+
+/* Responsividade Mobile e Tablet - Mobile First Design */
 @media (max-width: 960px) {
   .tv-sidebar {
     width: 72px;
@@ -1750,17 +1779,341 @@ button, a, input, select { outline-offset: 3px; }
     display: none;
   }
   .tv-main-content {
-    padding: 16px;
+    padding: 18px;
   }
   .active-session-widget {
     left: 16px;
     right: 16px;
-    bottom: 16px;
+    bottom: 20px;
   }
   .active-session-bar {
     width: 100%;
     justify-content: space-between;
   }
 }
+
+/* Telas de Celulares & Smartphones (<= 768px) */
+@media (max-width: 768px) {
+  .tv-app-shell {
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  /* Oculta sidebar lateral desktop no smartphone */
+  .tv-sidebar {
+    display: none;
+  }
+
+  /* Exibe Header Superior Mobile */
+  .tv-mobile-top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 45;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  }
+
+  .tv-mobile-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .tv-mobile-logo-box {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, #0067c0 0%, #0284c7 100%);
+    display: grid;
+    place-items: center;
+    box-shadow: 0 2px 8px rgba(0, 103, 192, 0.35);
+  }
+
+  .tv-mobile-brand-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .tv-mobile-title {
+    font-weight: 800;
+    font-size: 0.95rem;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+
+  .tv-mobile-top-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .tv-mobile-theme-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+  }
+
+  .tv-mobile-logout-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--surface-muted);
+    color: var(--text);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+  }
+
+  .tv-mobile-logout-btn:active {
+    transform: scale(0.92);
+  }
+
+  /* Exibe Bottom Navigation Bar Ergonômica */
+  .tv-mobile-bottom-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    z-index: 55;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+  }
+
+  .tv-mobile-nav-item {
+    flex: 1;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 0.15s ease, transform 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .tv-mobile-nav-item:active {
+    transform: scale(0.92);
+  }
+
+  .tv-mobile-nav-item.active {
+    color: #0067c0;
+  }
+
+  .tv-mobile-nav-cta {
+    position: relative;
+  }
+
+  .tv-cta-circle {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0067c0 0%, #0284c7 100%);
+    display: grid;
+    place-items: center;
+    color: #ffffff;
+    box-shadow: 0 4px 14px rgba(0, 103, 192, 0.45);
+    margin-top: -12px;
+    transition: transform 0.15s ease;
+  }
+
+  .tv-mobile-nav-cta:active .tv-cta-circle {
+    transform: scale(0.92);
+  }
+
+  /* Área principal adaptada para mobile */
+  .tv-main-content {
+    padding: 12px 14px 96px;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  .tv-top-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .tv-view-title-wrap {
+    display: none; /* Já exibido na barra superior mobile */
+  }
+
+  .tv-quick-search-box {
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .tv-kbd-shortcut {
+    display: none;
+  }
+
+  .tv-toolbar-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 10px;
+  }
+
+  .tv-toolbar-actions .theme-toggle-button {
+    display: none; /* Já presente no topo fixo */
+  }
+
+  .tv-view-mode-toggle {
+    flex: 1;
+  }
+
+  .tv-view-mode-btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .tv-btn-primary {
+    min-height: 42px;
+    padding: 0 16px;
+  }
+
+  /* Cartões de Dispositivos Mobile First */
+  .tv-tree-header {
+    display: none;
+  }
+
+  .tv-row {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    margin-bottom: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    transition: transform 0.15s ease, border-color 0.15s ease;
+  }
+
+  .tv-row:active {
+    transform: scale(0.99);
+  }
+
+  .tv-col-name {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+  }
+
+  .tv-col-id {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--surface-muted);
+    border-radius: 6px;
+    font-size: 0.8rem;
+  }
+
+  .tv-col-status {
+    display: inline-flex;
+    align-self: flex-start;
+  }
+
+  .tv-col-actions {
+    width: 100%;
+    display: flex;
+    justify-content: stretch;
+  }
+
+  .tv-action-buttons {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .tv-action-buttons > div {
+    flex: 1;
+  }
+
+  .tv-action-buttons .connect-button {
+    width: 100%;
+    min-height: 48px;
+    justify-content: center;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+  }
+
+  .tv-action-buttons .connect-button:active {
+    transform: scale(0.96);
+  }
+
+  .tv-icon-action-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+  }
+
+  .tv-icon-action-btn:active {
+    transform: scale(0.92);
+  }
+
+  /* Widget de Sessão Ativa posicionado acima da bottom bar */
+  .active-session-widget {
+    left: 12px;
+    right: 12px;
+    bottom: 74px;
+  }
+
+  .active-session-bar {
+    width: 100%;
+    justify-content: space-between;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+  }
+
+  .active-session-actions button {
+    min-height: 40px;
+    padding: 6px 14px;
+  }
+
+  /* Barra de Status no Mobile */
+  .tv-status-bar {
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+    padding: 8px 14px;
+    font-size: 0.75rem;
+  }
+}
+
 
 
