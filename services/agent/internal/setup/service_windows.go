@@ -149,12 +149,8 @@ func runAgent(ctx context.Context) (err error) {
 	if e != nil {
 		return e
 	}
-	v := windows.RtlGetVersion()
-	if v == nil {
-		return errStage
-	}
-	osver := fmt.Sprintf("%d.%d.%d", v.MajorVersion, v.MinorVersion, v.BuildNumber)
-	result, e := en.Run(ctx, token, enroll.Metadata{DisplayName: reg.DeviceDisplayName, Hostname: host, OperatingSystem: "Windows", OSVersion: osver, AgentVersion: Version})
+	osName, osver := CollectSystemInfo()
+	result, e := en.Run(ctx, token, enroll.Metadata{DisplayName: reg.DeviceDisplayName, Hostname: host, OperatingSystem: osName, OSVersion: osver, AgentVersion: Version})
 	if e != nil {
 		var stage *enroll.StageError
 		if !errors.As(e, &stage) {
@@ -179,7 +175,7 @@ func runAgent(ctx context.Context) (err error) {
 	operation = "HEARTBEAT_SCHEDULER"
 	scheduler, e := heartbeat.NewScheduler(func(c context.Context) error {
 		r.Record(6, "HEARTBEAT_REQUEST", "START", nil)
-		_, e := apiClient.Heartbeat(c, result.DeviceToken, api.HeartbeatRequest{AgentVersion: Version, RustDeskVersion: info.Version, RustDeskID: info.ID, OperatingSystem: "Windows", OSVersion: osver})
+		_, e := apiClient.Heartbeat(c, result.DeviceToken, api.HeartbeatRequest{AgentVersion: Version, RustDeskVersion: info.Version, RustDeskID: info.ID, OperatingSystem: osName, OSVersion: osver})
 		if e != nil {
 			r.Record(6, "HEARTBEAT_RETRY", "WAIT", e)
 			return e

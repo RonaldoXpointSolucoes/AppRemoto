@@ -1,5 +1,6 @@
 import type { DeviceView } from '@appremoto/contracts';
 import type { ReactNode } from 'react';
+import { parseSystemInfo } from './system-info';
 
 export function formatLastSeen(value: string | null): string {
   if (!value) return 'Nunca';
@@ -15,12 +16,16 @@ export function DeviceStatus({ device, state }: { device: DeviceView; state: Dev
 }
 
 export function DeviceRecord({ device, statusState, action }: { device: DeviceView; statusState: DeviceStatusState; action?: ReactNode }) {
-  const fields = [
+  const sys = parseSystemInfo(device.operatingSystem, device.osVersion);
+  const fields: [string, string][] = [
     ['Organizacao', device.organizationName],
     ['Hostname', device.hostname],
-    ['Sistema operacional', `${device.operatingSystem} ${device.osVersion}`],
+    ['Sistema operacional', sys.summary],
     ['RustDesk ID', device.rustdeskId],
-  ] as const;
+  ];
+  if (sys.ip) {
+    fields.push(['Endereço IP', sys.ip]);
+  }
   return (
     <article className="device-record" aria-label={device.displayName}>
       <h2 className="device-value">{device.displayName}</h2>

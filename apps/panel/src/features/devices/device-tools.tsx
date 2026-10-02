@@ -2,7 +2,7 @@
 
 import type { DeviceDetailsResponse, DeviceView, ConnectionHistoryEvent } from '@appremoto/contracts';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Check, Copy, Trash2 } from 'lucide-react';
+import { Check, Copy, Trash2, Globe, Cpu, Laptop } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { onSessionClear, sessionEpoch } from '../auth/session-cache';
 import { ApiClientError } from '../../lib/api';
@@ -11,6 +11,7 @@ import { ConnectDevice } from './connect-device';
 import { downloadConnectionLog, localEvent, stageLabels, type ConnectionLogEvent } from './connection-log';
 import type { DeviceDirectoryService } from './use-devices';
 import { formatLastSeen } from './device-record';
+import { parseSystemInfo } from './system-info';
 
 export function DeviceTools({ device, service, canConnect, canManage, events, onEvent, onClose, onSaved, onSessionExpired }: {
   device: DeviceView; service: DeviceDirectoryService; canConnect: boolean; canManage: boolean;
@@ -33,6 +34,7 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [copiedCommand, setCopiedCommand] = useState(false);
+  const [copiedIp, setCopiedIp] = useState(false);
   const active = useRef(true);
   const closeRef = useRef(onClose); closeRef.current = onClose;
   const expiredRef = useRef(onSessionExpired); expiredRef.current = onSessionExpired;
@@ -118,6 +120,16 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
     });
   }
   const checks = details?.diagnostics;
+  function copyIp(ipAddress: string) {
+    void navigator.clipboard.writeText(ipAddress).then(() => {
+      setCopiedIp(true);
+      setTimeout(() => setCopiedIp(false), 3000);
+    });
+  }
+
+  const currentDev = details?.device ?? device;
+  const sys = parseSystemInfo(currentDev.operatingSystem, currentDev.osVersion);
+
   return <div className="device-dialog-backdrop">
     <div ref={panel} className="device-dialog" role="dialog" aria-modal="true" aria-label={details?.device.displayName ?? device.displayName} onKeyDown={(event) => {
       if (event.key === 'Escape') { event.stopPropagation(); onClose(); }
@@ -131,6 +143,48 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
       <header className="device-dialog-header"><div><p className="product-name">Detalhes do computador</p><h2>{details?.device.displayName ?? device.displayName}</h2></div>
         <button className="command-button" type="button" onClick={onClose}>Fechar</button></header>
       <p className="device-tools-context">{device.hostname} · {device.organizationName} · ID RustDesk {device.rustdeskId}</p>
+
+      {/* Card com Especificações Técnicas do PC para o Técnico */}
+      <div className="device-spec-card">
+        <div className="device-spec-item">
+          <span className="spec-label">Sistema Operacional</span>
+          <div className="spec-val-row">
+            <span className={`tv-badge-os ${sys.badge.toLowerCase().replace(/\s+/g, '')}`}>
+              {sys.badge}
+            </span>
+            <strong className="spec-val">{sys.osName}</strong>
+          </div>
+        </div>
+
+        <div className="device-spec-item">
+          <span className="spec-label">Edição / Compilação</span>
+          <strong className="spec-val">{sys.versionLabel || 'Padrão'}</strong>
+        </div>
+
+        <div className="device-spec-item">
+          <span className="spec-label">Endereço IP Local</span>
+          <div className="spec-ip-box">
+            <strong className="spec-val">{sys.ip || 'Não detectado'}</strong>
+            {sys.ip && (
+              <button
+                type="button"
+                className="spec-copy-btn"
+                title="Copiar IP"
+                onClick={() => copyIp(sys.ip!)}
+              >
+                {copiedIp ? <Check size={12} /> : <Copy size={12} />}
+                <span>{copiedIp ? 'Copiado!' : 'Copiar'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="device-spec-item">
+          <span className="spec-label">Hostname da Máquina</span>
+          <strong className="spec-val">{currentDev.hostname}</strong>
+        </div>
+      </div>
+
       {busy && <p role="status">Atualizando dados…</p>}
       {readError && <p role="alert">Parte do diagnóstico não pôde ser carregada. O log local continua disponível.</p>}
       <section className="device-tools-section"><h3>Preparar o computador do técnico</h3>

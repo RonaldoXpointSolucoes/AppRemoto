@@ -42,7 +42,7 @@ export function TeamViewerSidebar({
           {!collapsed && (
             <div className="tv-brand-text">
               <span className="tv-brand-title">XPoint Remote</span>
-              <span className="tv-brand-badge">v1.2.6</span>
+              <span className="tv-brand-badge">v1.2.7</span>
             </div>
           )}
         </div>

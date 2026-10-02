@@ -14,11 +14,13 @@ import {
   Trash2,
   Sliders,
   FolderPlus,
+  Globe,
 } from 'lucide-react';
 import { ConnectDevice } from './connect-device';
 import type { ConnectionLogEvent } from './connection-log';
 import type { DeviceDirectoryService } from './use-devices';
 import { formatLastSeen, type DeviceStatusState } from './device-record';
+import { parseSystemInfo } from './system-info';
 import {
   getRecentConnections,
   getDeviceGroups,
@@ -78,7 +80,6 @@ export function TeamViewerDeviceTree({
   for (const g of groups) {
     groupedMap.set(g.id, []);
   }
-  const ungrouped: DeviceView[] = [];
 
   devices.forEach((dev) => {
     let placed = false;
@@ -90,9 +91,14 @@ export function TeamViewerDeviceTree({
       }
     }
     if (!placed) {
-      // Agrupamento inteligente automático inicial por organização se não atribuído manualmente
-      const orgName = dev.organizationName.toLowerCase();
-      if (orgName.includes('xpoint') || orgName.includes('x-point')) {
+      // Agrupamento inteligente inicial
+      const raw = (dev.displayName + ' ' + dev.hostname + ' ' + dev.organizationName).toLowerCase();
+      const isServer = raw.includes('server') || /server/i.test(dev.operatingSystem);
+      const isStaff = raw.includes('xpoint') || raw.includes('x-point') || raw.includes('arthur') || raw.includes('ronaldo');
+
+      if (isServer) {
+        groupedMap.get('group_servers')?.push(dev);
+      } else if (isStaff) {
         groupedMap.get('group_xpoint')?.push(dev);
       } else {
         groupedMap.get('group_clients')?.push(dev);
@@ -139,6 +145,7 @@ export function TeamViewerDeviceTree({
               recents.map((rec) => {
                 const liveDevice = devices.find((d) => d.id === rec.deviceId || d.rustdeskId === rec.rustdeskId);
                 const isOnline = liveDevice ? liveDevice.status === 'ONLINE' : false;
+                const sys = liveDevice ? parseSystemInfo(liveDevice.operatingSystem, liveDevice.osVersion) : null;
                 return (
                   <div key={`${rec.deviceId}-${rec.connectedAt}`} className="tv-row tv-row-recent">
                     <div className="tv-col-name">
@@ -147,9 +154,26 @@ export function TeamViewerDeviceTree({
                         <span className={`tv-status-dot ${isOnline ? 'online' : 'offline'}`} />
                       </div>
                       <div className="tv-name-info">
-                        <strong className="tv-display-name">{rec.displayName}</strong>
+                        <div className="tv-name-header">
+                          <strong className="tv-display-name">{rec.displayName}</strong>
+                          {sys && (
+                            <span className={`tv-badge-os ${sys.badge.toLowerCase().replace(/\s+/g, '')}`}>
+                              {sys.badge}
+                            </span>
+                          )}
+                        </div>
                         <span className="tv-subtext">
-                          {rec.hostname} · Último por: {rec.technicianName}
+                          <span className="tv-subtext-host">{rec.hostname}</span>
+                          {sys?.ip && (
+                            <>
+                              <span className="tv-subtext-sep">·</span>
+                              <span className="tv-subtext-ip" title="IP Local">
+                                <Globe size={11} className="tv-ip-icon" /> {sys.ip}
+                              </span>
+                            </>
+                          )}
+                          <span className="tv-subtext-sep">·</span>
+                          <span className="tv-subtext-tech">Técnico: {rec.technicianName}</span>
                         </span>
                       </div>
                     </div>
@@ -235,13 +259,16 @@ export function TeamViewerDeviceTree({
                   {isOpen && (
                     <div className="tv-rows-group">
                       {groupDevs.length === 0 ? (
-                        <div className="tv-empty-row tv-empty-subrow">
-                          Nenhum computador atribuído a esta pasta.
+                        <div className="tv-folder-empty-state">
+                          <Folder size={16} className="tv-empty-icon" />
+                          <span>Nenhum computador atribuído a esta pasta.</span>
+                          <span className="tv-empty-hint">Use o menu ⋮ ao lado de um computador para organizá-lo aqui.</span>
                         </div>
                       ) : (
                         groupDevs.map((dev) => {
                           const isOnline = dev.status === 'ONLINE';
                           const isMenuOpen = menuOpenForDevice === dev.id;
+                          const sys = parseSystemInfo(dev.operatingSystem, dev.osVersion);
                           return (
                             <div key={dev.id} className="tv-row">
                               <div className="tv-col-name">
@@ -250,9 +277,24 @@ export function TeamViewerDeviceTree({
                                   <span className={`tv-status-dot ${isOnline ? 'online' : 'offline'}`} />
                                 </div>
                                 <div className="tv-name-info">
-                                  <strong className="tv-display-name">{dev.displayName}</strong>
+                                  <div className="tv-name-header">
+                                    <strong className="tv-display-name">{dev.displayName}</strong>
+                                    <span className={`tv-badge-os ${sys.badge.toLowerCase().replace(/\s+/g, '')}`}>
+                                      {sys.badge}
+                                    </span>
+                                  </div>
                                   <span className="tv-subtext">
-                                    {dev.hostname} · {dev.operatingSystem} {dev.osVersion}
+                                    <span className="tv-subtext-host">{dev.hostname}</span>
+                                    <span className="tv-subtext-sep">·</span>
+                                    <span className="tv-subtext-os">{sys.osName} {sys.versionLabel}</span>
+                                    {sys.ip && (
+                                      <>
+                                        <span className="tv-subtext-sep">·</span>
+                                        <span className="tv-subtext-ip" title="IP Local na rede">
+                                          <Globe size={11} className="tv-ip-icon" /> {sys.ip}
+                                        </span>
+                                      </>
+                                    )}
                                   </span>
                                 </div>
                               </div>
