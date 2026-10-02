@@ -7,7 +7,7 @@ import { createAppwriteGateway, readAppwriteEnvironment } from './appwrite-adapt
 import { applyProvisionPlan } from './apply.ts';
 import { inspectSchema } from './inspect.ts';
 import { buildProvisionPlan } from './plan.ts';
-import { FakeGateway } from './testing/fake-gateway.ts';
+import { FakeGateway, desiredResourceCount } from './testing/fake-gateway.ts';
 import type { AppwriteAttribute } from './gateway.ts';
 import type { RemoteManagementSchema } from './schema.ts';
 
@@ -141,7 +141,7 @@ test('SDK adapter creates only an optional enrollment revocation datetime', asyn
     body: { key: 'revoked_at', required: false } }]);
 });
 
-test('full Appwrite 1.7 post-apply inventory plans 109 unchanged resources and zero writes', async (t) => {
+test('full Appwrite 1.7 post-apply inventory plans the complete unchanged schema and zero writes', async (t) => {
   const fixture = JSON.parse(await readFile(new URL('./testing/appwrite-1.7-numeric-attributes.json', import.meta.url), 'utf8'));
   const indexFixture = JSON.parse(await readFile(new URL('./testing/appwrite-1.7-indexes.json', import.meta.url), 'utf8'));
   const created = new FakeGateway();
@@ -169,8 +169,8 @@ test('full Appwrite 1.7 post-apply inventory plans 109 unchanged resources and z
   });
   const gateway = createAppwriteGateway(environment);
   const plan = buildProvisionPlan(await inspectSchema(gateway));
-  assert.equal(plan.actions.length, 109);
-  assert.equal(plan.actions.filter((action) => action.resource === 'index').length, 27);
+  assert.equal(plan.actions.length, desiredResourceCount);
+  assert.equal(plan.actions.filter((action) => action.resource === 'index').length, 28);
   assert.deepEqual(plan.actions.filter((action) => action.outcome !== 'unchanged'), []);
   await applyProvisionPlan(gateway, plan);
   assert.equal(postCount, 0);

@@ -32,7 +32,7 @@ func TestConfigurePreservesUnrelatedOptionsAndVerifiesWrites(t *testing.T) {
 	if e := configureWith(context.Background(), "RustDesk.exe", runner); e != nil {
 		t.Fatal(e)
 	}
-	if calls != 12 || options["unrelated"] != "keep" || options["key"] != PublicKey || options["custom-rendezvous-server"] != IDServer || options["relay-server"] != RelayServer || options["approve-mode"] != "password" || options["verification-method"] != "use-permanent-password" {
+	if calls != 2*len(configuredOptions) || options["unrelated"] != "keep" || options["key"] != PublicKey || options["custom-rendezvous-server"] != IDServer || options["relay-server"] != RelayServer || options["approve-mode"] != "password" || options["verification-method"] != "use-permanent-password" || options["access-mode"] != "custom" || options["enable-clipboard"] != "Y" || options["enable-file-transfer"] != "Y" {
 		t.Fatal("configuration mismatch")
 	}
 }
@@ -55,7 +55,7 @@ func TestConfigureFailsClosedAndRedacts(t *testing.T) {
 	}
 }
 func TestBootstrapMustMatchCurrentReceipt(t *testing.T) {
-	r := receipt{"enroll", "org", "pc"}
+	r := receipt{EnrollmentID: "enroll", OrganizationID: "org", DeviceDisplayName: "pc"}
 	p := Provisioning{EnrollmentID: "enroll", OrganizationID: "org", DeviceDisplayName: "pc"}
 	if !sameInstall(r, p) {
 		t.Fatal("same operation rejected")

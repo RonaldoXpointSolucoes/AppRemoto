@@ -136,8 +136,8 @@ export function AutomaticSetup() {
   const currentlyOnline = status?.status === 'online' && !pollError;
   return <section className="automatic-setup" aria-labelledby="automatic-setup-title">
     <div className="setup-introduction">
-      <p className="eyebrow">Configurador 1.0.3 · Windows 64 bits</p>
-      <h1 id="automatic-setup-title">Configure. O computador aparece aqui.</h1>
+      <p className="eyebrow">Configurador avançado · Windows 64 bits</p>
+      <h2 id="automatic-setup-title">Configure. O computador aparece aqui.</h2>
       <p>Com o RustDesk já instalado no computador do cliente, este configurador prepara os servidores, a senha permanente exclusiva e o serviço que inicia com o Windows.</p>
       <p><strong>Pré-requisito:</strong> instale o <a href="https://rustdesk.com/download" target="_blank" rel="noreferrer">RustDesk</a> com seu serviço do Windows. O configurador verifica essa instalação antes de continuar.</p>
     </div>

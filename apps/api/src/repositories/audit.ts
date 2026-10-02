@@ -11,6 +11,7 @@ export interface EnrollmentAudit {
   recoveryRequired: boolean;
   reason?: 'token_inactive' | 'token_expired' | 'token_invalid' | 'organization_inactive' | 'token_exhausted' |
     'identity_mismatch' | 'pending_recovery' | 'storage_failure' | 'already_enrolled';
+  operation?: 'generic_password_confirm';
 }
 export interface AuditRepository {
   record(id: string, event: EnrollmentAudit): Promise<void>;
@@ -32,10 +33,11 @@ export interface HeartbeatAudit {
 export interface OperatorAudit {
   organizationId: string;
   actorId: string;
+  actorType?: 'technician' | 'system';
   deviceId?: string;
   enrollmentId?: string;
   sourceIp: string;
-  action: 'enrollment.create' | 'device.connect' | 'device.connect.event' | 'device.update.requested' | 'device.update';
+  action: 'enrollment.create' | 'device.connect' | 'device.connect.event' | 'device.update.requested' | 'device.update' | 'installation.prepare';
   result?: 'success' | 'failure';
   connection?: Omit<ConnectionHistoryEvent, 'id' | 'at'>;
 }
@@ -89,14 +91,14 @@ export function createAuditRepository(databases: Databases): AuditRepository & H
       const metadata = connection ? { attemptId: connection.attemptId, mode: connection.mode,
         stage: connection.stage, code: connection.code, source: connection.source } :
         event.enrollmentId ? { enrollmentId: event.enrollmentId } : {};
-      const data = { organization_id: event.organizationId, actor_type: 'technician', actor_id: event.actorId,
+      const data = { organization_id: event.organizationId, actor_type: event.actorType ?? 'technician', actor_id: event.actorId,
         device_id: event.deviceId ?? null, action: event.action, result: event.result ?? 'success', source_ip: event.sourceIp,
         metadata_json: JSON.stringify(metadata) };
       try {
         try { await databases.createDocument('remote_management', 'audit_logs', id, data, []); }
         catch (error) {
           // Only bounded, deterministic follow-up events are idempotent. A launch ID cannot release a URI twice.
-          if (!(error instanceof AppwriteException) || error.code !== 409 || event.action !== 'device.connect.event') throw error;
+          if (!(error instanceof AppwriteException) || error.code !== 409 || !['device.connect.event', 'installation.prepare'].includes(event.action)) throw error;
         }
         const current = await databases.getDocument('remote_management', 'audit_logs', id);
         if (!Object.entries(data).every(([key, value]) => current[key] === value)) throw new Error();
@@ -133,8 +135,8 @@ export function createAuditRepository(databases: Databases): AuditRepository & H
     async record(id, event) {
       try {
         await databases.createDocument('remote_management', 'audit_logs', id, {
-          organization_id: event.organizationId, actor_type: 'system', actor_id: 'enrollment',
-          device_id: event.deviceId, action: 'device.enroll', result: event.result, source_ip: event.sourceIp,
+          organization_id: event.organizationId, actor_type: event.operation ? 'device' : 'system', actor_id: event.operation ? event.deviceId : 'enrollment',
+          device_id: event.deviceId, action: event.operation ? 'device.password.rotate' : 'device.enroll', result: event.result, source_ip: event.sourceIp,
           metadata_json: JSON.stringify(redactLogData({ retry: event.retry, recoveryRequired: event.recoveryRequired,
             ...(event.reason ? { reason: event.reason } : {}) })),
         }, []);

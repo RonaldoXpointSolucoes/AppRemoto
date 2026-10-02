@@ -1,8 +1,11 @@
 import { reconfigureExistingDevice } from './reconfigure-device.ts';
 import { randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
-import { ReconfigureRequestSchema, type ReconfigureRequest, type ReconfigureResponse, EnrollRequestSchema, EnrollResponseSchema, type EnrollRequest, type EnrollResponse } from '@appremoto/contracts';
+import { ReconfigureRequestSchema, type ReconfigureRequest, type ReconfigureResponse, EnrollRequestSchema, EnrollResponseSchema,
+  GenericPasswordRequestSchema, type GenericPasswordRequest, type GenericPasswordResponse, type ConfirmGenericPasswordResponse,
+  type EnrollRequest, type EnrollResponse } from '@appremoto/contracts';
 import { enrollmentId, IndeterminateEnrollmentWrite, sameEnrollmentState,
-  type HeartbeatTokenRepository, type EnrollmentRepository, type EnrollmentKind, type EnrollmentData } from '../repositories/enrollment.ts';
+  type HeartbeatTokenRepository, type EnrollmentRepository, type EnrollmentToken, type EnrollmentKind, type EnrollmentData } from '../repositories/enrollment.ts';
+import { rotateGenericPassword } from './generic-password.ts';
 import type { AuditRepository, EnrollmentAudit } from '../repositories/audit.ts';
 import { decryptPassword, encryptPassword } from '../security/credentials.ts';
 import { deriveDeviceToken, hashToken } from '../security/tokens.ts';
@@ -16,6 +19,8 @@ export class EnrollmentError extends Error {
 }
 export type EnrollDevice = ((request: EnrollRequest, sourceIp: string) => Promise<EnrollResponse>) & {
   reconfigure?: (request: ReconfigureRequest, sourceIp: string) => Promise<ReconfigureResponse>;
+  stageGenericPassword?: (request: GenericPasswordRequest, sourceIp: string) => Promise<GenericPasswordResponse>;
+  confirmGenericPassword?: (request: GenericPasswordRequest, sourceIp: string) => Promise<ConfirmGenericPasswordResponse>;
 };
 export interface EnrollmentDependencies {
   repository: EnrollmentRepository;
@@ -24,6 +29,7 @@ export interface EnrollmentDependencies {
   encryptionKey: Buffer;
   keyVersion: number;
   now?: () => Date;
+  genericPassword?: (token: EnrollmentToken, resumePending?: boolean) => Promise<string | undefined>;
 }
 
 function strongPassword(): string {
@@ -61,6 +67,8 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
   async function execute(request: EnrollRequest, sourceIp: string, tokenHash: string, proof?: string): Promise<EnrollResponse | ReconfigureResponse> {
     const token = await repo.findToken(tokenHash);
     if (!token || token.token_hash !== tokenHash || !token.organization_id) throw new EnrollmentError('ENROLLMENT_DENIED');
+    const genericPassword = dependencies.genericPassword ? await dependencies.genericPassword(token) : undefined;
+    if (token.generic_installer_id != null && genericPassword === undefined) throw new EnrollmentError('ENROLLMENT_DENIED');
     const deviceId = enrollmentId('device', token.organization_id, request.deviceUuid);
     const event: EnrollmentAudit = { organizationId: token.organization_id, deviceId, sourceIp,
       retry: false, result: 'success', recoveryRequired: false };
@@ -104,7 +112,8 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
       ]);
       if (proof) {
         return reconfigureExistingDevice({ repo, guard: dependencies.reconfigurationGuard, audit, now,
-          token, tokenHash, request, proof, deviceId, receiptId, receipt, event, deny });
+          token, tokenHash, request, proof, deviceId, receiptId, receipt, event, deny,
+          ...(dependencies.genericPassword ? { authorizeSource: async () => { await dependencies.genericPassword!(token); } } : {}) });
       }
       const linked = receipt && receipt.organization_id === token.organization_id && receipt.enrollment_token_id === token.id &&
         receipt.device_id === deviceId && receipt.device_uuid === request.deviceUuid;
@@ -180,7 +189,7 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
         }
       }
       try {
-        const rustdeskPassword = strongPassword();
+        const rustdeskPassword = genericPassword ?? strongPassword();
         const envelope = encryptPassword(rustdeskPassword, encryptionKey, keyVersion);
         const response = EnrollResponseSchema.parse({ deviceId, deviceToken: deviceTokenPlaintext, rustdeskPassword, heartbeatIntervalSeconds: 30 });
         const pending: EnrollmentData = { organization_id: token.organization_id, enrollment_token_id: token.id,
@@ -207,6 +216,7 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
         await audit.record(auditId, event);
         const finalToken = await repo.snapshot('enrollment_tokens', token.id);
         if (!finalToken || finalToken.active !== true || finalToken.revoked_at !== null) throw new EnrollmentError();
+        if (dependencies.genericPassword) await dependencies.genericPassword(token);
         uncertainWrites.delete(tokenHash);
         return response;
       } catch {
@@ -251,7 +261,23 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
     void result.then(cleanup, cleanup);
     return result;
   };
+  const dispatchRotation = (input: GenericPasswordRequest, sourceIp: string, confirm: boolean) => {
+    const parsed = GenericPasswordRequestSchema.safeParse(input);
+    if (!parsed.success || pendingCalls >= 1000) return Promise.reject(new EnrollmentError('ENROLLMENT_DENIED'));
+    const request = { ...parsed.data, deviceUuid: parsed.data.deviceUuid.toLowerCase() };
+    const tokenHash = hashToken(request.enrollmentToken); pendingCalls++;
+    const result = tokenQueue(tokenHash, async () => {
+      const token = await repo.findToken(tokenHash);
+      if (!token || token.token_hash !== tokenHash) throw new EnrollmentError('ENROLLMENT_DENIED');
+      const deviceId = enrollmentId('device', token.organization_id, request.deviceUuid);
+      return deviceQueue(deviceId, () => rotateGenericPassword({ repository: repo, guard: dependencies.reconfigurationGuard,
+        audit, encryptionKey, keyVersion, now, genericPassword: dependencies.genericPassword, request, sourceIp, token, confirm }));
+    });
+    const cleanup = () => { pendingCalls--; }; void result.then(cleanup, cleanup); return result;
+  };
   return Object.assign((input: EnrollRequest, ip: string) => dispatch(input, ip, false) as Promise<EnrollResponse>, {
     reconfigure: (input: ReconfigureRequest, ip: string) => dispatch(input, ip, true) as Promise<ReconfigureResponse>,
+    stageGenericPassword: (input: GenericPasswordRequest, ip: string) => dispatchRotation(input, ip, false) as Promise<GenericPasswordResponse>,
+    confirmGenericPassword: (input: GenericPasswordRequest, ip: string) => dispatchRotation(input, ip, true) as Promise<ConfirmGenericPasswordResponse>,
   });
 }

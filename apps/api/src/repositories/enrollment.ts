@@ -28,18 +28,23 @@ export interface HeartbeatTokenRepository {
   freezeHeartbeat(deviceId: string, hash: string, timestamp: string): Promise<boolean>;
   beginHeartbeatGuard(guard: HeartbeatGuard): Promise<boolean>;
   endHeartbeatGuard(guard: HeartbeatGuard): Promise<boolean>;
+  matchesHeartbeatGuard?(guard: HeartbeatGuard): Promise<boolean>;
+  getHeartbeatGuard?(deviceId: string): Promise<HeartbeatGuard | null>;
 }
 export interface HeartbeatGuard {
   deviceId: string;
   deviceTokenId: string;
   startedAt: string;
+  operationId?: string;
 }
 
 const database = 'remote_management';
 const fields: Record<EnrollmentKind, string[]> = {
-  enrollment_tokens: ['organization_id', 'token_hash', 'expires_at', 'max_uses', 'use_count', 'active', 'created_by_user_id', 'revoked_at'],
+  enrollment_tokens: ['organization_id', 'token_hash', 'expires_at', 'max_uses', 'use_count', 'active', 'created_by_user_id', 'revoked_at',
+    'generic_installer_id', 'bootstrap_request_hash'],
   enrollment_receipts: ['organization_id', 'enrollment_token_id', 'device_id', 'device_uuid', 'status', 'token_use_consumed',
-    'expected_use_count', 'recovery_frozen'],
+    'expected_use_count', 'recovery_frozen', 'password_rotation_started_at', 'password_rotation_target_hash', 'password_rotation_completed',
+    'password_rotation_write_started'],
   devices: ['organization_id', 'device_uuid', 'display_name', 'hostname', 'rustdesk_id', 'operating_system', 'os_version',
     'agent_version', 'rustdesk_version', 'last_seen_at', 'last_ip', 'enabled', 'notes'],
   device_tokens: ['device_id', 'token_hash', 'last_used_at', 'revoked_at'],
@@ -53,11 +58,14 @@ export function enrollmentId(...parts: string[]): string {
 function project(kind: EnrollmentKind, document: object): EnrollmentData {
   const defaults = kind === 'devices' ? { agent_version: null, rustdesk_version: null,
     last_seen_at: null, last_ip: null, notes: null } : kind === 'device_tokens' ?
-    { last_used_at: null, revoked_at: null } : kind === 'enrollment_tokens' ? { revoked_at: null } : {};
+    { last_used_at: null, revoked_at: null } : kind === 'enrollment_tokens' ?
+    { revoked_at: null, generic_installer_id: null, bootstrap_request_hash: null } : kind === 'enrollment_receipts' ?
+    { password_rotation_started_at: null, password_rotation_target_hash: null, password_rotation_completed: null,
+      password_rotation_write_started: null } : {};
   const record = { ...defaults, ...document } as EnrollmentData;
   return Object.fromEntries(fields[kind].filter((field) => record[field] !== undefined).map((field) => {
     const value = record[field]!;
-    return [field, ['expires_at', 'last_seen_at', 'last_used_at', 'revoked_at'].includes(field) &&
+    return [field, ['expires_at', 'last_seen_at', 'last_used_at', 'revoked_at', 'password_rotation_started_at'].includes(field) &&
       typeof value === 'string' && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : value];
   })) as EnrollmentData;
 }
@@ -79,6 +87,7 @@ export function createEnrollmentRepository(databases: Databases): EnrollmentRepo
   const guardMatches = (document: Record<string, unknown>, guard: HeartbeatGuard) =>
     document.$id === guard.deviceId && document.device_id === guard.deviceId &&
     document.device_token_id === guard.deviceTokenId && typeof document.started_at === 'string' &&
+    (document.operation_id ?? null) === (guard.operationId ?? null) &&
     Number.isFinite(Date.parse(document.started_at)) &&
     new Date(document.started_at).toISOString() === guard.startedAt;
   const snapshot: EnrollmentRepository['snapshot'] = async (kind, id) => {
@@ -112,6 +121,22 @@ export function createEnrollmentRepository(databases: Databases): EnrollmentRepo
     }
   };
   return {
+    async getHeartbeatGuard(deviceId) {
+      try {
+        const current = await databases.getDocument(database, 'heartbeat_guards', deviceId);
+        if (current.device_id !== deviceId || typeof current.device_token_id !== 'string' || typeof current.started_at !== 'string' ||
+            !Number.isFinite(Date.parse(current.started_at)) || current.operation_id != null && typeof current.operation_id !== 'string') throw unavailable();
+        return { deviceId, deviceTokenId: current.device_token_id, startedAt: new Date(current.started_at).toISOString(),
+          ...(typeof current.operation_id === 'string' ? { operationId: current.operation_id } : {}) };
+      } catch (error) {
+        if (error instanceof AppwriteException && error.code === 404) return null;
+        throw unavailable();
+      }
+    },
+    async matchesHeartbeatGuard(guard) {
+      try { return guardMatches(await databases.getDocument(database, 'heartbeat_guards', guard.deviceId), guard); }
+      catch { return false; }
+    },
     async beginHeartbeatGuard(guard) {
       try {
         await databases.getDocument(database, 'heartbeat_guards', guard.deviceId);
@@ -122,6 +147,7 @@ export function createEnrollmentRepository(databases: Databases): EnrollmentRepo
       try {
         await databases.createDocument(database, 'heartbeat_guards', guard.deviceId, {
           device_id: guard.deviceId, device_token_id: guard.deviceTokenId, started_at: guard.startedAt,
+          ...(guard.operationId ? { operation_id: guard.operationId } : {}),
         }, []);
       } catch { return false; }
       try { return guardMatches(await databases.getDocument(database, 'heartbeat_guards', guard.deviceId), guard); }

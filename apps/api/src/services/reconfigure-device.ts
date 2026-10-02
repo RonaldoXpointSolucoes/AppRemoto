@@ -19,6 +19,7 @@ interface Context {
   receipt: EnrollmentData | null;
   event: EnrollmentAudit;
   deny: (reason: EnrollmentAudit['reason']) => Promise<never>;
+  authorizeSource?: () => Promise<void>;
 }
 
 // Runs inside the enrollment token and device queues. Both an unexpired package
@@ -27,6 +28,7 @@ export async function reconfigureExistingDevice(c: Context): Promise<Reconfigure
   const { repo, token, request, deviceId, receiptId, deny } = c;
   const unavailable = () => new Error('Reconfiguration unavailable');
   const proofHash = hashToken(c.proof);
+  await c.authorizeSource?.();
   async function authorizedDevice(): Promise<EnrollmentData> {
     const [device, proof, credential] = await Promise.all([repo.snapshot('devices', deviceId),
       repo.snapshot('device_tokens', deviceId), repo.snapshot('device_credentials', deviceId)]);
@@ -56,6 +58,7 @@ export async function reconfigureExistingDevice(c: Context): Promise<Reconfigure
     // Lost acknowledgement: confirm without renaming again or replaying secrets.
     if (device.display_name !== request.displayName || token.use_count !== receipt.expected_use_count) return deny('already_enrolled');
     await activeToken(token.use_count);
+    await c.authorizeSource?.();
     return { deviceId, reconfigured: true };
   }
   const expected = receipt ? receipt.expected_use_count as number : token.use_count + 1;
@@ -68,6 +71,7 @@ export async function reconfigureExistingDevice(c: Context): Promise<Reconfigure
   let uncertain = false;
   try {
     const currentDevice = await authorizedDevice();
+    await c.authorizeSource?.();
     const currentToken = await activeToken(token.use_count);
     const pending: EnrollmentData = receipt ?? { organization_id: token.organization_id,
       enrollment_token_id: token.id, device_id: deviceId, device_uuid: request.deviceUuid,
@@ -83,6 +87,7 @@ export async function reconfigureExistingDevice(c: Context): Promise<Reconfigure
     await repo.write('enrollment_receipts', receiptId, { ...pending, status: 'committed', token_use_consumed: true }, pending);
     await activeToken(expected);
     if ((await authorizedDevice()).display_name !== request.displayName) throw unavailable();
+    await c.authorizeSource?.();
     return { deviceId, reconfigured: true };
   } catch (error) {
     uncertain = error instanceof IndeterminateEnrollmentWrite;

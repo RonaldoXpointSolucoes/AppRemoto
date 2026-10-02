@@ -4,7 +4,7 @@ This runbook covers the `remote-api` Coolify application in the `Remote Platform
 
 ## Configuration inventory
 
-The API application has exactly the following 12 environment variable names. This inventory intentionally contains no values. `APPWRITE_API_KEY` and `MASTER_ENCRYPTION_KEY` are secrets; mark them secret in Coolify and never expose them in build output, logs, screenshots, tickets, chat, Git, or copied environment dumps. `NEXT_PUBLIC_*` variables belong to the panel and must never be configured on or copied from this API application.
+The API application uses the following 13 environment variable names when the generic installer is enabled. This inventory intentionally contains no values. `APPWRITE_API_KEY`, `MASTER_ENCRYPTION_KEY` and `GENERIC_INSTALLER_SHARED_PASSWORD` are secrets; mark them secret in Coolify and never expose them in build output, logs, screenshots, tickets, chat, Git, or copied environment dumps. `NEXT_PUBLIC_*` variables belong to the panel and must never be configured on or copied from this API application.
 
 | Name | Classification |
 | --- | --- |
@@ -13,6 +13,7 @@ The API application has exactly the following 12 environment variable names. Thi
 | `APPWRITE_API_KEY` | **Secret** |
 | `MASTER_ENCRYPTION_KEY` | **Secret** |
 | `MASTER_ENCRYPTION_KEY_VERSION` | Configuration |
+| `GENERIC_INSTALLER_SHARED_PASSWORD` | **Runtime-only secret**, generic installer password explicitly shared by user choice |
 | `ALLOWED_ORIGINS` | Configuration |
 | `PORT` | Configuration |
 | `API_REPLICAS` | Singleton guard |
@@ -69,6 +70,16 @@ Rollback is the same stop-first operation as a forward deployment:
 A source rollback does not roll back Appwrite documents, token consumption, audit records, or schema. Preserve redacted evidence from the failed deployment and document the selected recovery separately.
 
 ## Credential rotation and recovery
+
+The generic installer uses a separate runtime password. Generate/store it through
+the protected administrative workflow, never in build arguments or the public
+EXE. Its omission disables generic issuance; it does not prevent legacy startup.
+Do not rotate this value while password migrations are pending. Changing it
+alone does not change passwords on already installed endpoints. Capability
+revocation prevents new preparations/enrollments; a proven pending password
+migration may finish under its original device proof so that revocation does
+not strand the endpoint. See [generic installer](generic-installer.md) and the
+enrollment recovery guide for durable guards and indeterminate writes.
 
 For an Appwrite API-key rotation, create the replacement in the exact production project with the reviewed scopes, mark it secret in Coolify, and keep the old key available for immediate rollback until the replacement has passed health, logs, and smoke validation. Use the mandatory stop/zero-instance/start sequence to change it. Revoke the old key only after the replacement is proven and confirm the retired key is rejected. Never print or persist either plaintext key.
 

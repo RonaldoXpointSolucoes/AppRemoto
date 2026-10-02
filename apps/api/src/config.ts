@@ -13,6 +13,7 @@ export interface ApiConfig {
   trustProxy: false | string[];
   allowedOrigins: string[];
   port: number;
+  genericInstallerSharedPassword?: string;
 }
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -66,6 +67,15 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
         (!/^\d+$/.test(parts[1]!) || Number(parts[1]) < 1 || Number(parts[1]) > (family === 4 ? 32 : 128)));
     })) throw new Error('TRUST_PROXY must be false or explicit trusted IP addresses/CIDRs');
   }
+  const genericInstallerSharedPassword = env.GENERIC_INSTALLER_SHARED_PASSWORD;
+  if (genericInstallerSharedPassword !== undefined &&
+      (genericInstallerSharedPassword.length < 16 || genericInstallerSharedPassword.length > 128 ||
+       Buffer.byteLength(genericInstallerSharedPassword, 'utf8') > 128 ||
+       /[\u0000-\u001f\u007f]/.test(genericInstallerSharedPassword) ||
+       Buffer.from(genericInstallerSharedPassword, 'utf8').toString('utf8') !== genericInstallerSharedPassword)) {
+    throw new Error('GENERIC_INSTALLER_SHARED_PASSWORD must be a valid 16 to 128 character secret');
+  }
   return { appwriteEndpoint, appwriteProjectId, appwriteApiKey, masterEncryptionKey, encryptionKeyVersion,
-    apiReplicas: 1, trustProxy, allowedOrigins, port };
+    apiReplicas: 1, trustProxy, allowedOrigins, port,
+    ...(genericInstallerSharedPassword !== undefined ? { genericInstallerSharedPassword } : {}) };
 }

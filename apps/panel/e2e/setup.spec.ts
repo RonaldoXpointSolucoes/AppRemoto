@@ -5,6 +5,7 @@ async function authenticate(page: Page) {
   await page.route('**/v1/me', (route) => route.fulfill({ json: {
     id: 'tech-1', displayName: 'Tecnico', globalRole: 'super_admin', authorization: [],
   } }));
+  await page.route('**/v1/generic-installers', (route) => route.fulfill({ json: { installers: [] } }));
   await page.route('**/v1/organizations', (route) => route.fulfill({ json: {
     organizations: [{ id: 'org-a', name: 'Cliente de teste', slug: 'cliente-teste' }],
   } }));
@@ -21,7 +22,7 @@ test('technician can open the setup guide and return to devices at desktop, tabl
     expect((await help.boundingBox())?.height).toBeGreaterThanOrEqual(48);
     await help.click();
     await expect(page).toHaveURL(/\/setup$/);
-    await expect(page.getByRole('heading', { name: 'Configure. O computador aparece aqui.' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Um instalador para todos os computadores.' })).toBeVisible();
     await page.getByText('Guia manual e solução de problemas', { exact: true }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Guia de Setup do XPoint Remote e RustDesk' })).toBeVisible();
     await expect(page.locator('article pre')).toHaveCount(3);

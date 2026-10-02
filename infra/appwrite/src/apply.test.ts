@@ -8,7 +8,32 @@ import { FakeGateway, desiredResourceCount } from './testing/fake-gateway.ts';
 
 const planFor = async (gateway: FakeGateway) => buildProvisionPlan(await inspectSchema(gateway));
 
-test('existing 108-resource schema adds only optional device notes and converges', async () => {
+test('the deployed 109-resource schema adds only generic enrollment and scoped rotation fields, then converges', async () => {
+  const gateway = new FakeGateway(); gateway.database = { $id: 'remote_management', name: 'remote_management' };
+  for (const collection of REMOTE_MANAGEMENT_SCHEMA.collections.filter((item) => item.id !== 'generic_installers')) {
+    gateway.collections.set(collection.id, collection);
+    gateway.attributes.set(collection.id, collection.attributes.filter((attribute) =>
+      !(collection.id === 'enrollment_tokens' && ['generic_installer_id', 'bootstrap_request_hash'].includes(attribute.key)) &&
+      !(collection.id === 'enrollment_receipts' && attribute.key.startsWith('password_rotation_')) &&
+      !(collection.id === 'heartbeat_guards' && attribute.key === 'operation_id')));
+    gateway.indexes.set(collection.id, [...collection.indexes]);
+  }
+  const first = await planFor(gateway);
+  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 109);
+  const creates = first.actions.filter((action) => action.outcome === 'create');
+  assert.equal(creates.length, 14); assert.equal(first.actions.some((action) => action.outcome === 'conflict'), false);
+  assert.ok(creates.every((action) => ['generic_installers', 'generic_installers/name', 'generic_installers/token_hash',
+    'generic_installers/active', 'generic_installers/created_by_user_id', 'generic_installers/revoked_at', 'generic_installers/u_token_hash',
+    'enrollment_tokens/generic_installer_id', 'enrollment_tokens/bootstrap_request_hash', 'heartbeat_guards/operation_id',
+    'enrollment_receipts/password_rotation_started_at', 'enrollment_receipts/password_rotation_target_hash',
+    'enrollment_receipts/password_rotation_completed', 'enrollment_receipts/password_rotation_write_started'].includes(action.id)));
+  await applyProvisionPlan(gateway, first); assert.equal(gateway.writes, 14);
+  const second = await planFor(gateway); assert.equal(second.actions.length, 123);
+  assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
+  await applyProvisionPlan(gateway, second); assert.equal(gateway.writes, 14);
+});
+
+test('schema without optional device notes adds only that field and converges', async () => {
   const gateway = new FakeGateway();
   gateway.database = { $id: 'remote_management', name: 'remote_management' };
   for (const collection of REMOTE_MANAGEMENT_SCHEMA.collections) {
@@ -18,20 +43,20 @@ test('existing 108-resource schema adds only optional device notes and converges
     gateway.indexes.set(collection.id, [...collection.indexes]);
   }
   const first = await planFor(gateway);
-  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 108);
+  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, desiredResourceCount - 1);
   assert.deepEqual(first.actions.filter((action) => action.outcome !== 'unchanged'), [
     { resource: 'attribute', id: 'devices/notes', outcome: 'create' },
   ]);
   await applyProvisionPlan(gateway, first);
   assert.equal(gateway.writes, 1);
   const second = await planFor(gateway);
-  assert.equal(second.actions.length, 109);
+  assert.equal(second.actions.length, desiredResourceCount);
   assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
   await applyProvisionPlan(gateway, second);
   assert.equal(gateway.writes, 1);
 });
 
-test('schema without heartbeat guards plans only the collection and three fields', async () => {
+test('schema without heartbeat guards plans only the collection and four fields', async () => {
   const gateway = new FakeGateway();
   gateway.database = { $id: 'remote_management', name: 'remote_management' };
   for (const collection of REMOTE_MANAGEMENT_SCHEMA.collections.filter((item) => item.id !== 'heartbeat_guards')) {
@@ -40,20 +65,21 @@ test('schema without heartbeat guards plans only the collection and three fields
     gateway.indexes.set(collection.id, [...collection.indexes]);
   }
   const first = await planFor(gateway);
-  assert.equal(first.actions.length, 109);
-  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 105);
+  assert.equal(first.actions.length, desiredResourceCount);
+  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, desiredResourceCount - 5);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'create').map(({ resource, id }) => [resource, id]), [
     ['collection', 'heartbeat_guards'], ['attribute', 'heartbeat_guards/device_id'],
     ['attribute', 'heartbeat_guards/device_token_id'], ['attribute', 'heartbeat_guards/started_at'],
+    ['attribute', 'heartbeat_guards/operation_id'],
   ]);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'conflict'), []);
   await applyProvisionPlan(gateway, first);
-  assert.equal(gateway.writes, 4);
+  assert.equal(gateway.writes, 5);
   const second = await planFor(gateway);
-  assert.equal(second.actions.length, 109);
+  assert.equal(second.actions.length, desiredResourceCount);
   assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
   await applyProvisionPlan(gateway, second);
-  assert.equal(gateway.writes, 4);
+  assert.equal(gateway.writes, 5);
 });
 
 function priorNinetyResourceGateway(): FakeGateway {
@@ -85,58 +111,61 @@ function currentOneHundredOneResourceGateway(): FakeGateway {
 test('schema without receipt recovery and heartbeat guards converges', async () => {
   const gateway = currentOneHundredOneResourceGateway();
   const first = await planFor(gateway);
-  assert.equal(first.actions.length, 109);
-  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 102);
+  assert.equal(first.actions.length, desiredResourceCount);
+  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, desiredResourceCount - 8);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'create').map(({ resource, id }) => [resource, id]), [
     ['collection', 'heartbeat_guards'], ['attribute', 'heartbeat_guards/device_id'],
     ['attribute', 'heartbeat_guards/device_token_id'], ['attribute', 'heartbeat_guards/started_at'],
+    ['attribute', 'heartbeat_guards/operation_id'],
     ['attribute', 'enrollment_tokens/revoked_at'],
     ['attribute', 'enrollment_receipts/expected_use_count'],
     ['attribute', 'enrollment_receipts/recovery_frozen'],
   ]);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'conflict'), []);
   await applyProvisionPlan(gateway, first);
-  assert.equal(gateway.writes, 7);
+  assert.equal(gateway.writes, 8);
   const second = await planFor(gateway);
-  assert.equal(second.actions.length, 109);
+  assert.equal(second.actions.length, desiredResourceCount);
   assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
   await applyProvisionPlan(gateway, second);
-  assert.equal(gateway.writes, 7);
+  assert.equal(gateway.writes, 8);
 });
 
 test('schema without recovery provenance, revocation and heartbeat guards converges', async () => {
   const gateway = currentOneHundredOneResourceGateway();
   gateway.attributes.get('enrollment_receipts')!.push({ key: 'expected_use_count', type: 'integer', required: true });
   const first = await planFor(gateway);
-  assert.equal(first.actions.length, 109);
-  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 103);
+  assert.equal(first.actions.length, desiredResourceCount);
+  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, desiredResourceCount - 7);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'create').map(({ resource, id }) => [resource, id]), [
     ['collection', 'heartbeat_guards'], ['attribute', 'heartbeat_guards/device_id'],
     ['attribute', 'heartbeat_guards/device_token_id'], ['attribute', 'heartbeat_guards/started_at'],
+    ['attribute', 'heartbeat_guards/operation_id'],
     ['attribute', 'enrollment_tokens/revoked_at'],
     ['attribute', 'enrollment_receipts/recovery_frozen'],
   ]);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'conflict'), []);
-  await applyProvisionPlan(gateway, first); assert.equal(gateway.writes, 6);
-  const second = await planFor(gateway); assert.equal(second.actions.length, 109);
+  await applyProvisionPlan(gateway, first); assert.equal(gateway.writes, 7);
+  const second = await planFor(gateway); assert.equal(second.actions.length, desiredResourceCount);
   assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
-  await applyProvisionPlan(gateway, second); assert.equal(gateway.writes, 6);
+  await applyProvisionPlan(gateway, second); assert.equal(gateway.writes, 7);
 });
 
 test('schema without enrollment revocation and heartbeat guards converges', async () => {
   const gateway = currentOneHundredOneResourceGateway();
   gateway.attributes.set('enrollment_receipts', [...REMOTE_MANAGEMENT_SCHEMA.collections.find((item) => item.id === 'enrollment_receipts')!.attributes]);
   const first = await planFor(gateway);
-  assert.equal(first.actions.length, 109);
-  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 104);
+  assert.equal(first.actions.length, desiredResourceCount);
+  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, desiredResourceCount - 6);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'create').map(({ resource, id }) => [resource, id]), [
     ['collection', 'heartbeat_guards'], ['attribute', 'heartbeat_guards/device_id'],
     ['attribute', 'heartbeat_guards/device_token_id'], ['attribute', 'heartbeat_guards/started_at'],
+    ['attribute', 'heartbeat_guards/operation_id'],
     ['attribute', 'enrollment_tokens/revoked_at'],
   ]);
-  await applyProvisionPlan(gateway, first); assert.equal(gateway.writes, 5);
+  await applyProvisionPlan(gateway, first); assert.equal(gateway.writes, 6);
   const second = await planFor(gateway); assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
-  await applyProvisionPlan(gateway, second); assert.equal(gateway.writes, 5);
+  await applyProvisionPlan(gateway, second); assert.equal(gateway.writes, 6);
 });
 
 test('incompatible enrollment revocation definition blocks all writes', async () => {
@@ -179,11 +208,12 @@ test('incompatible expected use count blocks the whole apply without writes', as
 test('schema without receipts, revocation and heartbeat guards converges', async () => {
   const gateway = priorNinetyResourceGateway();
   const first = await planFor(gateway);
-  assert.equal(first.actions.length, 109);
-  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, 91);
+  assert.equal(first.actions.length, desiredResourceCount);
+  assert.equal(first.actions.filter((action) => action.outcome === 'unchanged').length, desiredResourceCount - 23);
   assert.deepEqual(first.actions.filter((action) => action.outcome === 'create').map(({ resource, id }) => [resource, id]), [
     ['collection', 'heartbeat_guards'], ['attribute', 'heartbeat_guards/device_id'],
     ['attribute', 'heartbeat_guards/device_token_id'], ['attribute', 'heartbeat_guards/started_at'],
+    ['attribute', 'heartbeat_guards/operation_id'],
     ['attribute', 'enrollment_tokens/revoked_at'],
     ['collection', 'enrollment_receipts'],
     ['attribute', 'enrollment_receipts/organization_id'],
@@ -194,18 +224,22 @@ test('schema without receipts, revocation and heartbeat guards converges', async
     ['attribute', 'enrollment_receipts/token_use_consumed'],
     ['attribute', 'enrollment_receipts/expected_use_count'],
     ['attribute', 'enrollment_receipts/recovery_frozen'],
+    ['attribute', 'enrollment_receipts/password_rotation_started_at'],
+    ['attribute', 'enrollment_receipts/password_rotation_target_hash'],
+    ['attribute', 'enrollment_receipts/password_rotation_completed'],
+    ['attribute', 'enrollment_receipts/password_rotation_write_started'],
     ['index', 'enrollment_receipts/u_enrollment_token_id_device_uuid'],
     ['index', 'enrollment_receipts/q_organization_id'],
     ['index', 'enrollment_receipts/q_device_id'],
     ['index', 'enrollment_receipts/q_status'],
   ]);
   await applyProvisionPlan(gateway, first);
-  assert.equal(gateway.writes, 18);
+  assert.equal(gateway.writes, 23);
   const second = await planFor(gateway);
-  assert.equal(second.actions.length, 109);
+  assert.equal(second.actions.length, desiredResourceCount);
   assert.equal(second.actions.every((action) => action.outcome === 'unchanged'), true);
   await applyProvisionPlan(gateway, second);
-  assert.equal(gateway.writes, 18);
+  assert.equal(gateway.writes, 23);
 });
 
 test('incompatible preexisting receipt field blocks the whole generic apply', async () => {

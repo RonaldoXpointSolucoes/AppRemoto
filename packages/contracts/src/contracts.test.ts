@@ -7,6 +7,8 @@ import {
   EnrollRequestSchema, EnrollResponseSchema, HeartbeatRequestSchema,
   ConnectDeviceRequestSchema, ConnectDeviceLaunchResponseSchema, UpdateDeviceRequestSchema, ConnectionEventRequestSchema,
   ConnectionHistoryResponseSchema,
+  GenericInstallerPackageSchema, PrepareInstallationRequestSchema, PrepareInstallationResponseSchema,
+  GenericPasswordRequestSchema, ConfirmGenericPasswordResponseSchema,
 } from './index.ts';
 
 const uuid = '550e8400-e29b-41d4-a716-446655440000';
@@ -26,6 +28,29 @@ const device = {
   agentVersion: null, rustdeskVersion: null, lastSeenAt: null,
   enabled: true, status: 'OFFLINE',
 };
+
+test('generic preparation binds a random request proof and never accepts password or administrator fields', () => {
+  const request = { installerId: 'installer-1', requestId: uuid, requestSecret: 'a'.repeat(43),
+    companyName: ' Client company ', deviceDisplayName: ' Client PC ' };
+  assert.equal(PrepareInstallationRequestSchema.parse(request).companyName, 'Client company');
+  assert.equal(PrepareInstallationRequestSchema.safeParse({ ...request, existingOrganizationId: 'org-1' }).success, true);
+  for (const invalid of [{ ...request, requestSecret: undefined }, { ...request, requestSecret: 'short' },
+    { ...request, requestId: 'invalid' }, { ...request, companyName: '' }, { ...request, password: 'private' },
+    { ...request, role: 'super_admin' }]) assert.equal(PrepareInstallationRequestSchema.safeParse(invalid).success, false);
+  assert.equal(GenericInstallerPackageSchema.safeParse({ schemaVersion: 2, installerId: 'installer-1', installerToken: 'a'.repeat(43) }).success, true);
+  assert.equal(GenericInstallerPackageSchema.safeParse({ schemaVersion: 2, installerId: 'installer-1', installerToken: 'a'.repeat(43), rustdeskPassword: 'private' }).success, false);
+});
+
+test('generic preparation preserves provisioning v1 while password rotation requires both device and package proofs', () => {
+  const response = { schemaVersion: 1, enrollmentId: 'enrollment-1', enrollmentToken: 'a'.repeat(43),
+    expiresAt: '2026-10-01T12:00:00Z', organizationId: 'org-1', organizationName: 'Client company', deviceDisplayName: 'PC' };
+  assert.deepEqual(PrepareInstallationResponseSchema.parse(response), response);
+  assert.equal(PrepareInstallationResponseSchema.safeParse({ ...response, rustdeskPassword: 'private' }).success, false);
+  assert.equal(GenericPasswordRequestSchema.safeParse(enrollment).success, false);
+  assert.equal(GenericPasswordRequestSchema.safeParse({ ...enrollment, currentDeviceToken: 'a'.repeat(43) }).success, true);
+  assert.equal(ConfirmGenericPasswordResponseSchema.safeParse({ deviceId: 'device-1', applied: true }).success, true);
+  assert.equal(ConfirmGenericPasswordResponseSchema.safeParse({ deviceId: 'device-1', applied: false }).success, false);
+});
 
 test('connection requests never accept passwords, arbitrary event messages or mismatched launch modes', () => {
   assert.equal(ConnectDeviceRequestSchema.safeParse({ attemptId: uuid, mode: 'manual' }).success, true);

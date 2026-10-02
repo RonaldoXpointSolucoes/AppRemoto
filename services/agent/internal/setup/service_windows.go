@@ -140,7 +140,7 @@ func runAgent(ctx context.Context) (err error) {
 	operation = "ENROLLMENT_STATE"
 	step = 5
 	r.Record(5, operation, "START", nil)
-	en, e := enroll.NewService(enroll.Options{StateDirectory: ps.Agent, API: reportedAPI{apiClient, r}, RustDesk: reportedRustDesk{rd, r},
+	en, e := enroll.NewService(enroll.Options{StateDirectory: ps.Agent, API: reportedAPI{apiClient, r}, RustDesk: reportedRustDesk{rd, r}, GenericInstallation: reg.GenericInstallation,
 		Progress: func(op, result string, err error) { r.Record(5, op, result, err) }})
 	if e != nil {
 		return e
@@ -222,6 +222,13 @@ func (a reportedAPI) Enroll(ctx context.Context, request api.EnrollRequest) (api
 
 func (a reportedAPI) Reconfigure(ctx context.Context, token []byte, request api.EnrollRequest) (api.ReconfigureResponse, error) {
 	return a.client.Reconfigure(ctx, token, request)
+}
+
+func (a reportedAPI) GenericPassword(ctx context.Context, token []byte, request api.EnrollRequest) (api.GenericPasswordResponse, error) {
+	return a.client.GenericPassword(ctx, token, request)
+}
+func (a reportedAPI) ConfirmGenericPassword(ctx context.Context, token []byte, request api.EnrollRequest) (api.GenericPasswordConfirmation, error) {
+	return a.client.ConfirmGenericPassword(ctx, token, request)
 }
 
 type reportedRustDesk struct {

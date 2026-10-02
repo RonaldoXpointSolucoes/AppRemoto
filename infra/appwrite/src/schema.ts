@@ -82,6 +82,7 @@ export const REMOTE_MANAGEMENT_SCHEMA: RemoteManagementSchema = deepFreeze({
     ], [unique('token_hash'), key('device_id')]),
     collection('heartbeat_guards', [
       string('device_id', 36), string('device_token_id', 36), datetime('started_at'),
+      string('operation_id', 36, false),
     ], []),
     collection('device_credentials', [
       string('device_id', 36), string('password_ciphertext', 4096),
@@ -91,6 +92,7 @@ export const REMOTE_MANAGEMENT_SCHEMA: RemoteManagementSchema = deepFreeze({
       string('organization_id', 36), string('token_hash', 64), datetime('expires_at'),
       integer('max_uses'), integer('use_count'), boolean('active'), string('created_by_user_id', 36),
       datetime('revoked_at', false),
+      string('generic_installer_id', 36, false), string('bootstrap_request_hash', 64, false),
     ], [unique('token_hash'), key('organization_id')]),
     collection('enrollment_receipts', [
       string('organization_id', 36), string('enrollment_token_id', 36),
@@ -98,6 +100,9 @@ export const REMOTE_MANAGEMENT_SCHEMA: RemoteManagementSchema = deepFreeze({
       enumeration('status', ['pending', 'committed']), boolean('token_use_consumed'),
       integer('expected_use_count'),
       boolean('recovery_frozen'),
+      datetime('password_rotation_started_at', false), string('password_rotation_target_hash', 64, false),
+      { key: 'password_rotation_completed', type: 'boolean', required: false },
+      { key: 'password_rotation_write_started', type: 'boolean', required: false },
     ], [
       unique('enrollment_token_id', 'device_uuid'), key('organization_id'),
       key('device_id'), key('status'),
@@ -115,6 +120,10 @@ export const REMOTE_MANAGEMENT_SCHEMA: RemoteManagementSchema = deepFreeze({
       enumeration('result', ['success', 'failure']), string('source_ip', 45),
       string('metadata_json', 16384),
     ], [key('organization_id'), key('device_id'), key('action')]),
+    collection('generic_installers', [
+      string('name', 128), string('token_hash', 64), boolean('active'), string('created_by_user_id', 36),
+      datetime('revoked_at', false),
+    ], [unique('token_hash')]),
   ],
 } satisfies RemoteManagementSchema);
 
