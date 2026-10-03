@@ -9,6 +9,16 @@ const STORAGE_KEY_INVITES = 'xpoint_remote_invites_v1';
 
 const INITIAL_TECHNICIANS: TechnicianProfileView[] = [
   {
+    id: 'tech_ronaldo',
+    userId: '6ac0542e002986e82f85',
+    displayName: 'Ronaldo',
+    email: 'ronaldo.xpointsolucoes@gmail.com',
+    globalRole: 'super_admin',
+    active: true,
+    createdAt: '2026-10-02T22:00:00.000Z',
+    lastLoginAt: new Date().toISOString(),
+  },
+  {
     id: 'tech_1',
     userId: 'remote-bootstrap-admin',
     displayName: 'Remote Administrator',
@@ -16,7 +26,7 @@ const INITIAL_TECHNICIANS: TechnicianProfileView[] = [
     globalRole: 'super_admin',
     active: true,
     createdAt: '2026-09-29T10:00:00.000Z',
-    lastLoginAt: new Date().toISOString(),
+    lastLoginAt: '2026-10-02T21:00:00.000Z',
   },
   {
     id: 'tech_2',
@@ -43,12 +53,21 @@ export function getTechnicians(): TechnicianProfileView[] {
   if (typeof window === 'undefined') return INITIAL_TECHNICIANS;
   try {
     const raw = localStorage.getItem(STORAGE_KEY_TECHS);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEY_TECHS, JSON.stringify(INITIAL_TECHNICIANS));
-      return INITIAL_TECHNICIANS;
+    let list: TechnicianProfileView[] = INITIAL_TECHNICIANS;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        list = parsed;
+      }
     }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_TECHNICIANS;
+    // Garante que os membros canônicos essenciais (especialmente o Ronaldo) estejam presentes
+    for (const initTech of INITIAL_TECHNICIANS) {
+      if (!list.some((t) => t.email.toLowerCase() === initTech.email.toLowerCase())) {
+        list.unshift(initTech);
+      }
+    }
+    localStorage.setItem(STORAGE_KEY_TECHS, JSON.stringify(list));
+    return list;
   } catch {
     return INITIAL_TECHNICIANS;
   }

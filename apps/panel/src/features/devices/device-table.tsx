@@ -223,7 +223,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
             </span>
             <div className="tv-mobile-brand-meta">
               <span className="tv-mobile-title">XPoint Remote</span>
-              <span className="version-badge">v1.3.2</span>
+              <span className="version-badge">v1.3.3</span>
             </div>
           </div>
           <div className="tv-mobile-top-actions">
@@ -252,7 +252,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 ? 'Técnicos & Convites'
                 : 'Histórico de Acessos'}
             </h1>
-            <span className="version-badge" title="Versão da Plataforma">v1.3.2</span>
+            <span className="version-badge" title="Versão da Plataforma">v1.3.3</span>
           </div>
 
           {activeTab === 'devices' && (
