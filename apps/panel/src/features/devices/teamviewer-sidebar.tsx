@@ -10,11 +10,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Terminal,
+  Users,
 } from 'lucide-react';
 import Link from 'next/link';
 import { ThemeToggle } from '../../components/theme-toggle';
 
-export type TeamViewerTab = 'devices' | 'history' | 'cockpit';
+export type TeamViewerTab = 'devices' | 'history' | 'cockpit' | 'technicians';
 
 export function TeamViewerSidebar({
   activeTab,
@@ -43,7 +44,7 @@ export function TeamViewerSidebar({
           {!collapsed && (
             <div className="tv-brand-text">
               <span className="tv-brand-title">XPoint Remote</span>
-              <span className="tv-brand-badge">v1.3.1</span>
+              <span className="tv-brand-badge">v1.3.2</span>
             </div>
           )}
         </div>
@@ -90,6 +91,17 @@ export function TeamViewerSidebar({
           <Terminal size={20} className="tv-nav-icon text-emerald-400" />
           {!collapsed && <span className="tv-nav-label">Cockpit Dev Logger</span>}
           {activeTab === 'cockpit' && <span className="tv-active-pill" />}
+        </button>
+
+        <button
+          type="button"
+          className={`tv-nav-item ${activeTab === 'technicians' ? 'active' : ''}`}
+          onClick={() => onTabChange('technicians')}
+          title="Gestão de Técnicos e Convites"
+        >
+          <Users size={20} className="tv-nav-icon text-indigo-400" />
+          {!collapsed && <span className="tv-nav-label">Técnicos & Convites</span>}
+          {activeTab === 'technicians' && <span className="tv-active-pill" />}
         </button>
 
         <button

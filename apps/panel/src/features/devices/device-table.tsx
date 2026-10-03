@@ -1,7 +1,7 @@
 'use client';
 
 import type { DeviceView } from '@appremoto/contracts';
-import { ChevronLeft, ChevronRight, Download, LogOut, Plus, Search, Trash2, LayoutGrid, Table, Monitor, History, Zap, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, LogOut, Plus, Search, Trash2, LayoutGrid, Table, Monitor, History, Zap, RefreshCw, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -22,6 +22,7 @@ import { AddConnectionDialog } from './add-connection-dialog';
 import { saveRecentConnection, type RecentConnectionRecord } from './teamviewer-storage';
 
 import { AntigravityCockpit } from '../cockpit/antigravity-cockpit';
+import { TechnicianManagementView } from '../technicians/technician-management-view';
 
 export type { DeviceDirectoryService } from './use-devices';
 
@@ -222,7 +223,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
             </span>
             <div className="tv-mobile-brand-meta">
               <span className="tv-mobile-title">XPoint Remote</span>
-              <span className="version-badge">v1.2.7</span>
+              <span className="version-badge">v1.3.2</span>
             </div>
           </div>
           <div className="tv-mobile-top-actions">
@@ -247,9 +248,11 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 ? 'Dispositivos'
                 : activeTab === 'cockpit'
                 ? 'Cockpit Dev Logger'
+                : activeTab === 'technicians'
+                ? 'Técnicos & Convites'
                 : 'Histórico de Acessos'}
             </h1>
-            <span className="version-badge" title="Versão da Plataforma">v1.3.1</span>
+            <span className="version-badge" title="Versão da Plataforma">v1.3.2</span>
           </div>
 
           {activeTab === 'devices' && (
@@ -325,6 +328,8 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
           <ConnectionHistoryView onConnectAgain={handleConnectAgainFromHistory} />
         ) : activeTab === 'cockpit' ? (
           <AntigravityCockpit service={service} onBackToDevices={() => setActiveTab('devices')} />
+        ) : activeTab === 'technicians' ? (
+          <TechnicianManagementView />
         ) : (
           <>
             {query.isOrganizationLoading && <section className="device-state" role="status">Carregando dispositivos...</section>}
@@ -444,6 +449,15 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
           >
             <Monitor size={20} />
             <span>Dispositivos</span>
+          </button>
+          <button
+            type="button"
+            className={`tv-mobile-nav-item ${activeTab === 'technicians' ? 'active' : ''}`}
+            onClick={() => setActiveTab('technicians')}
+            title="Técnicos e Convites"
+          >
+            <Users size={20} />
+            <span>Equipe</span>
           </button>
           <button
             type="button"

@@ -330,7 +330,7 @@ export function AntigravityCockpit({
             <span className="metric-label">taxa de sucesso heartbeat</span>
           </div>
           <div className="card-footer-info">
-            <span>Next.js Panel v1.3.1 · Fastify API</span>
+            <span>Next.js Panel v1.3.2 · Fastify API</span>
           </div>
         </div>
       </section>

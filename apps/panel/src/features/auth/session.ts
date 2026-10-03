@@ -11,6 +11,7 @@ import { expireSession, sessionEpoch } from './session-cache';
 
 export interface LoginService {
   createSession(email: string, password: string): Promise<void>;
+  createGoogleSession?(): void;
   verifyProfile(): Promise<void>;
   removeSession(): Promise<void>;
 }
@@ -48,6 +49,18 @@ export function createLoginService(): LoginService {
 
   return {
     createSession: async (email, password) => { await account.createEmailPasswordSession(email, password); },
+    createGoogleSession: () => {
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://remoto.xpointsolucoes.com.br';
+      try {
+        account.createOAuth2Session(
+          'google' as any,
+          `${origin}/devices`,
+          `${origin}/login?error=oauth_failed`
+        );
+      } catch (err) {
+        console.error('Google OAuth init failed:', err);
+      }
+    },
     verifyProfile: async () => { await api.getMe(); },
     removeSession: async () => { await account.deleteSession('current'); },
   };
