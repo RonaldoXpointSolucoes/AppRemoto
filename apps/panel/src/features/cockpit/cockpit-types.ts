@@ -29,7 +29,7 @@ export interface ServiceHealthStatus {
 export interface DiskBreakdownItem {
   id: string;
   label: string;
-  category: 'buildkit' | 'images' | 'volumes' | 'logs' | 'system' | 'free';
+  category: 'appwrite_uploads' | 'whatsmeow' | 'buildkit' | 'images' | 'volumes' | 'logs' | 'system' | 'mariadb' | 'free' | string;
   path: string;
   usedGb: number;
   percent: number;
@@ -51,7 +51,7 @@ export interface DiskSafeAction {
   command: string;
   impact: string;
   estimatedFreeGb: string;
-  riskLevel: 'safe' | 'moderate' | 'cautious';
+  riskLevel: 'safe' | 'moderate' | 'cautious' | 'warning';
 }
 
 export interface DiskDiagnostics {

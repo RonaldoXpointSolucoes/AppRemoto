@@ -172,7 +172,7 @@ export function AntigravityCockpit({
               <span className="cockpit-title-accent">Antigravity</span>
               <span className="cockpit-pill-tag">COCKPIT</span>
               <span className="text-[11px] font-mono text-cyan-400 bg-cyan-950/50 border border-cyan-800/50 px-2 py-0.5 rounded-full font-bold">
-                v1.3.4
+                v1.3.5
               </span>
               <div className="cockpit-status-online">
                 <span className="cockpit-pulse-dot" />
@@ -364,7 +364,7 @@ export function AntigravityCockpit({
             <span className="metric-label">taxa de sucesso heartbeat</span>
           </div>
           <div className="card-footer-info">
-            <span>Next.js Panel v1.3.4 · Fastify API</span>
+            <span>Next.js Panel v1.3.5 · Fastify API</span>
           </div>
         </div>
       </section>

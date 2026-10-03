@@ -4966,7 +4966,7 @@ button, a, input, select { outline-offset: 3px; }
 }
 
 /* ==========================================================================
-   COCKPIT DISK STORAGE DIAGNOSTICS & RAIO-X MODAL (v1.3.4)
+   COCKPIT DISK STORAGE DIAGNOSTICS & RAIO-X MODAL (v1.3.5)
    ========================================================================== */
 
 .disk-quick-btn {
@@ -4997,9 +4997,9 @@ button, a, input, select { outline-offset: 3px; }
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5015,7 +5015,7 @@ button, a, input, select { outline-offset: 3px; }
   background: #0b1120;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 20px;
-  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 40px rgba(245, 158, 11, 0.08);
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 40px rgba(14, 165, 233, 0.08);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -5036,23 +5036,169 @@ button, a, input, select { outline-offset: 3px; }
 /* Header */
 .disk-modal-header {
   padding: 16px 20px;
-  background: rgba(15, 23, 42, 0.7);
+  background: rgba(15, 23, 42, 0.75);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  shrink-0: 0;
+  flex-shrink: 0;
+}
+
+.disk-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.disk-header-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fbbf24;
+  flex-shrink: 0;
+}
+
+.disk-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.disk-header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.disk-header-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.disk-header-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.disk-header-sub {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-family: monospace;
+  margin: 0;
+}
+
+.disk-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.disk-close-btn {
+  padding: 8px;
+  border-radius: 10px;
+  color: #94a3b8;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.disk-close-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 /* Overview Card */
 .disk-overview-card {
   margin: 12px 20px 0 20px;
-  padding: 14px 16px;
-  background: rgba(15, 23, 42, 0.8);
+  padding: 14px 18px;
+  background: rgba(15, 23, 42, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
-  shrink-0: 0;
+  flex-shrink: 0;
+}
+
+.disk-capacity-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.disk-capacity-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.disk-capacity-used {
+  font-size: 1.625rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.disk-capacity-total {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.disk-capacity-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.disk-badge-free {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 8px;
+}
+
+.disk-badge-critical {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fb7185;
+  background: rgba(244, 63, 94, 0.12);
+  border: 1px solid rgba(244, 63, 94, 0.25);
+  border-radius: 8px;
 }
 
 /* Multi-segmented Bar */
@@ -5100,7 +5246,7 @@ button, a, input, select { outline-offset: 3px; }
   gap: 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   overflow-x: auto;
-  shrink-0: 0;
+  flex-shrink: 0;
 }
 
 .disk-tab-btn {
@@ -5134,6 +5280,67 @@ button, a, input, select { outline-offset: 3px; }
   overflow-y: auto;
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Highlight Banner */
+.disk-highlight-banner {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: #fde68a;
+  line-height: 1.5;
+}
+
+.disk-highlight-banner.critical {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.disk-banner-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.disk-banner-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.disk-banner-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.disk-banner-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-family: monospace;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.disk-banner-pill.danger {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.15);
+  color: #fecaca;
 }
 
 /* Breakdown Item Card */
@@ -5143,11 +5350,124 @@ button, a, input, select { outline-offset: 3px; }
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 12px;
   transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .disk-item-card:hover {
   background: rgba(15, 23, 42, 0.9);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.disk-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.disk-item-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.disk-item-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.disk-item-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.disk-item-path {
+  font-size: 0.72rem;
+  font-family: monospace;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: rgba(30, 41, 59, 0.8);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disk-item-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.disk-item-gb {
+  font-size: 0.95rem;
+  font-weight: 800;
+  font-family: monospace;
+  color: #ffffff;
+}
+
+.disk-item-pct {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.disk-item-bar-bg {
+  width: 100%;
+  height: 6px;
+  background: rgba(30, 41, 59, 0.8);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.disk-item-bar-fill {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.disk-item-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+}
+
+.disk-item-desc {
+  color: #94a3b8;
+  margin: 0;
+  flex: 1;
+  min-width: 200px;
+  line-height: 1.4;
+}
+
+.disk-item-action-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  flex-shrink: 0;
 }
 
 /* Playbook Action Card */
@@ -5157,10 +5477,58 @@ button, a, input, select { outline-offset: 3px; }
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
   transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .disk-playbook-card:hover {
   border-color: rgba(168, 85, 247, 0.4);
+}
+
+.disk-playbook-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.disk-playbook-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.disk-playbook-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+}
+
+.disk-playbook-badge {
+  font-size: 0.72rem;
+  font-family: monospace;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.disk-playbook-badge.warning {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.disk-playbook-desc {
+  font-size: 0.78rem;
+  color: #cbd5e1;
+  margin: 0 0 4px 0;
+  line-height: 1.45;
 }
 
 /* Code box */
@@ -5173,6 +5541,16 @@ button, a, input, select { outline-offset: 3px; }
   background: #020617;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
+}
+
+.disk-code-text {
+  font-size: 0.75rem;
+  font-family: monospace;
+  color: #6ee7b7;
+  word-break: break-all;
+  user-select: all;
+  white-space: pre-wrap;
+  margin: 0;
 }
 
 .disk-code-copy-btn {
@@ -5188,7 +5566,7 @@ button, a, input, select { outline-offset: 3px; }
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
-  shrink-0: 0;
+  flex-shrink: 0;
 }
 
 .disk-code-copy-btn:hover {
@@ -5239,6 +5617,65 @@ button, a, input, select { outline-offset: 3px; }
   border-radius: 10px;
 }
 
+/* Services Tab */
+.disk-service-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.disk-service-card {
+  padding: 12px 14px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.disk-service-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.disk-service-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.disk-service-name {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.disk-service-tag {
+  font-size: 0.65rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  font-family: monospace;
+}
+
+.disk-service-desc {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.disk-service-size {
+  font-size: 0.78rem;
+  font-family: monospace;
+  font-weight: 700;
+  color: #cbd5e1;
+  flex-shrink: 0;
+}
+
 /* Footer */
 .disk-modal-footer {
   padding: 14px 20px;
@@ -5248,7 +5685,15 @@ button, a, input, select { outline-offset: 3px; }
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  shrink-0: 0;
+  flex-shrink: 0;
+}
+
+.disk-footer-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: #94a3b8;
 }
 
 .disk-action-btn {
@@ -5292,25 +5737,29 @@ button, a, input, select { outline-offset: 3px; }
   }
 
   .disk-modal-container {
-    max-height: 88vh;
+    max-height: 90vh;
     border-radius: 24px 24px 0 0;
   }
 
   .disk-modal-header {
-    padding: 16px;
+    padding: 14px 16px;
   }
 
   .disk-overview-card {
-    margin: 12px 16px 0 16px;
-    padding: 14px;
+    margin: 10px 16px 0 16px;
+    padding: 12px 14px;
   }
 
   .disk-tabs-nav {
-    padding: 8px 16px 0 16px;
+    padding: 6px 16px 0 16px;
   }
 
   .disk-modal-body {
-    padding: 16px;
+    padding: 14px 16px;
+  }
+
+  .disk-item-path {
+    max-width: 200px;
   }
 
   .disk-modal-footer {
