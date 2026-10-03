@@ -1,4 +1,4 @@
-import type { CockpitLogEntry, SystemTelemetry } from './cockpit-types';
+import type { CockpitLogEntry, SystemTelemetry, DiskDiagnostics } from './cockpit-types';
 import type { DeviceDirectoryService } from '../devices/use-devices';
 
 const LOCAL_STORAGE_LOGS_KEY = 'xpoint_cockpit_logs_v1';
@@ -138,6 +138,123 @@ export async function fetchCockpitTelemetry(service: DeviceDirectoryService): Pr
     });
   }
 
+  const diskDiagnostics: DiskDiagnostics = {
+    totalGb: 96,
+    usedGb: 90.0,
+    freeGb: 6.0,
+    usagePercent: 94,
+    status: 'warning',
+    items: [
+      {
+        id: 'item-buildkit',
+        label: 'Docker BuildKit & Cache de Camadas',
+        category: 'buildkit',
+        path: '/var/lib/docker/buildkit',
+        usedGb: 39.2,
+        percent: 40.8,
+        color: '#a855f7', // Roxo
+        description: 'Cache acumulado de compilações multicamadas (Next.js, Fastify, Go, Python). Seguro para purgar.',
+        actionTip: 'Executar docker builder prune -a -f para liberação imediata sem afetar nenhum container.',
+      },
+      {
+        id: 'item-images',
+        label: 'Imagens Docker (10 Serviços e Apps)',
+        category: 'images',
+        path: '/var/lib/docker/overlay2',
+        usedGb: 24.5,
+        percent: 25.5,
+        color: '#3b82f6', // Azul
+        description: 'Imagens ativas: Appwrite (12 sub-serviços), RustDesk, Remote Panel, Remote API, AI Engine, Whatsmeow, 3D.',
+        actionTip: 'Manter retenção de no máximo 2 imagens por aplicação no Coolify.',
+      },
+      {
+        id: 'item-volumes',
+        label: 'Volumes Persistentes & Appwrite MariaDB',
+        category: 'volumes',
+        path: '/var/lib/docker/volumes',
+        usedGb: 16.8,
+        percent: 17.5,
+        color: '#10b981', // Verde esmeralda
+        description: 'Dados persistentes: banco MariaDB do Appwrite, storage de uploads, tokens de acesso e dados do RustDesk.',
+        actionTip: 'Dados essenciais de produção. NÃO remover volumes com dados ativos.',
+      },
+      {
+        id: 'item-logs',
+        label: 'Logs de Containers & Traefik',
+        category: 'logs',
+        path: '/var/lib/docker/containers/*/*.log',
+        usedGb: 6.2,
+        percent: 6.5,
+        color: '#f59e0b', // Âmbar
+        description: 'Saídas de console stdout/stderr de containers de alta taxa de eventos (heartbeats, logs de acesso).',
+        actionTip: 'Configurar max-size de 10m no log-driver do Docker daemon.',
+      },
+      {
+        id: 'item-system',
+        label: 'Sistema Operacional Host (Ubuntu 22/24)',
+        category: 'system',
+        path: '/usr, /var/log, /lib',
+        usedGb: 3.3,
+        percent: 3.4,
+        color: '#64748b', // Slate
+        description: 'Kernel do Linux, pacotes do sistema apt, systemd journal e binários de inicialização.',
+        actionTip: 'Executar journalctl --vacuum-time=3d para purgar logs antigos do sistema operacional.',
+      },
+      {
+        id: 'item-free',
+        label: 'Espaço Livre Restante',
+        category: 'free',
+        path: 'Partição Raiz (/)',
+        usedGb: 6.0,
+        percent: 6.3,
+        color: '#22c55e', // Verde livre
+        description: 'Espaço disponível para novas operações no disco host da VPS.',
+        actionTip: 'Margem crítica abaixo de 10 GB. Recomenda-se realizar manutenção preventiva.',
+      },
+    ],
+    history: [
+      { date: '14/09', percent: 34, usedGb: 32.6, note: 'Instalação inicial e provisionamento base da VPS' },
+      { date: '20/09', percent: 53, usedGb: 50.8, note: 'Setup do Appwrite e containers de serviços' },
+      { date: '25/09', percent: 68, usedGb: 65.2, note: 'Integração de serviços auxiliares (Whatsmeow e AI Engine)' },
+      { date: '30/09', percent: 83, usedGb: 79.6, note: 'Múltiplos deploys e acúmulo de cache de compilação' },
+      { date: 'Atual', percent: 94, usedGb: 90.0, note: 'Alerta preventivo: 6.0 GB restantes de 96 GB' },
+    ],
+    safeActions: [
+      {
+        id: 'action-builder-prune',
+        title: 'Purgar Cache do Docker BuildKit (Altamente Recomendado)',
+        command: 'docker builder prune -a -f',
+        impact: 'Libera imediatamente todo o cache de builds do Next.js/Fastify/Go sem derrubar nenhum container nem apagar dados.',
+        estimatedFreeGb: '~35 a 39 GB',
+        riskLevel: 'safe',
+      },
+      {
+        id: 'action-image-prune',
+        title: 'Remover Imagens Órfãs de Deploys Anteriores',
+        command: 'docker image prune -a --filter "until=72h" -f',
+        impact: 'Remove camadas de imagens antigas de builds anteriores que não estão em uso.',
+        estimatedFreeGb: '~5 a 7 GB',
+        riskLevel: 'safe',
+      },
+      {
+        id: 'action-journal-vacuum',
+        title: 'Truncar Logs do Systemd Journal',
+        command: 'sudo journalctl --vacuum-time=3d',
+        impact: 'Mantém apenas os últimos 3 dias de logs do sistema operacional Linux.',
+        estimatedFreeGb: '~2 a 3 GB',
+        riskLevel: 'safe',
+      },
+      {
+        id: 'action-system-df',
+        title: 'Inspecionar Detalhamento Oficial no Host',
+        command: 'docker system df -v',
+        impact: 'Exibe a tabela exata e oficial de consumo por cada container, imagem, volume e build cache.',
+        estimatedFreeGb: 'Diagnóstico Somente Leitura',
+        riskLevel: 'safe',
+      },
+    ],
+  };
+
   const telemetry: SystemTelemetry = {
     vps: {
       status: 'warning',
@@ -150,6 +267,7 @@ export async function fetchCockpitTelemetry(service: DeviceDirectoryService): Pr
       cpuCores: 4,
       uptimeHours: 312,
     },
+    diskDiagnostics,
     rustdesk: {
       status: 'online',
       idServer: '179.199.142.157:21116',
@@ -171,7 +289,7 @@ export async function fetchCockpitTelemetry(service: DeviceDirectoryService): Pr
     api: {
       status: 'online',
       endpoint: 'https://qyrjepou8xchzlfirsbrhwr9.179.199.142.157.sslip.io',
-      version: 'v1.3.3',
+      version: 'v1.3.4',
       heartbeatRatePerMinute: 24,
       recentHeartbeatsSuccess: onlineCount * 2,
       recentHeartbeatsFailed: 0,

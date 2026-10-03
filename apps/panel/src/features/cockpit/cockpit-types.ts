@@ -26,6 +26,45 @@ export interface ServiceHealthStatus {
   metrics?: Record<string, string | number>;
 }
 
+export interface DiskBreakdownItem {
+  id: string;
+  label: string;
+  category: 'buildkit' | 'images' | 'volumes' | 'logs' | 'system' | 'free';
+  path: string;
+  usedGb: number;
+  percent: number;
+  color: string;
+  description: string;
+  actionTip: string;
+}
+
+export interface DiskHistoryItem {
+  date: string;
+  percent: number;
+  usedGb: number;
+  note: string;
+}
+
+export interface DiskSafeAction {
+  id: string;
+  title: string;
+  command: string;
+  impact: string;
+  estimatedFreeGb: string;
+  riskLevel: 'safe' | 'moderate' | 'cautious';
+}
+
+export interface DiskDiagnostics {
+  totalGb: number;
+  usedGb: number;
+  freeGb: number;
+  usagePercent: number;
+  status: 'warning' | 'critical' | 'healthy';
+  items: DiskBreakdownItem[];
+  history: DiskHistoryItem[];
+  safeActions: DiskSafeAction[];
+}
+
 export interface SystemTelemetry {
   vps: {
     status: 'online' | 'warning' | 'critical';
@@ -38,6 +77,7 @@ export interface SystemTelemetry {
     cpuCores: number;
     uptimeHours: number;
   };
+  diskDiagnostics: DiskDiagnostics;
   rustdesk: {
     status: 'online' | 'degraded' | 'offline';
     idServer: string;
@@ -65,3 +105,4 @@ export interface SystemTelemetry {
     recentHeartbeatsFailed: number;
   };
 }
+

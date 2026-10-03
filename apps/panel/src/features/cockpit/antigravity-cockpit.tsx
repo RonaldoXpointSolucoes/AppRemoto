@@ -33,6 +33,7 @@ import {
   clearStoredLogs,
   fetchCockpitTelemetry,
 } from './cockpit-service';
+import { DiskStorageModal } from './disk-storage-modal';
 
 export function AntigravityCockpit({
   service,
@@ -47,6 +48,7 @@ export function AntigravityCockpit({
     return stored.length > 0 ? stored : createInitialLogs();
   });
   const [telemetry, setTelemetry] = useState<SystemTelemetry | null>(null);
+  const [isDiskModalOpen, setIsDiskModalOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<
     'console' | 'rustdesk' | 'appwrite' | 'e2e'
   >('console');
@@ -169,6 +171,9 @@ export function AntigravityCockpit({
             <div className="cockpit-main-title">
               <span className="cockpit-title-accent">Antigravity</span>
               <span className="cockpit-pill-tag">COCKPIT</span>
+              <span className="text-[11px] font-mono text-cyan-400 bg-cyan-950/50 border border-cyan-800/50 px-2 py-0.5 rounded-full font-bold">
+                v1.3.4
+              </span>
               <div className="cockpit-status-online">
                 <span className="cockpit-pulse-dot" />
                 <span>ONLINE</span>
@@ -193,6 +198,16 @@ export function AntigravityCockpit({
           )}
 
           <div className="cockpit-divider" />
+
+          <button
+            type="button"
+            className="cockpit-tool-btn disk-quick-btn"
+            title="Acessar e auditar tudo que consome o disco da VPS (94% em uso)"
+            onClick={() => setIsDiskModalOpen(true)}
+          >
+            <HardDrive size={16} className="text-amber-400" />
+            <span className="text-amber-300 font-bold">Raio-X Disco</span>
+          </button>
 
           <button
             type="button"
@@ -281,22 +296,41 @@ export function AntigravityCockpit({
           </div>
         </div>
 
-        <div className="cockpit-card">
+        <div
+          className="cockpit-card cockpit-card-interactive group cursor-pointer hover:border-amber-500/50 hover:shadow-[0_0_25px_rgba(245,158,11,0.18)] transition-all relative overflow-hidden"
+          onClick={() => setIsDiskModalOpen(true)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setIsDiskModalOpen(true);
+            }
+          }}
+          title="Clique para auditar e ver tudo que consome o disco da VPS"
+        >
           <div className="card-top">
-            <span className="card-title">VPS Host & Disco</span>
-            <span className="kpi-pill warning">
+            <div className="flex items-center gap-1.5">
+              <HardDrive size={15} className="text-amber-400" />
+              <span className="card-title">VPS Host & Disco</span>
+            </div>
+            <span className="kpi-pill warning animate-pulse">
               <AlertTriangle size={12} />
               <span>94% em uso</span>
             </span>
           </div>
           <div className="card-metric">
-            <span className="metric-num">
+            <span className="metric-num text-amber-300">
               {telemetry?.vps.diskFreeGb ?? 6.0} GB
             </span>
             <span className="metric-label">livres de 96 GB</span>
           </div>
-          <div className="card-footer-info">
+          <div className="card-footer-info flex items-center justify-between">
             <span>RAM: 3.5 GB livres · CPU: 4 Cores estável</span>
+            <span className="text-[11px] font-bold text-amber-400 group-hover:text-amber-300 flex items-center gap-1 transition-colors">
+              <span>Ver Raio-X</span>
+              <span className="text-xs transition-transform group-hover:translate-x-0.5">→</span>
+            </span>
           </div>
         </div>
 
@@ -330,7 +364,7 @@ export function AntigravityCockpit({
             <span className="metric-label">taxa de sucesso heartbeat</span>
           </div>
           <div className="card-footer-info">
-            <span>Next.js Panel v1.3.3 · Fastify API</span>
+            <span>Next.js Panel v1.3.4 · Fastify API</span>
           </div>
         </div>
       </section>
@@ -527,6 +561,13 @@ export function AntigravityCockpit({
           })
         )}
       </div>
+
+      {/* Modal de Diagnóstico Completo e Raio-X de Armazenamento VPS */}
+      <DiskStorageModal
+        isOpen={isDiskModalOpen}
+        onClose={() => setIsDiskModalOpen(false)}
+        telemetry={telemetry}
+      />
     </div>
   );
 }
