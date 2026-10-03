@@ -5010,8 +5010,8 @@ button, a, input, select { outline-offset: 3px; }
 /* Modal Window */
 .disk-modal-container {
   width: 100%;
-  max-width: 900px;
-  max-height: 90vh;
+  max-width: 920px;
+  height: min(840px, 94vh);
   background: #0b1120;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 20px;
@@ -5035,30 +5035,32 @@ button, a, input, select { outline-offset: 3px; }
 
 /* Header */
 .disk-modal-header {
-  padding: 20px 24px;
+  padding: 16px 20px;
   background: rgba(15, 23, 42, 0.7);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  shrink-0: 0;
 }
 
 /* Overview Card */
 .disk-overview-card {
-  margin: 16px 24px 0 24px;
-  padding: 18px 20px;
+  margin: 12px 20px 0 20px;
+  padding: 14px 16px;
   background: rgba(15, 23, 42, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
+  border-radius: 14px;
+  shrink-0: 0;
 }
 
 /* Multi-segmented Bar */
 .disk-multi-bar {
   width: 100%;
-  height: 22px;
+  height: 18px;
   background: rgba(30, 41, 59, 0.8);
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
   display: flex;
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
@@ -5077,27 +5079,28 @@ button, a, input, select { outline-offset: 3px; }
 
 /* Legend Grid */
 .disk-legend-grid {
-  margin-top: 14px;
+  margin-top: 10px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 8px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 6px 14px;
 }
 
 .disk-legend-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 0.75rem;
+  gap: 6px;
+  font-size: 0.72rem;
 }
 
 /* Tabs Nav */
 .disk-tabs-nav {
-  padding: 12px 24px 0 24px;
+  padding: 8px 20px 0 20px;
   display: flex;
   align-items: center;
   gap: 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   overflow-x: auto;
+  shrink-0: 0;
 }
 
 .disk-tab-btn {
@@ -5127,9 +5130,10 @@ button, a, input, select { outline-offset: 3px; }
 
 /* Modal Body */
 .disk-modal-body {
-  padding: 20px 24px;
+  padding: 16px 20px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 /* Breakdown Item Card */
@@ -5237,13 +5241,14 @@ button, a, input, select { outline-offset: 3px; }
 
 /* Footer */
 .disk-modal-footer {
-  padding: 16px 24px;
-  background: rgba(15, 23, 42, 0.8);
+  padding: 14px 20px;
+  background: rgba(15, 23, 42, 0.85);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  shrink-0: 0;
 }
 
 .disk-action-btn {
