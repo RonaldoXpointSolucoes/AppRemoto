@@ -35,10 +35,15 @@ function DeviceRows({ devices, statusState, service, canConnect, canManage, onDe
 }) {
   const action = (device: DeviceView) => <div className="device-actions">
     {service.connectDevice && canConnect(device.organizationId) && (
-      <div onClick={() => onSessionStarted?.(device)}>
-        <ConnectDevice deviceId={device.id} enabled={device.enabled && device.status === 'ONLINE' && statusState === 'current'}
-          service={{ connectDevice: service.connectDevice, recordConnectionEvent: service.recordConnectionEvent }} onEvent={(event) => onEvent(device.id, event)} onHelp={() => onDetails(device)} onSessionExpired={onSessionExpired} />
-      </div>
+      <ConnectDevice
+        deviceId={device.id}
+        enabled={device.enabled && device.status === 'ONLINE' && statusState === 'current'}
+        service={{ connectDevice: service.connectDevice, recordConnectionEvent: service.recordConnectionEvent }}
+        onEvent={(event) => onEvent(device.id, event)}
+        onHelp={() => onDetails(device)}
+        onSessionExpired={onSessionExpired}
+        onConnectStarted={() => onSessionStarted?.(device)}
+      />
     )}
     <div className="device-action-row">
       {service.getDeviceDetails && service.getConnectionHistory && <button type="button" className="text-button" onClick={() => onDetails(device)}>Detalhes e opções</button>}
@@ -223,7 +228,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
             </span>
             <div className="tv-mobile-brand-meta">
               <span className="tv-mobile-title">XPoint Remote</span>
-              <span className="version-badge">v1.3.5</span>
+              <span className="version-badge">v1.3.6</span>
             </div>
           </div>
           <div className="tv-mobile-top-actions">
@@ -252,7 +257,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 ? 'Técnicos & Convites'
                 : 'Histórico de Acessos'}
             </h1>
-            <span className="version-badge" title="Versão da Plataforma">v1.3.5</span>
+            <span className="version-badge" title="Versão da Plataforma">v1.3.6</span>
           </div>
 
           {activeTab === 'devices' && (

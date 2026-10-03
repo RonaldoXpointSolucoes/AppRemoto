@@ -308,7 +308,7 @@ export async function fetchCockpitTelemetry(service: DeviceDirectoryService): Pr
     api: {
       status: 'online',
       endpoint: 'https://qyrjepou8xchzlfirsbrhwr9.179.199.142.157.sslip.io',
-      version: 'v1.3.5',
+      version: 'v1.3.6',
       heartbeatRatePerMinute: 24,
       recentHeartbeatsSuccess: onlineCount * 2,
       recentHeartbeatsFailed: 0,

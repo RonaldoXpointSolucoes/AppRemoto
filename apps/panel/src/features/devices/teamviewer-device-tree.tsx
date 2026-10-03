@@ -569,19 +569,18 @@ export function TeamViewerDeviceTree({
                     <div className="tv-col-actions">
                       <div className="tv-action-buttons">
                         {liveDevice && service.connectDevice && canConnect(liveDevice.organizationId) ? (
-                          <div onClick={() => onSessionStarted?.(liveDevice)}>
-                            <ConnectDevice
-                              deviceId={liveDevice.id}
-                              enabled={liveDevice.enabled && isOnline && statusState === 'current'}
-                              service={{
-                                connectDevice: service.connectDevice,
-                                recordConnectionEvent: service.recordConnectionEvent,
-                              }}
-                              onEvent={(event) => onEvent(liveDevice.id, event)}
-                              onHelp={() => onDetails(liveDevice)}
-                              onSessionExpired={onSessionExpired}
-                            />
-                          </div>
+                          <ConnectDevice
+                            deviceId={liveDevice.id}
+                            enabled={liveDevice.enabled && isOnline && statusState === 'current'}
+                            service={{
+                              connectDevice: service.connectDevice,
+                              recordConnectionEvent: service.recordConnectionEvent,
+                            }}
+                            onEvent={(event) => onEvent(liveDevice.id, event)}
+                            onHelp={() => onDetails(liveDevice)}
+                            onSessionExpired={onSessionExpired}
+                            onConnectStarted={() => onSessionStarted?.(liveDevice)}
+                          />
                         ) : null}
                         {liveDevice && (
                           <div className="tv-action-toolbar">
@@ -808,19 +807,18 @@ export function TeamViewerDeviceTree({
                               <div className="tv-col-actions">
                                 <div className="tv-action-buttons">
                                   {service.connectDevice && canConnect(dev.organizationId) && (
-                                    <div onClick={() => onSessionStarted?.(dev)}>
-                                      <ConnectDevice
-                                        deviceId={dev.id}
-                                        enabled={dev.enabled && isOnline && statusState === 'current'}
-                                        service={{
-                                          connectDevice: service.connectDevice,
-                                          recordConnectionEvent: service.recordConnectionEvent,
-                                        }}
-                                        onEvent={(event) => onEvent(dev.id, event)}
-                                        onHelp={() => onDetails(dev)}
-                                        onSessionExpired={onSessionExpired}
-                                      />
-                                    </div>
+                                    <ConnectDevice
+                                      deviceId={dev.id}
+                                      enabled={dev.enabled && isOnline && statusState === 'current'}
+                                      service={{
+                                        connectDevice: service.connectDevice,
+                                        recordConnectionEvent: service.recordConnectionEvent,
+                                      }}
+                                      onEvent={(event) => onEvent(dev.id, event)}
+                                      onHelp={() => onDetails(dev)}
+                                      onSessionExpired={onSessionExpired}
+                                      onConnectStarted={() => onSessionStarted?.(dev)}
+                                    />
                                   )}
                                   <div className="tv-action-toolbar">
                                     <button

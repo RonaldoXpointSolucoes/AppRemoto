@@ -15,21 +15,24 @@ export interface ConnectionService {
 }
 interface Attempt { attemptId: string; mode: ConnectionMode }
 const handoffLifetimeMs = 30_000;
-export function ConnectDevice({ deviceId, enabled, service, manual = false, rustdeskId, onEvent, onHelp, onSessionExpired }: {
+export function ConnectDevice({ deviceId, enabled, service, manual = false, rustdeskId, onEvent, onHelp, onSessionExpired, onConnectStarted }: {
   deviceId: string; enabled: boolean; service: ConnectionService; manual?: boolean; rustdeskId?: string;
   onEvent?(event: ConnectionLogEvent): void; onHelp?(): void; onSessionExpired?(): void;
+  onConnectStarted?(): void;
 }) {
   const client = useQueryClient();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState('');
   const [retryAvailable, setRetryAvailable] = useState(false);
   const [attempt, setAttempt] = useState<Attempt>();
+  const [dismissed, setDismissed] = useState(false);
   const passwordInput = useRef<HTMLInputElement>(null);
   const lock = useRef(false);
   const active = useRef(false);
   const scope = useRef({ deviceId, epoch: sessionEpoch(client) });
   const handoff = useRef<{ uri: string; until: number; attempt: Attempt } | undefined>(undefined);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const autoDismissTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const events = useRef(onEvent); events.current = onEvent;
   const currentEnabled = useRef(enabled); currentEnabled.current = enabled;
   function valid() { return active.current && sessionEpoch(client) === scope.current.epoch; }
@@ -37,11 +40,15 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
   function clearPassword() { if (passwordInput.current) passwordInput.current.value = ''; }
   useEffect(() => {
     scope.current = { deviceId, epoch: sessionEpoch(client) }; active.current = true;
-    lock.current = false; clearHandoff(); clearPassword(); setAttempt(undefined); setMessage(''); setPending(false);
+    lock.current = false; clearHandoff(); clearPassword(); setAttempt(undefined); setMessage(''); setPending(false); setDismissed(false);
+    clearTimeout(autoDismissTimer.current);
     const remove = onSessionClear(client, () => {
-      active.current = false; clearHandoff(); clearPassword(); setAttempt(undefined); setMessage(''); setPending(false);
+      active.current = false; clearHandoff(); clearPassword(); setAttempt(undefined); setMessage(''); setPending(false); setDismissed(false);
+      clearTimeout(autoDismissTimer.current);
     });
-    return () => { active.current = false; remove(); handoff.current = undefined; clearTimeout(timer.current); clearPassword(); };
+    return () => {
+      active.current = false; remove(); handoff.current = undefined; clearTimeout(timer.current); clearTimeout(autoDismissTimer.current); clearPassword();
+    };
   }, [client, deviceId]);
   useEffect(() => { if (!enabled) { clearHandoff(); clearPassword(); } }, [enabled]);
   function append(value: ConnectionLogEvent) { if (valid()) events.current?.(value); }
@@ -56,18 +63,41 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
       if (scope.current === expected) append(localEvent(current.attemptId, current.mode, 'event_not_saved', 'EVENT_NOT_SAVED'));
     });
   }
+  function dismissFeedback(e?: React.MouseEvent) {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    clearTimeout(autoDismissTimer.current);
+    clearHandoff();
+    setDismissed(true);
+    setMessage('');
+    setAttempt(undefined);
+  }
   function launch(current: Attempt, uri: string) {
     if (!valid() || !currentEnabled.current) return;
     try {
       launchRustDesk(uri); report(current, 'launch_requested');
       setMessage('Tentamos abrir o RustDesk neste computador do técnico. Confirme a abertura no navegador. A sessão ainda não foi confirmada.');
-    } catch { report(current, 'launch_failed'); setMessage('O navegador não conseguiu abrir o RustDesk. Use as instruções abaixo.'); }
+      clearTimeout(autoDismissTimer.current);
+      autoDismissTimer.current = setTimeout(() => {
+        if (valid()) {
+          setDismissed(true);
+          setMessage('');
+        }
+      }, 15_000);
+    } catch {
+      report(current, 'launch_failed');
+      setMessage('O navegador não conseguiu abrir o RustDesk. Use as instruções abaixo.');
+    }
   }
   async function connect(event?: FormEvent) {
     event?.preventDefault();
     if (!enabled || lock.current || !valid()) return;
     if (manual && !passwordInput.current?.value) return;
-    lock.current = true; clearHandoff(); setPending(true); setMessage('');
+    lock.current = true; clearHandoff(); setPending(true); setMessage(''); setDismissed(false);
+    clearTimeout(autoDismissTimer.current);
+    onConnectStarted?.();
     const current: Attempt = { attemptId: crypto.randomUUID(), mode: manual ? 'manual' : 'automatic' };
     const expected = scope.current;
     setAttempt(undefined); append(localEvent(current.attemptId, current.mode, 'authorization_requested', 'AUTHORIZATION_REQUESTED'));
@@ -106,7 +136,7 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
     onClick={manual ? undefined : () => void connect()} title={!enabled ? 'Aguarde o dispositivo ficar online e a atualização terminar.' : 'Abrir RustDesk neste computador'}>
     <MonitorUp size={18} aria-hidden="true" />{pending ? 'Abrindo…' : manual ? 'Conectar com esta senha' : 'Conectar'}
   </button>;
-  const hasFeedback = Boolean(message || retryAvailable || (attempt && !pending));
+  const hasFeedback = !dismissed && Boolean(message || retryAvailable || (attempt && !pending));
   return <div className="device-connect">
     {manual ? <form className="device-manual-form" onSubmit={(event) => void connect(event)} autoComplete="off">
       <label className="field">ID RustDesk<input value={rustdeskId ?? ''} readOnly /></label>
@@ -114,24 +144,48 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
       <p>Use a senha do RustDesk desse cliente. Não é o usuário ou a senha do Windows. Ela será usada apenas para abrir o aplicativo neste computador.</p>{button}
     </form> : button}
     {hasFeedback && (
-      <div className="connection-feedback-card" role="region" aria-label="Status da tentativa de conexão">
+      <div
+        className="connection-feedback-card"
+        role="region"
+        aria-label="Status da tentativa de conexão"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="connection-feedback-header">
           <span className="connection-feedback-title">Status da Conexão</span>
           <button
             type="button"
             className="connection-feedback-close"
-            onClick={() => { setMessage(''); setRetryAvailable(false); }}
+            onClick={dismissFeedback}
             title="Fechar aviso de conexão"
-            aria-label="Fechar aviso"
+            aria-label="Fechar aviso de conexão"
           >
-            <X size={13} aria-hidden="true" />
+            <X size={14} aria-hidden="true" />
           </button>
         </div>
         {message && <p role="status">{message}</p>}
         {retryAvailable && <button type="button" className="command-button" onClick={retry}>Abrir RustDesk agora</button>}
-        {attempt && !pending && <div className="connection-outcomes">
-          <button type="button" className="text-button" onClick={() => operatorReport('not_opened')}>RustDesk não abriu</button>
-        </div>}
+        {attempt && !pending && (
+          <div className="connection-outcomes">
+            <button
+              type="button"
+              className="text-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                operatorReport('not_opened');
+              }}
+            >
+              RustDesk não abriu
+            </button>
+            <button
+              type="button"
+              className="connection-feedback-dismiss-btn"
+              onClick={dismissFeedback}
+              title="Fechar este aviso"
+            >
+              Fechar
+            </button>
+          </div>
+        )}
       </div>
     )}
   </div>;
