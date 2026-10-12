@@ -3,7 +3,7 @@
 import type { DeviceView } from '@appremoto/contracts';
 import { ChevronLeft, ChevronRight, Download, LogOut, Plus, Search, Trash2, LayoutGrid, Table, Monitor, History, Zap, RefreshCw, Users } from 'lucide-react';
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { expireSession, logoutSession, onSessionClear, sessionEpoch } from '../auth/session-cache';
 
@@ -19,7 +19,7 @@ import { TeamViewerDeviceTree } from './teamviewer-device-tree';
 import { ConnectionHistoryView } from './connection-history-view';
 import { ActiveSessionTracker, type ActiveSession } from './active-session-tracker';
 import { AddConnectionDialog } from './add-connection-dialog';
-import { saveRecentConnection, type RecentConnectionRecord } from './teamviewer-storage';
+import { saveRecentConnection, filterDevicesByCategory, type RecentConnectionRecord } from './teamviewer-storage';
 
 import { AntigravityCockpit } from '../cockpit/antigravity-cockpit';
 import { TechnicianManagementView } from '../technicians/technician-management-view';
@@ -88,8 +88,20 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const isLocalCategory = Boolean(
+    filters.organizationId &&
+    (filters.organizationId === 'recent' || filters.organizationId.startsWith('group_'))
+  );
 
-  const query = useDevices(service, filters);
+  const apiFilters = useMemo<DeviceFiltersValue>(() => {
+    return isLocalCategory ? { ...filters, organizationId: '' } : filters;
+  }, [filters, isLocalCategory]);
+
+  const query = useDevices(service, apiFilters);
+
+  const displayedDevices = useMemo(() => {
+    return isLocalCategory ? filterDevicesByCategory(query.rows, filters.organizationId) : query.rows;
+  }, [isLocalCategory, filters.organizationId, query.rows]);
   useEffect(() => onSessionClear(queryClient, () => { setSelected(undefined); setDeviceToDelete(null); setConnectionEvents({}); setActiveSession(null); }), [queryClient]);
   const addEvent = (deviceId: string, event: ConnectionLogEvent) => {
     if (sessionEpoch(queryClient) !== epoch) return;
@@ -201,9 +213,21 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   const organizations = query.organizations.data ?? [];
   const hasFilter = Boolean(filters.organizationId || filters.status || filters.search);
   let emptyMessage = 'Nenhum dispositivo cadastrado nas organizacoes autorizadas.';
-  if (hasFilter) emptyMessage = filters.organizationId && !filters.status && !filters.search
-    ? 'Esta organizacao ainda nao possui dispositivos.'
-    : 'Nenhum dispositivo corresponde aos filtros.';
+  if (hasFilter) {
+    if (filters.organizationId === 'recent') {
+      emptyMessage = 'Nenhuma conexão recente encontrada.';
+    } else if (filters.organizationId === 'group_clients') {
+      emptyMessage = 'Nenhum computador na categoria Clientes.';
+    } else if (filters.organizationId === 'group_xpoint') {
+      emptyMessage = 'Nenhum computador na categoria X-Point Soluções.';
+    } else if (filters.organizationId === 'group_servers') {
+      emptyMessage = 'Nenhum servidor ou dispositivo de infraestrutura encontrado.';
+    } else if (filters.organizationId && !filters.status && !filters.search) {
+      emptyMessage = 'Esta organizacao ainda nao possui dispositivos.';
+    } else {
+      emptyMessage = 'Nenhum dispositivo corresponde aos filtros.';
+    }
+  }
 
   return (
     <div className="tv-app-shell">
@@ -228,7 +252,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
             </span>
             <div className="tv-mobile-brand-meta">
               <span className="tv-mobile-title">XPoint Remote</span>
-              <span className="version-badge">v1.3.7</span>
+              <span className="version-badge">v1.3.8</span>
             </div>
           </div>
           <div className="tv-mobile-top-actions">
@@ -257,7 +281,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 ? 'Técnicos & Convites'
                 : 'Histórico de Acessos'}
             </h1>
-            <span className="version-badge" title="Versão da Plataforma">v1.3.7</span>
+            <span className="version-badge" title="Versão da Plataforma">v1.3.8</span>
           </div>
 
           {activeTab === 'devices' && (
@@ -347,14 +371,14 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               <DeviceFilters organizations={organizations} value={filters} refreshing={query.isRefreshing} onChange={setFilters} onRefresh={() => void query.refresh()} />
               {query.backgroundError && <p className="refresh-error" role="alert">Nao foi possivel atualizar os dispositivos. Os status estao indisponiveis.</p>}
               {query.isPageLoading ? <section className="device-state" role="status">Carregando dispositivos...</section>
-                : query.rows.length === 0 ? <section className="device-state">{emptyMessage}</section>
+                : (query.rows.length === 0 || (isLocalCategory && displayedDevices.length === 0)) ? <section className="device-state">{emptyMessage}</section>
                   : (
                     <>
                       {/* Visualização TeamViewer em Árvore/Pastas */}
                       {viewMode === 'teamviewer' ? (
                         <>
                           <TeamViewerDeviceTree
-                            devices={query.rows}
+                            devices={displayedDevices}
                             statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'}
                             service={service}
                             canConnect={query.canConnect}
@@ -365,14 +389,17 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                             onSessionExpired={handleExpiredAction}
                             onSessionStarted={handleSessionStart}
                             onSaved={() => void query.refresh()}
+                            activeCategory={filters.organizationId}
+                            onSelectCategory={(cat) => setFilters((prev) => ({ ...prev, organizationId: cat }))}
+                            allDevices={query.rows}
                           />
                           {/* Tabela mantida acessível no DOM para leitores e testes de conformidade */}
                           <div style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
-                            <DeviceRows devices={query.rows} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
+                            <DeviceRows devices={displayedDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
                           </div>
                         </>
                       ) : (
-                        <DeviceRows devices={query.rows} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
+                        <DeviceRows devices={displayedDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
                       )}
                     </>
                   )}

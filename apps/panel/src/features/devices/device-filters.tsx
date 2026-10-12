@@ -23,13 +23,34 @@ export function DeviceFilters({ organizations, value, refreshing, onChange, onRe
     onChange({ ...value, search: search.trim() });
   }
 
+  // Opções padrão requisitadas: Recentes, Clientes, X-Point Soluções, Servidores e infra
+  const standardCategoryOptions = [
+    { value: '', label: 'Todas' },
+    { value: 'recent', label: 'Recentes' },
+    { value: 'group_clients', label: 'Clientes' },
+    { value: 'group_xpoint', label: 'X-Point Soluções' },
+    { value: 'group_servers', label: 'Servidores e infra' },
+  ];
+
+  const extraOrganizations = organizations.filter((org) => {
+    const norm = org.name.toLowerCase().trim();
+    return (
+      !['todas', 'recentes', 'clientes', 'x-point soluções', 'x-point solucoes', 'servidores e infra'].includes(norm) &&
+      !['recent', 'group_clients', 'group_xpoint', 'group_servers'].includes(org.id)
+    );
+  });
+
   return (
     <form className="device-filters" onSubmit={submit}>
       <label className="filter-control">
         <span>Organizacao</span>
         <select value={value.organizationId} onChange={(event) => onChange({ ...value, organizationId: event.target.value })}>
-          <option value="">Todas</option>
-          {organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}
+          {standardCategoryOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+          {extraOrganizations.map((organization) => (
+            <option key={organization.id} value={organization.id}>{organization.name}</option>
+          ))}
         </select>
       </label>
       <label className="filter-control">

@@ -260,3 +260,83 @@ export function encodeDeviceNotes(input: { folderName?: string; notes?: string }
   }
   return cleanNotes;
 }
+
+export function getDeviceFolderName(
+  dev: { id: string; displayName?: string; hostname?: string; organizationName?: string; rustdeskId?: string; operatingSystem?: string; notes?: string },
+  groups: DeviceGroup[] = getDeviceGroups()
+): string {
+  const metaMap = getCustomMetadataMap();
+  const rawNotes = dev.notes || metaMap[dev.id]?.notes || '';
+  const parsed = parseDeviceNotes(rawNotes);
+  if (parsed.folderName) return parsed.folderName;
+
+  const folderMap = getDeviceFolderMap();
+  const targetId = folderMap[dev.id] || (dev.rustdeskId ? folderMap[dev.rustdeskId] : undefined) || (dev.hostname ? folderMap[dev.hostname.toLowerCase()] : undefined);
+  if (targetId) {
+    const found = groups.find((g) => g.id === targetId);
+    if (found) return found.name;
+  }
+
+  for (const g of groups) {
+    if (g.deviceIds && (g.deviceIds.includes(dev.id) || (dev.rustdeskId && g.deviceIds.includes(dev.rustdeskId)))) {
+      return g.name;
+    }
+  }
+
+  const raw = ((dev.displayName || '') + ' ' + (dev.hostname || '') + ' ' + (dev.organizationName || '')).toLowerCase();
+  const isServer = raw.includes('server') || (dev.operatingSystem ? /server/i.test(dev.operatingSystem) : false);
+  const isStaff = raw.includes('xpoint') || raw.includes('x-point') || raw.includes('arthur') || raw.includes('ronaldo');
+
+  if (isServer) return 'Servidores e infra';
+  if (isStaff) return 'X-Point Soluções';
+  return 'Clientes';
+}
+
+export function filterDevicesByCategory<T extends { id: string; displayName?: string; hostname?: string; organizationName?: string; rustdeskId: string; operatingSystem?: string; notes?: string }>(
+  devices: T[],
+  category: string,
+  groups: DeviceGroup[] = getDeviceGroups()
+): T[] {
+  if (!category || category === '') return devices;
+
+  if (category === 'recent') {
+    const recents = getRecentConnections();
+    const recentIndexMap = new Map<string, number>();
+    recents.forEach((r, idx) => {
+      recentIndexMap.set(r.deviceId, idx);
+      recentIndexMap.set(r.rustdeskId, idx);
+    });
+    const matched = devices.filter((d) => recentIndexMap.has(d.id) || recentIndexMap.has(d.rustdeskId));
+    return matched.sort((a, b) => {
+      const idxA = Math.min(recentIndexMap.get(a.id) ?? 999, recentIndexMap.get(a.rustdeskId) ?? 999);
+      const idxB = Math.min(recentIndexMap.get(b.id) ?? 999, recentIndexMap.get(b.rustdeskId) ?? 999);
+      return idxA - idxB;
+    });
+  }
+
+  return devices.filter((dev) => {
+    const folderName = getDeviceFolderName(dev, groups);
+    const norm = folderName.toLowerCase();
+    if (category === 'group_servers') {
+      return norm.includes('servidor') || norm.includes('infra');
+    }
+    if (category === 'group_xpoint') {
+      return norm.includes('x-point') || norm.includes('xpoint');
+    }
+    if (category === 'group_clients') {
+      return (
+        norm.includes('cliente') ||
+        (!norm.includes('servidor') &&
+          !norm.includes('infra') &&
+          !norm.includes('x-point') &&
+          !norm.includes('xpoint'))
+      );
+    }
+    const matchedGroup = groups.find((g) => g.id === category);
+    if (matchedGroup) {
+      return norm === matchedGroup.name.toLowerCase();
+    }
+    return false;
+  });
+}
+

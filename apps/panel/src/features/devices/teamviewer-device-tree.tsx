@@ -3,11 +3,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { DeviceView } from '@appremoto/contracts';
 import {
-  ChevronDown,
-  ChevronRight,
   Clock,
   Folder,
-  FolderOpen,
   Laptop,
   Monitor,
   MoreVertical,
@@ -41,6 +38,7 @@ import {
   encodeDeviceNotes,
   saveDeviceCustomMetadata,
   getCustomMetadataMap,
+  getDeviceFolderName,
   type DeviceGroup,
   type DeviceCustomMetadata,
 } from './teamviewer-storage';
@@ -66,6 +64,9 @@ export function TeamViewerDeviceTree({
   onSessionExpired,
   onSessionStarted,
   onSaved,
+  activeCategory = '',
+  onSelectCategory,
+  allDevices = devices,
 }: {
   devices: DeviceView[];
   statusState: DeviceStatusState;
@@ -78,14 +79,10 @@ export function TeamViewerDeviceTree({
   onSessionExpired(): void;
   onSessionStarted?(device: DeviceView): void;
   onSaved?(): void;
+  activeCategory?: string;
+  onSelectCategory?(category: string): void;
+  allDevices?: DeviceView[];
 }) {
-  const [recentOpen, setRecentOpen] = useState(true);
-  const [managedOpen, setManagedOpen] = useState(true);
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    group_clients: true,
-    group_xpoint: true,
-    group_servers: true,
-  });
   const [groups, setGroups] = useState<DeviceGroup[]>(() => getDeviceGroups());
   const [menuOpenForDevice, setMenuOpenForDevice] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -149,10 +146,6 @@ export function TeamViewerDeviceTree({
   }, [devices]);
 
   const recents = getRecentConnections();
-
-  function toggleGroup(id: string) {
-    setOpenGroups((prev) => ({ ...prev, [id]: prev[id] === false }));
-  }
 
   // Mapeamento dos dispositivos nas pastas
   const groupedMap = useMemo(() => {
@@ -384,12 +377,6 @@ export function TeamViewerDeviceTree({
     const updated = createDeviceGroup(trimmed);
     setGroups(updated);
 
-    // Encontra o ID da nova pasta e já deixa ela expandida
-    const created = updated.find((g) => g.name.toLowerCase() === trimmed.toLowerCase());
-    if (created) {
-      setOpenGroups((prev) => ({ ...prev, [created.id]: true }));
-    }
-
     setNewFolderName('');
     setIsNewFolderOpen(false);
     showToast(`Pasta "${trimmed}" criada!`);
@@ -453,6 +440,45 @@ export function TeamViewerDeviceTree({
 
   const customMetaMap = typeof window !== 'undefined' ? getCustomMetadataMap() : {};
 
+  let categoryTitle = 'Todos os computadores';
+  if (activeCategory === 'recent') {
+    categoryTitle = 'Conexões recentes';
+  } else if (activeCategory === 'group_clients') {
+    categoryTitle = 'Clientes';
+  } else if (activeCategory === 'group_xpoint') {
+    categoryTitle = 'X-Point Soluções';
+  } else if (activeCategory === 'group_servers') {
+    categoryTitle = 'Servidores e infra';
+  } else if (activeCategory) {
+    const foundGroup = groups.find((g) => g.id === activeCategory);
+    if (foundGroup) categoryTitle = foundGroup.name;
+    else categoryTitle = activeCategory;
+  }
+
+  const onlineCount = useMemo(() => {
+    return devices.filter((d) => {
+      const age = d.lastSeenAt ? Date.now() - new Date(d.lastSeenAt).getTime() : Infinity;
+      return d.status === 'ONLINE' || (d.enabled && Number.isFinite(age) && age >= 0 && age <= 95_000);
+    }).length;
+  }, [devices]);
+
+  const categoryCounts = useMemo(() => {
+    let clients = 0;
+    let xpoint = 0;
+    let servers = 0;
+    allDevices.forEach((d) => {
+      const fName = getDeviceFolderName(d, groups).toLowerCase();
+      if (fName.includes('servidor') || fName.includes('infra')) servers++;
+      else if (fName.includes('x-point') || fName.includes('xpoint')) xpoint++;
+      else clients++;
+    });
+    return {
+      group_clients: clients,
+      group_xpoint: xpoint,
+      group_servers: servers,
+    };
+  }, [allDevices, groups]);
+
   return (
     <div className="tv-tree-container">
       {/* Toast de Confirmação */}
@@ -463,229 +489,75 @@ export function TeamViewerDeviceTree({
         </div>
       )}
 
-      {/* Cabeçalho da Tabela em Estilo TeamViewer */}
-      <div className="tv-tree-header">
-        <div className="tv-col-name">NOME</div>
-        <div className="tv-col-id">ID DO RUSTDESK</div>
-        <div className="tv-col-status">STATUS</div>
-        <div className="tv-col-actions">ACESSO RÁPIDO</div>
-      </div>
-
-      {/* 1. SEÇÃO DE CONEXÕES RECENTES */}
-      <div className="tv-section">
-        <button
-          type="button"
-          className="tv-section-toggle"
-          onClick={() => setRecentOpen(!recentOpen)}
-        >
-          {recentOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          <Clock size={16} className="tv-section-icon text-primary" />
-          <span className="tv-section-title">Conexões recentes</span>
-          <span className="tv-badge-count">{recents.length}</span>
-        </button>
-
-        {recentOpen && (
-          <div className="tv-rows-group">
-            {recents.length === 0 ? (
-              <div className="tv-empty-row">
-                Nenhuma conexão recente registrada ainda. Conecte-se a um computador para vê-lo aqui.
-              </div>
+      {/* Barra de Título e Categorias Estilo TeamViewer */}
+      <div className="tv-tree-header-bar">
+        <div className="tv-tree-header-title">
+          <div className="tv-category-icon-box">
+            {activeCategory === 'recent' ? (
+              <Clock size={18} />
+            ) : activeCategory === 'group_servers' ? (
+              <Laptop size={18} />
+            ) : activeCategory === 'group_xpoint' || activeCategory === 'group_clients' ? (
+              <Folder size={18} />
             ) : (
-              recents.map((rec) => {
-                const liveDevice = devices.find(
-                  (d) => d.id === rec.deviceId || d.rustdeskId === rec.rustdeskId
-                );
-                const recSeenAgeMs = liveDevice?.lastSeenAt ? Date.now() - new Date(liveDevice.lastSeenAt).getTime() : Infinity;
-                const isOnline = liveDevice
-                  ? liveDevice.status === 'ONLINE' || (liveDevice.enabled && Number.isFinite(recSeenAgeMs) && recSeenAgeMs >= 0 && recSeenAgeMs <= 95_000)
-                  : false;
-                const sys = liveDevice
-                  ? parseSystemInfo(liveDevice.operatingSystem, liveDevice.osVersion)
-                  : null;
-
-                return (
-                  <div key={`${rec.deviceId}-${rec.connectedAt}`} className="tv-row tv-row-recent">
-                    <div className="tv-col-name">
-                      {/* Avatar Circular TeamViewer com Indicador de Status Acoplado */}
-                      <div className="tv-avatar-circle" title={isOnline ? 'Online' : 'Offline'}>
-                        <Monitor size={18} className="tv-monitor-icon" />
-                        <span className={`tv-status-dot ${isOnline ? 'online' : 'offline'}`} />
-                      </div>
-                      <div className="tv-name-info">
-                        {/* Título Principal: Nome do Cliente / Dispositivo */}
-                        <div className="tv-name-header">
-                          <strong className="tv-display-name">{rec.displayName}</strong>
-                          {liveDevice && (
-                            <button
-                              type="button"
-                              className="tv-inline-edit-btn"
-                              title="Editar nome e dados deste computador"
-                              onClick={() => void handleOpenEditDevice(liveDevice)}
-                            >
-                              <Pencil size={12} />
-                            </button>
-                          )}
-                          {sys && (
-                            <span className={`tv-badge-os ${sys.badge.toLowerCase().replace(/\s+/g, '')}`}>
-                              {sys.badge}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Subtítulo Linha 1: ID RustDesk com espaçamento limpo e cópia rápida */}
-                        <div className="tv-subtext-primary">
-                          <span
-                            className="tv-id-subtext"
-                            title="ID do RustDesk (clique para copiar)"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void navigator.clipboard.writeText(rec.rustdeskId.replace(/\s+/g, '')).then(() => {
-                                setCopiedId(rec.rustdeskId);
-                                setTimeout(() => setCopiedId(null), 2500);
-                              });
-                            }}
-                          >
-                            {formatRustDeskId(rec.rustdeskId)}
-                          </span>
-                          <button
-                            type="button"
-                            className="tv-copy-id-btn"
-                            title={copiedId === rec.rustdeskId ? 'Copiado!' : 'Copiar ID do RustDesk'}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void navigator.clipboard.writeText(rec.rustdeskId.replace(/\s+/g, '')).then(() => {
-                                setCopiedId(rec.rustdeskId);
-                                setTimeout(() => setCopiedId(null), 2500);
-                              });
-                            }}
-                          >
-                            {copiedId === rec.rustdeskId ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
-                          </button>
-                        </div>
-
-                        {/* Subtítulo Linha 2: Riqueza de detalhes com tipografia menor */}
-                        <div className="tv-subtext-secondary">
-                          <span className="tv-subtext-host">{rec.hostname}</span>
-                          <span className="tv-subtext-sep">·</span>
-                          <span className="tv-subtext-tech">Técnico: {rec.technicianName}</span>
-                          {sys?.ip && (
-                            <>
-                              <span className="tv-subtext-sep">·</span>
-                              <span className="tv-subtext-ip" title="IP Local">
-                                <Globe size={11} className="tv-ip-icon" /> {sys.ip}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Coluna ID para Desktop */}
-                    <div className="tv-col-id">
-                      <span className="tv-id-text">{formatRustDeskId(rec.rustdeskId)}</span>
-                      <button
-                        type="button"
-                        className="tv-copy-id-btn"
-                        title={copiedId === rec.rustdeskId ? 'Copiado!' : 'Copiar ID do RustDesk'}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void navigator.clipboard.writeText(rec.rustdeskId.replace(/\s+/g, '')).then(() => {
-                            setCopiedId(rec.rustdeskId);
-                            setTimeout(() => setCopiedId(null), 2500);
-                          });
-                        }}
-                      >
-                        {copiedId === rec.rustdeskId ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                      </button>
-                    </div>
-
-                    {/* Coluna Status para Desktop */}
-                    <div className="tv-col-status">
-                      <span className={`tv-pill-status ${isOnline ? 'status-online' : 'status-offline'}`}>
-                        <span className="tv-pill-dot" />
-                        <span>{isOnline ? 'Online' : 'Offline'}</span>
-                      </span>
-                    </div>
-
-                    {/* Coluna de Ações: Botão TeamViewer com setas e ferramentas */}
-                    <div className="tv-col-actions">
-                      <div className="tv-action-buttons">
-                        {liveDevice && service.connectDevice && canConnect(liveDevice.organizationId) ? (
-                          <ConnectDevice
-                            deviceId={liveDevice.id}
-                            enabled={liveDevice.enabled && isOnline && statusState === 'current'}
-                            service={{
-                              connectDevice: service.connectDevice,
-                              recordConnectionEvent: service.recordConnectionEvent,
-                            }}
-                            onEvent={(event) => onEvent(liveDevice.id, event)}
-                            onHelp={() => onDetails(liveDevice)}
-                            onSessionExpired={onSessionExpired}
-                            onConnectStarted={() => onSessionStarted?.(liveDevice)}
-                            trigger={({ connect, pending, enabled }) => (
-                              <button
-                                type="button"
-                                className={`tv-btn-connect-tv ${isOnline ? 'online' : 'offline'}`}
-                                disabled={!enabled || pending}
-                                onClick={connect}
-                                title={!enabled ? 'Aguarde o dispositivo ficar online' : `Conectar a ${rec.displayName}`}
-                                aria-label={`Conectar a ${rec.displayName}`}
-                              >
-                                {pending ? (
-                                  <Loader2 size={18} className="animate-spin text-primary" />
-                                ) : (
-                                  <ArrowLeftRight size={18} className="tv-connect-arrows" />
-                                )}
-                                <span className="tv-connect-label">Conectar</span>
-                              </button>
-                            )}
-                          />
-                        ) : null}
-                        {liveDevice && (
-                          <div className="tv-action-toolbar">
-                            <button
-                              type="button"
-                              className="tv-icon-action-btn"
-                              title="Editar dados do computador"
-                              onClick={() => void handleOpenEditDevice(liveDevice)}
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              className="tv-icon-action-btn"
-                              title="Detalhes técnicos"
-                              onClick={() => onDetails(liveDevice)}
-                            >
-                              <Sliders size={14} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
+              <Monitor size={18} />
             )}
           </div>
-        )}
-      </div>
+          <div className="tv-category-info">
+            <span className="tv-category-title">{categoryTitle}</span>
+            <span className="tv-category-stats">
+              {onlineCount > 0 && <span className="tv-stats-online-dot" />}
+              {onlineCount} online · {devices.length} {devices.length === 1 ? 'computador' : 'computadores'}
+            </span>
+          </div>
+        </div>
 
-      {/* 2. SEÇÃO DE TODOS OS DISPOSITIVOS GERENCIADOS */}
-      <div className="tv-section">
-        <div className="tv-section-header-bar">
-          <button
-            type="button"
-            className="tv-section-toggle"
-            onClick={() => setManagedOpen(!managedOpen)}
-          >
-            {managedOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            <Laptop size={16} className="tv-section-icon text-primary" />
-            <span className="tv-section-title">Todos os dispositivos gerenciados</span>
-            <span className="tv-badge-count">{devices.length}</span>
-          </button>
+        <div className="tv-tree-header-actions">
+          {onSelectCategory && (
+            <div className="tv-filter-pills" role="tablist" aria-label="Filtrar por organização">
+              <button
+                type="button"
+                className={`tv-filter-pill ${!activeCategory ? 'active' : ''}`}
+                onClick={() => onSelectCategory('')}
+              >
+                Todas
+                <span className="tv-pill-count">{allDevices.length}</span>
+              </button>
+              <button
+                type="button"
+                className={`tv-filter-pill ${activeCategory === 'recent' ? 'active' : ''}`}
+                onClick={() => onSelectCategory('recent')}
+              >
+                Recentes
+                <span className="tv-pill-count">{recents.length}</span>
+              </button>
+              <button
+                type="button"
+                className={`tv-filter-pill ${activeCategory === 'group_clients' ? 'active' : ''}`}
+                onClick={() => onSelectCategory('group_clients')}
+              >
+                Clientes
+                <span className="tv-pill-count">{categoryCounts.group_clients}</span>
+              </button>
+              <button
+                type="button"
+                className={`tv-filter-pill ${activeCategory === 'group_xpoint' ? 'active' : ''}`}
+                onClick={() => onSelectCategory('group_xpoint')}
+              >
+                X-Point Soluções
+                <span className="tv-pill-count">{categoryCounts.group_xpoint}</span>
+              </button>
+              <button
+                type="button"
+                className={`tv-filter-pill ${activeCategory === 'group_servers' ? 'active' : ''}`}
+                onClick={() => onSelectCategory('group_servers')}
+              >
+                Servidores e infra
+                <span className="tv-pill-count">{categoryCounts.group_servers}</span>
+              </button>
+            </div>
+          )}
 
-          {/* Botão para Criar Nova Pasta */}
           <button
             type="button"
             className="tv-btn-new-folder"
@@ -699,317 +571,277 @@ export function TeamViewerDeviceTree({
             <span>Nova Pasta</span>
           </button>
         </div>
+      </div>
 
-        {managedOpen && (
-          <div className="tv-folders-container">
-            {groups.map((group) => {
-              const groupDevs = groupedMap.get(group.id) || [];
-              const isOpen = openGroups[group.id] !== false;
-              const onlineCount = groupDevs.filter((d) => {
-                const age = d.lastSeenAt ? Date.now() - new Date(d.lastSeenAt).getTime() : Infinity;
-                return d.status === 'ONLINE' || (d.enabled && Number.isFinite(age) && age >= 0 && age <= 95_000);
-              }).length;
+      {/* Cabeçalho de Colunas TeamViewer */}
+      <div className="tv-tree-header">
+        <div className="tv-col-name">NOME</div>
+        <div className="tv-col-id">ID DO RUSTDESK</div>
+        <div className="tv-col-status">STATUS</div>
+        <div className="tv-col-actions">ACESSO RÁPIDO</div>
+      </div>
 
-              return (
-                <div key={group.id} className="tv-folder-block">
-                  <div className="tv-folder-row-header">
-                    <button
-                      type="button"
-                      className="tv-folder-toggle"
-                      onClick={() => toggleGroup(group.id)}
-                    >
-                      {isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-                      {isOpen ? (
-                        <FolderOpen size={16} className="tv-folder-icon" />
-                      ) : (
-                        <Folder size={16} className="tv-folder-icon" />
-                      )}
-                      <span className="tv-folder-name">{group.name}</span>
-                      <span className="tv-folder-stats">
-                        {onlineCount > 0 && <span className="tv-stats-online-dot" />}
-                        {onlineCount} online / {groupDevs.length} total
-                      </span>
-                    </button>
+      {/* Exibição Contínua de Todos os Dispositivos */}
+      <div className="tv-rows-group">
+        {devices.length === 0 ? (
+          <div className="tv-folder-empty-state">
+            <Monitor size={22} className="tv-empty-icon" />
+            <span>Nenhum computador encontrado para este filtro.</span>
+            {activeCategory && onSelectCategory && (
+              <button
+                type="button"
+                className="tv-btn-secondary"
+                style={{ marginTop: 8 }}
+                onClick={() => onSelectCategory('')}
+              >
+                Exibir Todos os Computadores
+              </button>
+            )}
+          </div>
+        ) : (
+          devices.map((dev) => {
+            const seenAgeMs = dev.lastSeenAt ? Date.now() - new Date(dev.lastSeenAt).getTime() : Infinity;
+            const isOnline = dev.status === 'ONLINE' || (dev.enabled && Number.isFinite(seenAgeMs) && seenAgeMs >= 0 && seenAgeMs <= 95_000);
+            const isMenuOpen = menuOpenForDevice === dev.id;
+            const sys = parseSystemInfo(dev.operatingSystem, dev.osVersion);
+            const rawNotes = getDeviceNotes(dev, customMetaMap);
+            const parsedNotes = parseDeviceNotes(rawNotes);
+            const folderName = getDeviceFolderName(dev, groups);
+            const rec = recents.find((r) => r.deviceId === dev.id || r.rustdeskId === dev.rustdeskId);
 
-                    {/* Ações de Edição e Exclusão da Pasta */}
-                    <div className="tv-folder-actions">
+            return (
+              <div key={dev.id} className="tv-row">
+                <div className="tv-col-name">
+                  {/* Avatar Circular TeamViewer com Indicador de Status Acoplado */}
+                  <div className="tv-avatar-circle" title={isOnline ? 'Online' : 'Offline'}>
+                    <Monitor size={18} className="tv-monitor-icon" />
+                    <span className={`tv-status-dot ${isOnline ? 'online' : 'offline'}`} />
+                  </div>
+                  <div className="tv-name-info">
+                    {/* Título Principal: Nome do Cliente / Computador */}
+                    <div className="tv-name-header">
+                      <strong
+                        className="tv-display-name clickable"
+                        title="Clique para editar o nome e dados deste computador"
+                        onClick={() => void handleOpenEditDevice(dev)}
+                      >
+                        {dev.displayName}
+                      </strong>
                       <button
                         type="button"
-                        className="tv-folder-action-btn"
-                        title={`Renomear pasta "${group.name}"`}
+                        className="tv-inline-edit-btn"
+                        title="Editar nome e dados deste computador"
+                        onClick={() => void handleOpenEditDevice(dev)}
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <span className={`tv-badge-os ${sys.badge.toLowerCase().replace(/\s+/g, '')}`}>
+                        {sys.badge}
+                      </span>
+                    </div>
+
+                    {/* Subtítulo Linha 1: ID RustDesk com espaçamento limpo e cópia rápida */}
+                    <div className="tv-subtext-primary">
+                      <span
+                        className="tv-id-subtext"
+                        title="ID do RustDesk (clique para copiar)"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setFolderToRename(group);
-                          setRenameFolderName(group.name);
+                          void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
+                            setCopiedId(dev.rustdeskId);
+                            setTimeout(() => setCopiedId(null), 2500);
+                          });
                         }}
                       >
-                        <Pencil size={13} />
+                        {formatRustDeskId(dev.rustdeskId)}
+                      </span>
+                      <button
+                        type="button"
+                        className="tv-copy-id-btn"
+                        title={copiedId === dev.rustdeskId ? 'Copiado!' : 'Copiar ID do RustDesk'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
+                            setCopiedId(dev.rustdeskId);
+                            setTimeout(() => setCopiedId(null), 2500);
+                          });
+                        }}
+                      >
+                        {copiedId === dev.rustdeskId ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
                       </button>
-                      {!group.isDefault && (
-                        <button
-                          type="button"
-                          className="tv-folder-action-btn danger"
-                          title={`Excluir pasta "${group.name}" (os computadores serão movidos para "Clientes")`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setFolderToDelete(group);
-                          }}
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                    </div>
+
+                    {/* Subtítulo Linha 2: Riqueza de detalhes com tipografia menor */}
+                    <div className="tv-subtext-secondary">
+                      <span className="tv-subtext-host">{dev.hostname}</span>
+                      <span className="tv-subtext-sep">·</span>
+                      <span className="tv-subtext-os">{sys.osName} {sys.versionLabel}</span>
+                      {sys.ip && (
+                        <>
+                          <span className="tv-subtext-sep">·</span>
+                          <span className="tv-subtext-ip" title="IP Local na rede">
+                            <Globe size={11} className="tv-ip-icon" /> {sys.ip}
+                          </span>
+                        </>
+                      )}
+                      <span className="tv-subtext-sep">·</span>
+                      <span className="tv-subtext-folder" title={`Pasta: ${folderName}`}>
+                        📁 {folderName}
+                      </span>
+                      {rec?.technicianName && (
+                        <>
+                          <span className="tv-subtext-sep">·</span>
+                          <span className="tv-subtext-tech">Técnico: {rec.technicianName}</span>
+                        </>
+                      )}
+                      {dev.organizationName && dev.organizationName !== folderName && (
+                        <>
+                          <span className="tv-subtext-sep">·</span>
+                          <span className="tv-subtext-org">{dev.organizationName}</span>
+                        </>
+                      )}
+                      {parsedNotes.notes && (
+                        <>
+                          <span className="tv-subtext-sep">·</span>
+                          <span className="tv-subtext-notes" title={parsedNotes.notes}>
+                            <FileText size={11} className="inline mr-1" />
+                            {parsedNotes.notes.slice(0, 30)}
+                            {parsedNotes.notes.length > 30 ? '...' : ''}
+                          </span>
+                        </>
                       )}
                     </div>
                   </div>
-
-                  {isOpen && (
-                    <div className="tv-rows-group">
-                      {groupDevs.length === 0 ? (
-                        <div className="tv-folder-empty-state">
-                          <Folder size={16} className="tv-empty-icon" />
-                          <span>Nenhum computador atribuído a esta pasta.</span>
-                          <span className="tv-empty-hint">
-                            Use o botão de editar ou o menu ⋮ em um computador para movê-lo para cá.
-                          </span>
-                        </div>
-                      ) : (
-                        groupDevs.map((dev) => {
-                          const seenAgeMs = dev.lastSeenAt ? Date.now() - new Date(dev.lastSeenAt).getTime() : Infinity;
-                          const isOnline = dev.status === 'ONLINE' || (dev.enabled && Number.isFinite(seenAgeMs) && seenAgeMs >= 0 && seenAgeMs <= 95_000);
-                          const isMenuOpen = menuOpenForDevice === dev.id;
-                          const sys = parseSystemInfo(dev.operatingSystem, dev.osVersion);
-                          const rawNotes = getDeviceNotes(dev, customMetaMap);
-                          const parsedNotes = parseDeviceNotes(rawNotes);
-
-                          return (
-                            <div key={dev.id} className="tv-row">
-                              <div className="tv-col-name">
-                                {/* Avatar Circular TeamViewer com Indicador de Status Acoplado */}
-                                <div className="tv-avatar-circle" title={isOnline ? 'Online' : 'Offline'}>
-                                  <Monitor size={18} className="tv-monitor-icon" />
-                                  <span className={`tv-status-dot ${isOnline ? 'online' : 'offline'}`} />
-                                </div>
-                                <div className="tv-name-info">
-                                  {/* Título Principal: Nome do Cliente / Computador */}
-                                  <div className="tv-name-header">
-                                    <strong
-                                      className="tv-display-name clickable"
-                                      title="Clique para editar o nome e dados deste computador"
-                                      onClick={() => void handleOpenEditDevice(dev)}
-                                    >
-                                      {dev.displayName}
-                                    </strong>
-                                    <button
-                                      type="button"
-                                      className="tv-inline-edit-btn"
-                                      title="Editar nome e dados deste computador"
-                                      onClick={() => void handleOpenEditDevice(dev)}
-                                    >
-                                      <Pencil size={12} />
-                                    </button>
-                                    <span className={`tv-badge-os ${sys.badge.toLowerCase().replace(/\s+/g, '')}`}>
-                                      {sys.badge}
-                                    </span>
-                                  </div>
-
-                                  {/* Subtítulo Linha 1: ID RustDesk com espaçamento limpo e cópia rápida */}
-                                  <div className="tv-subtext-primary">
-                                    <span
-                                      className="tv-id-subtext"
-                                      title="ID do RustDesk (clique para copiar)"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
-                                          setCopiedId(dev.rustdeskId);
-                                          setTimeout(() => setCopiedId(null), 2500);
-                                        });
-                                      }}
-                                    >
-                                      {formatRustDeskId(dev.rustdeskId)}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      className="tv-copy-id-btn"
-                                      title={copiedId === dev.rustdeskId ? 'Copiado!' : 'Copiar ID do RustDesk'}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
-                                          setCopiedId(dev.rustdeskId);
-                                          setTimeout(() => setCopiedId(null), 2500);
-                                        });
-                                      }}
-                                    >
-                                      {copiedId === dev.rustdeskId ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
-                                    </button>
-                                  </div>
-
-                                  {/* Subtítulo Linha 2: Riqueza de detalhes com tipografia menor */}
-                                  <div className="tv-subtext-secondary">
-                                    <span className="tv-subtext-host">{dev.hostname}</span>
-                                    <span className="tv-subtext-sep">·</span>
-                                    <span className="tv-subtext-os">{sys.osName} {sys.versionLabel}</span>
-                                    {sys.ip && (
-                                      <>
-                                        <span className="tv-subtext-sep">·</span>
-                                        <span className="tv-subtext-ip" title="IP Local na rede">
-                                          <Globe size={11} className="tv-ip-icon" /> {sys.ip}
-                                        </span>
-                                      </>
-                                    )}
-                                    {dev.organizationName && (
-                                      <>
-                                        <span className="tv-subtext-sep">·</span>
-                                        <span className="tv-subtext-org">{dev.organizationName}</span>
-                                      </>
-                                    )}
-                                    {parsedNotes.notes && (
-                                      <>
-                                        <span className="tv-subtext-sep">·</span>
-                                        <span className="tv-subtext-notes" title={parsedNotes.notes}>
-                                          <FileText size={11} className="inline mr-1" />
-                                          {parsedNotes.notes.slice(0, 30)}
-                                          {parsedNotes.notes.length > 30 ? '...' : ''}
-                                        </span>
-                                      </>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Coluna ID para Desktop */}
-                              <div className="tv-col-id">
-                                <span className="tv-id-text">{formatRustDeskId(dev.rustdeskId)}</span>
-                                <button
-                                  type="button"
-                                  className="tv-copy-id-btn"
-                                  title={copiedId === dev.rustdeskId ? 'Copiado!' : 'Copiar ID do RustDesk'}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
-                                      setCopiedId(dev.rustdeskId);
-                                      setTimeout(() => setCopiedId(null), 2500);
-                                    });
-                                  }}
-                                >
-                                  {copiedId === dev.rustdeskId ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                                </button>
-                              </div>
-
-                              {/* Coluna Status para Desktop */}
-                              <div className="tv-col-status">
-                                <span
-                                  className={`tv-pill-status ${isOnline ? 'status-online' : 'status-offline'}`}
-                                  title={
-                                    isOnline
-                                      ? `Computador Online · Sinal ativo recebido há ${Math.max(0, Math.round(seenAgeMs / 1000))}s`
-                                      : `Computador Offline · Visto pela última vez: ${formatLastSeen(dev.lastSeenAt)}`
-                                  }
-                                >
-                                  <span className="tv-pill-dot" />
-                                  <span>{isOnline ? 'Online' : 'Offline'}</span>
-                                </span>
-                              </div>
-
-                              {/* Coluna de Ações: Botão TeamViewer com setas e ferramentas */}
-                              <div className="tv-col-actions">
-                                <div className="tv-action-buttons">
-                                  {service.connectDevice && canConnect(dev.organizationId) && (
-                                    <ConnectDevice
-                                      deviceId={dev.id}
-                                      enabled={dev.enabled && isOnline && statusState === 'current'}
-                                      service={{
-                                        connectDevice: service.connectDevice,
-                                        recordConnectionEvent: service.recordConnectionEvent,
-                                      }}
-                                      onEvent={(event) => onEvent(dev.id, event)}
-                                      onHelp={() => onDetails(dev)}
-                                      onSessionExpired={onSessionExpired}
-                                      onConnectStarted={() => onSessionStarted?.(dev)}
-                                      trigger={({ connect, pending, enabled }) => (
-                                        <button
-                                          type="button"
-                                          className={`tv-btn-connect-tv ${isOnline ? 'online' : 'offline'}`}
-                                          disabled={!enabled || pending}
-                                          onClick={connect}
-                                          title={!enabled ? 'Aguarde o dispositivo ficar online' : `Conectar a ${dev.displayName}`}
-                                          aria-label={`Conectar a ${dev.displayName}`}
-                                        >
-                                          {pending ? (
-                                            <Loader2 size={18} className="animate-spin text-primary" />
-                                          ) : (
-                                            <ArrowLeftRight size={18} className="tv-connect-arrows" />
-                                          )}
-                                          <span className="tv-connect-label">Conectar</span>
-                                        </button>
-                                      )}
-                                    />
-                                  )}
-                                  <div className="tv-action-toolbar">
-                                    <button
-                                      type="button"
-                                      className="tv-icon-action-btn"
-                                      title="Editar nome, pasta e observações"
-                                      onClick={() => void handleOpenEditDevice(dev)}
-                                    >
-                                      <Pencil size={14} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="tv-icon-action-btn"
-                                      title="Detalhes técnicos e histórico"
-                                      onClick={() => onDetails(dev)}
-                                    >
-                                      <Sliders size={14} />
-                                    </button>
-                                    {canManage(dev.organizationId) && (
-                                      <button
-                                        type="button"
-                                        className="tv-icon-action-btn danger"
-                                        title="Excluir dispositivo"
-                                        onClick={() => onDeletePrompt(dev)}
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    )}
-                                    {/* Menu de pasta rápida */}
-                                    <div className="tv-menu-container">
-                                      <button
-                                        type="button"
-                                        className="tv-icon-action-btn"
-                                        title="Mover rapidamente para outra pasta"
-                                        onClick={() => setMenuOpenForDevice(isMenuOpen ? null : dev.id)}
-                                      >
-                                        <MoreVertical size={14} />
-                                      </button>
-                                      {isMenuOpen && (
-                                        <div className="tv-dropdown-menu">
-                                          <p className="tv-dropdown-title">Mover para pasta:</p>
-                                          {groups.map((tg) => (
-                                            <button
-                                              key={tg.id}
-                                              type="button"
-                                              className={`tv-dropdown-item ${tg.id === group.id ? 'active' : ''}`}
-                                              onClick={() => void handleAssignGroup(dev, tg.id)}
-                                            >
-                                              <Folder size={14} />
-                                              <span>{tg.name}</span>
-                                            </button>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  )}
                 </div>
-              );
-            })}
-          </div>
+
+                {/* Coluna ID para Desktop */}
+                <div className="tv-col-id">
+                  <span className="tv-id-text">{formatRustDeskId(dev.rustdeskId)}</span>
+                  <button
+                    type="button"
+                    className="tv-copy-id-btn"
+                    title={copiedId === dev.rustdeskId ? 'Copiado!' : 'Copiar ID do RustDesk'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
+                        setCopiedId(dev.rustdeskId);
+                        setTimeout(() => setCopiedId(null), 2500);
+                      });
+                    }}
+                  >
+                    {copiedId === dev.rustdeskId ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                  </button>
+                </div>
+
+                {/* Coluna Status para Desktop */}
+                <div className="tv-col-status">
+                  <span
+                    className={`tv-pill-status ${isOnline ? 'status-online' : 'status-offline'}`}
+                    title={
+                      isOnline
+                        ? `Computador Online · Sinal ativo recebido há ${Math.max(0, Math.round(seenAgeMs / 1000))}s`
+                        : `Computador Offline · Visto pela última vez: ${formatLastSeen(dev.lastSeenAt)}`
+                    }
+                  >
+                    <span className="tv-pill-dot" />
+                    <span>{isOnline ? 'Online' : 'Offline'}</span>
+                  </span>
+                </div>
+
+                {/* Coluna de Ações: Botão TeamViewer com setas e ferramentas */}
+                <div className="tv-col-actions">
+                  <div className="tv-action-buttons">
+                    {service.connectDevice && canConnect(dev.organizationId) && (
+                      <ConnectDevice
+                        deviceId={dev.id}
+                        enabled={dev.enabled && isOnline && statusState === 'current'}
+                        service={{
+                          connectDevice: service.connectDevice,
+                          recordConnectionEvent: service.recordConnectionEvent,
+                        }}
+                        onEvent={(event) => onEvent(dev.id, event)}
+                        onHelp={() => onDetails(dev)}
+                        onSessionExpired={onSessionExpired}
+                        onConnectStarted={() => onSessionStarted?.(dev)}
+                        trigger={({ connect, pending, enabled }) => (
+                          <button
+                            type="button"
+                            className={`tv-btn-connect-tv ${isOnline ? 'online' : 'offline'}`}
+                            disabled={!enabled || pending}
+                            onClick={connect}
+                            title={!enabled ? 'Aguarde o dispositivo ficar online' : `Conectar a ${dev.displayName}`}
+                            aria-label={`Conectar a ${dev.displayName}`}
+                          >
+                            {pending ? (
+                              <Loader2 size={18} className="animate-spin text-primary" />
+                            ) : (
+                              <ArrowLeftRight size={18} className="tv-connect-arrows" />
+                            )}
+                            <span className="tv-connect-label">Conectar</span>
+                          </button>
+                        )}
+                      />
+                    )}
+                    <div className="tv-action-toolbar">
+                      <button
+                        type="button"
+                        className="tv-icon-action-btn"
+                        title="Editar nome, pasta e observações"
+                        onClick={() => void handleOpenEditDevice(dev)}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="tv-icon-action-btn"
+                        title="Detalhes técnicos e histórico"
+                        onClick={() => onDetails(dev)}
+                      >
+                        <Sliders size={14} />
+                      </button>
+                      {canManage(dev.organizationId) && (
+                        <button
+                          type="button"
+                          className="tv-icon-action-btn danger"
+                          title="Excluir dispositivo"
+                          onClick={() => onDeletePrompt(dev)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                      {/* Menu de pasta rápida */}
+                      <div className="tv-menu-container">
+                        <button
+                          type="button"
+                          className="tv-icon-action-btn"
+                          title="Mover rapidamente para outra pasta"
+                          onClick={() => setMenuOpenForDevice(isMenuOpen ? null : dev.id)}
+                        >
+                          <MoreVertical size={14} />
+                        </button>
+                        {isMenuOpen && (
+                          <div className="tv-dropdown-menu">
+                            <p className="tv-dropdown-title">Mover para pasta:</p>
+                            {groups.map((tg) => (
+                              <button
+                                key={tg.id}
+                                type="button"
+                                className={`tv-dropdown-item ${tg.name === folderName ? 'active' : ''}`}
+                                onClick={() => void handleAssignGroup(dev, tg.id)}
+                              >
+                                <Folder size={14} />
+                                <span>{tg.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
 

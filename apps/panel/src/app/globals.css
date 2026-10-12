@@ -1077,6 +1077,123 @@ button, a, input, select { outline-offset: 3px; }
   color: var(--text-muted);
 }
 
+/* Barra Superior da Árvore / Lista TeamViewer com Categorias */
+.tv-tree-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tv-tree-header-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tv-category-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(0, 103, 192, 0.1);
+  color: #0067c0;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.tv-category-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tv-category-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.tv-category-stats {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tv-tree-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tv-filter-pills {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-muted);
+  padding: 3px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.tv-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.tv-filter-pill:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tv-filter-pill.active {
+  background: #0067c0;
+  color: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 103, 192, 0.35);
+}
+
+.tv-pill-count {
+  font-size: 0.7rem;
+  opacity: 0.85;
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 1px 5px;
+  border-radius: 9999px;
+}
+
+.tv-subtext-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
 /* Cabeçalho da Seção de Dispositivos com Ação de Nova Pasta */
 .tv-section-header-bar {
   display: flex;
@@ -5192,7 +5309,7 @@ button, a, input, select { outline-offset: 3px; }
 }
 
 /* ==========================================================================
-   COCKPIT DISK STORAGE DIAGNOSTICS & RAIO-X MODAL (v1.3.7)
+   COCKPIT DISK STORAGE DIAGNOSTICS & RAIO-X MODAL (v1.3.8)
    ========================================================================== */
 
 .disk-quick-btn {
