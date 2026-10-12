@@ -21,6 +21,7 @@ import {
   Loader2,
   FileText,
   Copy,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { ConnectDevice } from './connect-device';
 import type { ConnectionLogEvent } from './connection-log';
@@ -505,11 +506,13 @@ export function TeamViewerDeviceTree({
                 return (
                   <div key={`${rec.deviceId}-${rec.connectedAt}`} className="tv-row tv-row-recent">
                     <div className="tv-col-name">
-                      <div className="tv-device-icon-wrap">
-                        <Monitor size={17} className="tv-monitor-icon" />
+                      {/* Avatar Circular TeamViewer com Indicador de Status Acoplado */}
+                      <div className="tv-avatar-circle" title={isOnline ? 'Online' : 'Offline'}>
+                        <Monitor size={18} className="tv-monitor-icon" />
                         <span className={`tv-status-dot ${isOnline ? 'online' : 'offline'}`} />
                       </div>
                       <div className="tv-name-info">
+                        {/* Título Principal: Nome do Cliente / Dispositivo */}
                         <div className="tv-name-header">
                           <strong className="tv-display-name">{rec.displayName}</strong>
                           {liveDevice && (
@@ -528,8 +531,43 @@ export function TeamViewerDeviceTree({
                             </span>
                           )}
                         </div>
-                        <span className="tv-subtext">
+
+                        {/* Subtítulo Linha 1: ID RustDesk com espaçamento limpo e cópia rápida */}
+                        <div className="tv-subtext-primary">
+                          <span
+                            className="tv-id-subtext"
+                            title="ID do RustDesk (clique para copiar)"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void navigator.clipboard.writeText(rec.rustdeskId.replace(/\s+/g, '')).then(() => {
+                                setCopiedId(rec.rustdeskId);
+                                setTimeout(() => setCopiedId(null), 2500);
+                              });
+                            }}
+                          >
+                            {formatRustDeskId(rec.rustdeskId)}
+                          </span>
+                          <button
+                            type="button"
+                            className="tv-copy-id-btn"
+                            title={copiedId === rec.rustdeskId ? 'Copiado!' : 'Copiar ID do RustDesk'}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void navigator.clipboard.writeText(rec.rustdeskId.replace(/\s+/g, '')).then(() => {
+                                setCopiedId(rec.rustdeskId);
+                                setTimeout(() => setCopiedId(null), 2500);
+                              });
+                            }}
+                          >
+                            {copiedId === rec.rustdeskId ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                          </button>
+                        </div>
+
+                        {/* Subtítulo Linha 2: Riqueza de detalhes com tipografia menor */}
+                        <div className="tv-subtext-secondary">
                           <span className="tv-subtext-host">{rec.hostname}</span>
+                          <span className="tv-subtext-sep">·</span>
+                          <span className="tv-subtext-tech">Técnico: {rec.technicianName}</span>
                           {sys?.ip && (
                             <>
                               <span className="tv-subtext-sep">·</span>
@@ -538,11 +576,11 @@ export function TeamViewerDeviceTree({
                               </span>
                             </>
                           )}
-                          <span className="tv-subtext-sep">·</span>
-                          <span className="tv-subtext-tech">Técnico: {rec.technicianName}</span>
-                        </span>
+                        </div>
                       </div>
                     </div>
+
+                    {/* Coluna ID para Desktop */}
                     <div className="tv-col-id">
                       <span className="tv-id-text">{formatRustDeskId(rec.rustdeskId)}</span>
                       <button
@@ -560,12 +598,16 @@ export function TeamViewerDeviceTree({
                         {copiedId === rec.rustdeskId ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                       </button>
                     </div>
+
+                    {/* Coluna Status para Desktop */}
                     <div className="tv-col-status">
                       <span className={`tv-pill-status ${isOnline ? 'status-online' : 'status-offline'}`}>
                         <span className="tv-pill-dot" />
                         <span>{isOnline ? 'Online' : 'Offline'}</span>
                       </span>
                     </div>
+
+                    {/* Coluna de Ações: Botão TeamViewer com setas e ferramentas */}
                     <div className="tv-col-actions">
                       <div className="tv-action-buttons">
                         {liveDevice && service.connectDevice && canConnect(liveDevice.organizationId) ? (
@@ -580,6 +622,23 @@ export function TeamViewerDeviceTree({
                             onHelp={() => onDetails(liveDevice)}
                             onSessionExpired={onSessionExpired}
                             onConnectStarted={() => onSessionStarted?.(liveDevice)}
+                            trigger={({ connect, pending, enabled }) => (
+                              <button
+                                type="button"
+                                className={`tv-btn-connect-tv ${isOnline ? 'online' : 'offline'}`}
+                                disabled={!enabled || pending}
+                                onClick={connect}
+                                title={!enabled ? 'Aguarde o dispositivo ficar online' : `Conectar a ${rec.displayName}`}
+                                aria-label={`Conectar a ${rec.displayName}`}
+                              >
+                                {pending ? (
+                                  <Loader2 size={18} className="animate-spin text-primary" />
+                                ) : (
+                                  <ArrowLeftRight size={18} className="tv-connect-arrows" />
+                                )}
+                                <span className="tv-connect-label">Conectar</span>
+                              </button>
+                            )}
                           />
                         ) : null}
                         {liveDevice && (
@@ -724,11 +783,13 @@ export function TeamViewerDeviceTree({
                           return (
                             <div key={dev.id} className="tv-row">
                               <div className="tv-col-name">
-                                <div className="tv-device-icon-wrap">
-                                  <Monitor size={17} className="tv-monitor-icon" />
+                                {/* Avatar Circular TeamViewer com Indicador de Status Acoplado */}
+                                <div className="tv-avatar-circle" title={isOnline ? 'Online' : 'Offline'}>
+                                  <Monitor size={18} className="tv-monitor-icon" />
                                   <span className={`tv-status-dot ${isOnline ? 'online' : 'offline'}`} />
                                 </div>
                                 <div className="tv-name-info">
+                                  {/* Título Principal: Nome do Cliente / Computador */}
                                   <div className="tv-name-header">
                                     <strong
                                       className="tv-display-name clickable"
@@ -749,7 +810,40 @@ export function TeamViewerDeviceTree({
                                       {sys.badge}
                                     </span>
                                   </div>
-                                  <span className="tv-subtext">
+
+                                  {/* Subtítulo Linha 1: ID RustDesk com espaçamento limpo e cópia rápida */}
+                                  <div className="tv-subtext-primary">
+                                    <span
+                                      className="tv-id-subtext"
+                                      title="ID do RustDesk (clique para copiar)"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
+                                          setCopiedId(dev.rustdeskId);
+                                          setTimeout(() => setCopiedId(null), 2500);
+                                        });
+                                      }}
+                                    >
+                                      {formatRustDeskId(dev.rustdeskId)}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="tv-copy-id-btn"
+                                      title={copiedId === dev.rustdeskId ? 'Copiado!' : 'Copiar ID do RustDesk'}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
+                                          setCopiedId(dev.rustdeskId);
+                                          setTimeout(() => setCopiedId(null), 2500);
+                                        });
+                                      }}
+                                    >
+                                      {copiedId === dev.rustdeskId ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                                    </button>
+                                  </div>
+
+                                  {/* Subtítulo Linha 2: Riqueza de detalhes com tipografia menor */}
+                                  <div className="tv-subtext-secondary">
                                     <span className="tv-subtext-host">{dev.hostname}</span>
                                     <span className="tv-subtext-sep">·</span>
                                     <span className="tv-subtext-os">{sys.osName} {sys.versionLabel}</span>
@@ -759,6 +853,12 @@ export function TeamViewerDeviceTree({
                                         <span className="tv-subtext-ip" title="IP Local na rede">
                                           <Globe size={11} className="tv-ip-icon" /> {sys.ip}
                                         </span>
+                                      </>
+                                    )}
+                                    {dev.organizationName && (
+                                      <>
+                                        <span className="tv-subtext-sep">·</span>
+                                        <span className="tv-subtext-org">{dev.organizationName}</span>
                                       </>
                                     )}
                                     {parsedNotes.notes && (
@@ -771,9 +871,11 @@ export function TeamViewerDeviceTree({
                                         </span>
                                       </>
                                     )}
-                                  </span>
+                                  </div>
                                 </div>
                               </div>
+
+                              {/* Coluna ID para Desktop */}
                               <div className="tv-col-id">
                                 <span className="tv-id-text">{formatRustDeskId(dev.rustdeskId)}</span>
                                 <button
@@ -791,6 +893,8 @@ export function TeamViewerDeviceTree({
                                   {copiedId === dev.rustdeskId ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                                 </button>
                               </div>
+
+                              {/* Coluna Status para Desktop */}
                               <div className="tv-col-status">
                                 <span
                                   className={`tv-pill-status ${isOnline ? 'status-online' : 'status-offline'}`}
@@ -804,6 +908,8 @@ export function TeamViewerDeviceTree({
                                   <span>{isOnline ? 'Online' : 'Offline'}</span>
                                 </span>
                               </div>
+
+                              {/* Coluna de Ações: Botão TeamViewer com setas e ferramentas */}
                               <div className="tv-col-actions">
                                 <div className="tv-action-buttons">
                                   {service.connectDevice && canConnect(dev.organizationId) && (
@@ -818,6 +924,23 @@ export function TeamViewerDeviceTree({
                                       onHelp={() => onDetails(dev)}
                                       onSessionExpired={onSessionExpired}
                                       onConnectStarted={() => onSessionStarted?.(dev)}
+                                      trigger={({ connect, pending, enabled }) => (
+                                        <button
+                                          type="button"
+                                          className={`tv-btn-connect-tv ${isOnline ? 'online' : 'offline'}`}
+                                          disabled={!enabled || pending}
+                                          onClick={connect}
+                                          title={!enabled ? 'Aguarde o dispositivo ficar online' : `Conectar a ${dev.displayName}`}
+                                          aria-label={`Conectar a ${dev.displayName}`}
+                                        >
+                                          {pending ? (
+                                            <Loader2 size={18} className="animate-spin text-primary" />
+                                          ) : (
+                                            <ArrowLeftRight size={18} className="tv-connect-arrows" />
+                                          )}
+                                          <span className="tv-connect-label">Conectar</span>
+                                        </button>
+                                      )}
                                     />
                                   )}
                                   <div className="tv-action-toolbar">

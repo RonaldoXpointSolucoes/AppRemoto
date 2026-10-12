@@ -1607,28 +1607,46 @@ button, a, input, select { outline-offset: 3px; }
   min-width: 0;
 }
 
+/* Avatar Circular TeamViewer com Status Dot Acoplado */
+.tv-avatar-circle,
 .tv-device-icon-wrap {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
   flex-shrink: 0;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.tv-row:hover .tv-avatar-circle,
+.tv-row:hover .tv-device-icon-wrap {
+  background: rgba(0, 103, 192, 0.08);
+  border-color: rgba(0, 103, 192, 0.3);
 }
 
 .tv-monitor-icon {
   color: var(--text-muted);
+  transition: color 0.15s ease;
+}
+
+.tv-row:hover .tv-monitor-icon {
+  color: #0067c0;
 }
 
 .tv-status-dot {
   position: absolute;
-  bottom: 2px;
-  right: 2px;
-  width: 8px;
-  height: 8px;
+  bottom: 0px;
+  right: 0px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
   border: 2px solid var(--surface);
+  box-sizing: border-box;
 }
 
 .tv-status-dot.online {
@@ -1637,29 +1655,113 @@ button, a, input, select { outline-offset: 3px; }
 }
 
 .tv-status-dot.offline {
-  background: #94a3b8;
+  background: transparent;
+  border: 2px solid #94a3b8;
 }
 
 .tv-name-info {
   display: flex;
   flex-direction: column;
+  gap: 2px;
   min-width: 0;
+  flex: 1;
+}
+
+.tv-name-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
 }
 
 .tv-display-name {
-  font-size: 0.875rem;
-  font-weight: 700;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
 }
 
-.tv-subtext {
-  font-size: 0.75rem;
+/* Subtítulo Linha 1: ID RustDesk com tipografia limpa */
+.tv-subtext-primary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   color: var(--text-muted);
+  line-height: 1.2;
+}
+
+.tv-id-subtext {
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.tv-id-subtext:hover {
+  color: #0067c0;
+}
+
+/* Subtítulo Linha 2: Riqueza de detalhes em tipografia menor */
+.tv-subtext,
+.tv-subtext-secondary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.70rem;
+  color: var(--text-muted);
+  opacity: 0.85;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.tv-subtext-sep {
+  opacity: 0.45;
+}
+
+/* Botão Conectar TeamViewer com Setas Opostas */
+.tv-btn-connect-tv {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 103, 192, 0.25);
+  background: rgba(0, 103, 192, 0.08);
+  color: #0067c0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.tv-btn-connect-tv:hover:not(:disabled) {
+  background: #0067c0;
+  color: #ffffff;
+  border-color: #0067c0;
+  box-shadow: 0 2px 8px rgba(0, 103, 192, 0.35);
+}
+
+.tv-btn-connect-tv:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.tv-btn-connect-tv:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.8);
+}
+
+.tv-connect-arrows {
+  flex-shrink: 0;
 }
 
 .tv-col-id {
@@ -2799,92 +2901,182 @@ button, a, input, select { outline-offset: 3px; }
     padding: 0 16px;
   }
 
-  /* Cartões de Dispositivos Mobile First */
+  /* Lista de Dispositivos Estilo TeamViewer Mobile */
   .tv-tree-header {
     display: none;
   }
 
   .tv-row {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
     gap: 12px;
-    padding: 14px;
-    margin-bottom: 8px;
+    padding: 10px 14px;
+    margin-bottom: 0;
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-    transition: transform 0.15s ease, border-color 0.15s ease;
+    border-top: 0;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    box-shadow: none;
+    min-height: 68px;
+    transition: background 0.12s ease;
   }
 
   .tv-row:active {
-    transform: scale(0.99);
+    background: rgba(0, 103, 192, 0.05);
+    transform: none;
   }
 
   .tv-col-name {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     display: flex;
     align-items: center;
-    justify-content: flex-start;
     gap: 12px;
   }
 
-  .tv-col-id {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 6px 10px;
-    background: var(--surface-muted);
-    border-radius: 6px;
-    font-size: 0.8rem;
-  }
-
+  /* No Mobile o ID e Status estão dentro do avatar e dos subtítulos ricos */
+  .tv-col-id,
   .tv-col-status {
-    display: inline-flex;
-    align-self: flex-start;
+    display: none !important;
   }
 
   .tv-col-actions {
-    width: 100%;
+    flex-shrink: 0;
     display: flex;
-    justify-content: stretch;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    width: auto;
   }
 
   .tv-action-buttons {
-    width: 100%;
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 6px;
+    width: auto;
   }
 
   .tv-action-buttons > div {
-    flex: 1;
+    flex: initial;
   }
 
-  .tv-action-buttons .connect-button {
-    width: 100%;
-    min-height: 48px;
+  /* Botão TeamViewer Mobile: Duas Setas Azuis Opostas de 44x44px */
+  .tv-btn-connect-tv {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 103, 192, 0.22);
+    background: rgba(0, 103, 192, 0.08);
+    color: #0067c0;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .tv-btn-connect-tv .tv-connect-label {
+    display: none; /* Mantém apenas as setas no mobile, exatamente como no TeamViewer! */
+  }
+
+  .tv-btn-connect-tv .tv-connect-arrows {
+    width: 20px;
+    height: 20px;
+  }
+
+  .tv-btn-connect-tv:active:not(:disabled) {
+    transform: scale(0.88);
+    background: rgba(0, 103, 192, 0.18);
+  }
+
+  .tv-btn-connect-tv.offline {
+    color: #94a3b8;
+    background: rgba(148, 163, 184, 0.08);
+    border-color: rgba(148, 163, 184, 0.2);
+  }
+
+  /* Ações secundárias compactas no mobile */
+  .tv-action-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .tv-action-toolbar .tv-icon-action-btn:not(:last-child) {
+    display: none; /* Oculta lápis e sliders soltos na linha; mantém o menu ⋮ que agrupa tudo */
+  }
+
+  .tv-menu-container .tv-icon-action-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: transparent;
+    border: 0;
+    color: var(--text-muted);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+  }
+
+  .tv-menu-container .tv-icon-action-btn:active {
+    transform: scale(0.90);
+  }
+
+  /* Floating Action Button (FAB) no estilo TeamViewer Mobile */
+  .tv-mobile-fab {
+    display: flex;
+    align-items: center;
     justify-content: center;
-    border-radius: 10px;
-    font-size: 0.95rem;
-    font-weight: 700;
-    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+    position: fixed;
+    bottom: 80px;
+    right: 18px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0067c0 0%, #0284c7 100%);
+    color: #ffffff;
+    border: none;
+    box-shadow: 0 6px 20px rgba(0, 103, 192, 0.45);
+    z-index: 50;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
   }
 
-  .tv-action-buttons .connect-button:active {
-    transform: scale(0.96);
+  .tv-mobile-fab:active {
+    transform: scale(0.90);
   }
 
-  .tv-icon-action-btn {
-    width: 48px;
-    height: 48px;
-    border-radius: 10px;
-    background: var(--surface-muted);
-    border: 1px solid var(--border);
+  /* Filtros no mobile: mais compactos e limpos para não empurrar a lista de clientes */
+  .device-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    border-radius: 12px;
   }
 
-  .tv-icon-action-btn:active {
-    transform: scale(0.92);
+  .device-filters .filter-control {
+    flex: 1 1 calc(50% - 4px);
+    font-size: 0.75rem;
+  }
+
+  .device-filters .filter-control.search-control {
+    flex: 1 1 100%;
+  }
+
+  .device-filters .filter-control select,
+  .device-filters .filter-control input {
+    height: 38px;
+    font-size: 0.8rem;
   }
 
   /* Widget de Sessão Ativa posicionado acima da bottom bar */
@@ -5000,7 +5192,7 @@ button, a, input, select { outline-offset: 3px; }
 }
 
 /* ==========================================================================
-   COCKPIT DISK STORAGE DIAGNOSTICS & RAIO-X MODAL (v1.3.6)
+   COCKPIT DISK STORAGE DIAGNOSTICS & RAIO-X MODAL (v1.3.7)
    ========================================================================== */
 
 .disk-quick-btn {

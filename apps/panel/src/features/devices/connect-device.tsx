@@ -15,10 +15,11 @@ export interface ConnectionService {
 }
 interface Attempt { attemptId: string; mode: ConnectionMode }
 const handoffLifetimeMs = 30_000;
-export function ConnectDevice({ deviceId, enabled, service, manual = false, rustdeskId, onEvent, onHelp, onSessionExpired, onConnectStarted }: {
+export function ConnectDevice({ deviceId, enabled, service, manual = false, rustdeskId, onEvent, onHelp, onSessionExpired, onConnectStarted, trigger }: {
   deviceId: string; enabled: boolean; service: ConnectionService; manual?: boolean; rustdeskId?: string;
   onEvent?(event: ConnectionLogEvent): void; onHelp?(): void; onSessionExpired?(): void;
   onConnectStarted?(): void;
+  trigger?: (props: { connect: () => void; pending: boolean; enabled: boolean }) => React.ReactNode;
 }) {
   const client = useQueryClient();
   const [pending, setPending] = useState(false);
@@ -132,10 +133,11 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
     setMessage('Você informou o resultado desta tentativa. Consulte o diagnóstico para conferir o registro e baixar o log.');
     if (event === 'not_opened') onHelp?.();
   }
-  const button = <button type={manual ? 'submit' : 'button'} className="primary-button guide-link" disabled={!enabled || pending}
+  const defaultButton = <button type={manual ? 'submit' : 'button'} className="primary-button guide-link" disabled={!enabled || pending}
     onClick={manual ? undefined : () => void connect()} title={!enabled ? 'Aguarde o dispositivo ficar online e a atualização terminar.' : 'Abrir RustDesk neste computador'}>
     <MonitorUp size={18} aria-hidden="true" />{pending ? 'Abrindo…' : manual ? 'Conectar com esta senha' : 'Conectar'}
   </button>;
+  const button = (!manual && trigger) ? trigger({ connect: () => void connect(), pending, enabled }) : defaultButton;
   const hasFeedback = !dismissed && Boolean(message || retryAvailable || (attempt && !pending));
   return <div className="device-connect">
     {manual ? <form className="device-manual-form" onSubmit={(event) => void connect(event)} autoComplete="off">

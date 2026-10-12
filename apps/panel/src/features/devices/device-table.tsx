@@ -228,7 +228,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
             </span>
             <div className="tv-mobile-brand-meta">
               <span className="tv-mobile-title">XPoint Remote</span>
-              <span className="version-badge">v1.3.6</span>
+              <span className="version-badge">v1.3.7</span>
             </div>
           </div>
           <div className="tv-mobile-top-actions">
@@ -257,7 +257,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 ? 'Técnicos & Convites'
                 : 'Histórico de Acessos'}
             </h1>
-            <span className="version-badge" title="Versão da Plataforma">v1.3.6</span>
+            <span className="version-badge" title="Versão da Plataforma">v1.3.7</span>
           </div>
 
           {activeTab === 'devices' && (
@@ -443,6 +443,19 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
           </div>
         </div>
       </div>
+    )}
+
+    {/* Botão Flutuante (FAB) Estilo TeamViewer Mobile */}
+    {activeTab === 'devices' && (
+      <button
+        type="button"
+        className="tv-mobile-fab"
+        onClick={() => setIsAddOpen(true)}
+        title="Adicionar conexão manual ou novo grupo"
+        aria-label="Adicionar conexão manual ou novo grupo"
+      >
+        <Plus size={24} />
+      </button>
     )}
 
     {/* Barra Inferior Mobile - Mobile First */}
