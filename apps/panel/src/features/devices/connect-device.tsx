@@ -27,6 +27,7 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
   const [retryAvailable, setRetryAvailable] = useState(false);
   const [attempt, setAttempt] = useState<Attempt>();
   const [dismissed, setDismissed] = useState(false);
+  const [isErrorFeedback, setIsErrorFeedback] = useState(false);
   const passwordInput = useRef<HTMLInputElement>(null);
   const lock = useRef(false);
   const active = useRef(false);
@@ -41,10 +42,10 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
   function clearPassword() { if (passwordInput.current) passwordInput.current.value = ''; }
   useEffect(() => {
     scope.current = { deviceId, epoch: sessionEpoch(client) }; active.current = true;
-    lock.current = false; clearHandoff(); clearPassword(); setAttempt(undefined); setMessage(''); setPending(false); setDismissed(false);
+    lock.current = false; clearHandoff(); clearPassword(); setAttempt(undefined); setMessage(''); setPending(false); setDismissed(false); setIsErrorFeedback(false);
     clearTimeout(autoDismissTimer.current);
     const remove = onSessionClear(client, () => {
-      active.current = false; clearHandoff(); clearPassword(); setAttempt(undefined); setMessage(''); setPending(false); setDismissed(false);
+      active.current = false; clearHandoff(); clearPassword(); setAttempt(undefined); setMessage(''); setPending(false); setDismissed(false); setIsErrorFeedback(false);
       clearTimeout(autoDismissTimer.current);
     });
     return () => {
@@ -72,6 +73,7 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
     clearTimeout(autoDismissTimer.current);
     clearHandoff();
     setDismissed(true);
+    setIsErrorFeedback(false);
     setMessage('');
     setAttempt(undefined);
   }
@@ -79,6 +81,8 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
     if (!valid() || !currentEnabled.current) return;
     try {
       launchRustDesk(uri); report(current, 'launch_requested');
+      setIsErrorFeedback(false);
+      onConnectStarted?.();
       setMessage('Tentamos abrir o RustDesk neste computador do técnico. Confirme a abertura no navegador. A sessão ainda não foi confirmada.');
       clearTimeout(autoDismissTimer.current);
       autoDismissTimer.current = setTimeout(() => {
@@ -89,6 +93,7 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
       }, 15_000);
     } catch {
       report(current, 'launch_failed');
+      setIsErrorFeedback(true);
       setMessage('O navegador não conseguiu abrir o RustDesk. Use as instruções abaixo.');
     }
   }
@@ -96,9 +101,8 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
     event?.preventDefault();
     if (!enabled || lock.current || !valid()) return;
     if (manual && !passwordInput.current?.value) return;
-    lock.current = true; clearHandoff(); setPending(true); setMessage(''); setDismissed(false);
+    lock.current = true; clearHandoff(); setPending(true); setMessage(''); setDismissed(false); setIsErrorFeedback(false);
     clearTimeout(autoDismissTimer.current);
-    onConnectStarted?.();
     const current: Attempt = { attemptId: crypto.randomUUID(), mode: manual ? 'manual' : 'automatic' };
     const expected = scope.current;
     setAttempt(undefined); append(localEvent(current.attemptId, current.mode, 'authorization_requested', 'AUTHORIZATION_REQUESTED'));
@@ -117,6 +121,7 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
       if (valid() && scope.current === expected) {
         if (error instanceof ApiClientError && error.status === 401 && onSessionExpired) { onSessionExpired(); return; }
         append(localEvent(current.attemptId, current.mode, 'rejected', safeConnectionCode(error)));
+        setIsErrorFeedback(true);
         setMessage('Não foi possível iniciar o acesso. Abra os detalhes e consulte o diagnóstico desta tentativa.');
       }
     } finally { if (scope.current === expected) { clearPassword(); lock.current = false; if (valid()) setPending(false); } }
@@ -130,6 +135,7 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
   function operatorReport(event: 'not_opened' | 'session_confirmed' | 'session_failed') {
     if (!attempt || !valid()) return;
     report(attempt, event); clearHandoff();
+    if (event === 'not_opened' || event === 'session_failed') setIsErrorFeedback(true);
     setMessage('Você informou o resultado desta tentativa. Consulte o diagnóstico para conferir o registro e baixar o log.');
     if (event === 'not_opened') onHelp?.();
   }
@@ -147,7 +153,7 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
     </form> : button}
     {hasFeedback && (
       <div
-        className="connection-feedback-card"
+        className={`connection-feedback-card ${isErrorFeedback ? 'is-error-only' : 'is-routine-handoff'}`}
         role="region"
         aria-label="Status da tentativa de conexão"
         onClick={(e) => e.stopPropagation()}

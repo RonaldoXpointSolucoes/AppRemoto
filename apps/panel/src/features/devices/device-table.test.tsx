@@ -335,13 +335,13 @@ describe('DeviceDirectory', () => {
   it('opens the release notes modal when clicking the version number button', async () => {
     renderDirectory(service());
     await screen.findAllByText('Recepcao 01');
-    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.4.2' });
+    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.4.3' });
     expect(versionButtons.length).toBeGreaterThan(0);
     await userEvent.click(versionButtons[0]);
     const dialog = await screen.findByRole('dialog', { name: /Novidades da Plataforma/i });
     expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText('Documentação Automática em 20s & Supressão de Caixa Duplicada')).toBeInTheDocument();
     expect(within(dialog).getByText('Memória Persistente de Filtros e Preferências por Usuário')).toBeInTheDocument();
-    expect(within(dialog).getByText('Motor de Documentação Automatizada & Telemetria Máxima de Atendimento')).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Entendi, voltar ao painel' }));
     expect(screen.queryByRole('dialog', { name: /Novidades da Plataforma/i })).not.toBeInTheDocument();
   });

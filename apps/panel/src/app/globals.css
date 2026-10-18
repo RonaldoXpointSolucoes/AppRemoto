@@ -2001,30 +2001,34 @@ button, a, input, select { outline-offset: 3px; }
   position: relative;
 }
 
-/* Card de Feedback Flutuante no modo Árvore (não quebra nem altera a altura da linha!) */
+/* Card de Feedback Flutuante no modo Árvore: oculto em conexões normais (evita caixa duplicada); exibido apenas em falhas críticas */
+.tv-row .connection-feedback-card.is-routine-handoff {
+  display: none !important;
+}
+
 .tv-row .connection-feedback-card {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 6px);
   right: 0;
   z-index: 1200;
-  width: 340px;
+  width: 280px;
   max-width: calc(100vw - 32px);
-  background: rgba(15, 23, 42, 0.96) !important;
+  background: rgba(15, 23, 42, 0.97) !important;
   backdrop-filter: blur(16px) !important;
   -webkit-backdrop-filter: blur(16px) !important;
-  border: 1px solid rgba(56, 189, 248, 0.35) !important;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), 0 0 20px rgba(56, 189, 248, 0.2) !important;
+  border: 1px solid rgba(239, 68, 68, 0.45) !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65) !important;
   border-radius: 10px !important;
-  padding: 12px 14px !important;
+  padding: 10px 12px !important;
   display: flex !important;
   flex-direction: column !important;
-  gap: 8px !important;
+  gap: 6px !important;
   text-align: left !important;
 }
 
 .tv-row .connection-feedback-card p[role="status"] {
-  font-size: 0.8rem !important;
-  line-height: 1.45 !important;
+  font-size: 0.76rem !important;
+  line-height: 1.4 !important;
   color: #f1f5f9 !important;
   margin: 0 !important;
   white-space: normal !important;

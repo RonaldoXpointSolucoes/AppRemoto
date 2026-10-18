@@ -32,11 +32,31 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.4.3',
+    date: 'Outubro 2026',
+    title: 'Documentação Automática em 20s & Supressão de Caixa Duplicada',
+    highlight: 'Conclusão automática do laudo após 20s de inatividade e exibição do aviso de conexão restrita apenas a erros críticos.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Documentação Automática 1-Click após 20 Segundos de Inatividade',
+        description:
+          'Ao encerrar a sessão e retornar ao painel (ou caso ninguém digite nem clique em nada por 20 segundos), o Auto 1-Click é acionado automaticamente, salvando o protocolo e o laudo completo.',
+        tag: 'Novo',
+      },
+      {
+        title: 'Eliminação da Caixa Duplicada de Status da Conexão',
+        description:
+          'A caixa flutuante de "Status da Conexão" não aparece mais sobre a lista durante conexões normais, sendo exibida apenas se ocorrer uma falha crítica na abertura.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.4.2',
     date: 'Outubro 2026',
     title: 'Memória Persistente de Filtros e Preferências por Usuário',
     highlight: 'Seus filtros de Organização, Status, Busca, Online/Fixados, Ordenação, Densidade e Favoritos ficam salvos individualmente para cada operador.',
-    isCurrent: true,
     items: [
       {
         title: 'Persistência Automática de Filtros por Usuário Autenticado',
@@ -258,7 +278,7 @@ export function VersionChangelogModal({
             <div className="changelog-title-group">
               <div className="changelog-title-row">
                 <h2 id="changelog-modal-title">Novidades da Plataforma</h2>
-                <span className="changelog-current-pill">v1.4.2 · ATUAL</span>
+                <span className="changelog-current-pill">v1.4.3 · ATUAL</span>
               </div>
               <p className="changelog-subtitle">
                 Histórico de atualizações, recursos de mobilidade e melhorias de UI/UX do XPoint Remote
@@ -347,7 +367,7 @@ export function VersionChangelogModal({
         <div className="changelog-modal-footer">
           <div className="changelog-footer-info">
             <ShieldCheck size={15} className="text-emerald-400" />
-            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.4.2)</span>
+            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.4.3)</span>
           </div>
           <button type="button" className="tv-btn-primary" onClick={onClose}>
             Entendi, voltar ao painel
