@@ -32,11 +32,37 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.4.2',
+    date: 'Outubro 2026',
+    title: 'Memória Persistente de Filtros e Preferências por Usuário',
+    highlight: 'Seus filtros de Organização, Status, Busca, Online/Fixados, Ordenação, Densidade e Favoritos ficam salvos individualmente para cada operador.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Persistência Automática de Filtros por Usuário Autenticado',
+        description:
+          'Cada técnico mantém seu próprio estado salvo para Organização/Pasta selecionada, Status (Todos/Online/Offline), termo de busca e modo de visualização (Pastas/Tabela).',
+        tag: 'Novo',
+      },
+      {
+        title: 'Restauração Instantânea de Filtros Rápidos, Ordenação e Favoritos',
+        description:
+          'Ao voltar para a aplicação no PC ou celular, os filtros rápidos (Online/Prontos, Fixados), a ordenação escolhida, o modo compacto e os favoritos individuais já estarão exatamente como você deixou.',
+        tag: 'Mobilidade',
+      },
+      {
+        title: 'Exibição Integral do Nome Principal & Realocação do Selo OS no Mobile',
+        description:
+          'O nome principal do cliente/computador nunca mais é cortado com reticências (...), ganhando largura total na primeira linha enquanto o selo WIN 10 / WIN 11 é exibido ao lado do status Online no celular.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.4.1',
     date: 'Outubro 2026',
     title: 'Motor de Documentação Automatizada & Telemetria Máxima de Atendimento',
     highlight: 'Geração automática de laudos técnicos com protocolo único, 12 indicadores da máquina/rede, ações em 1 toque e HUD compacto para celular.',
-    isCurrent: true,
     items: [
       {
         title: 'Coleta Automática de 12+ Indicadores da Sessão e Máquina',
@@ -232,7 +258,7 @@ export function VersionChangelogModal({
             <div className="changelog-title-group">
               <div className="changelog-title-row">
                 <h2 id="changelog-modal-title">Novidades da Plataforma</h2>
-                <span className="changelog-current-pill">v1.4.1 · ATUAL</span>
+                <span className="changelog-current-pill">v1.4.2 · ATUAL</span>
               </div>
               <p className="changelog-subtitle">
                 Histórico de atualizações, recursos de mobilidade e melhorias de UI/UX do XPoint Remote
@@ -321,7 +347,7 @@ export function VersionChangelogModal({
         <div className="changelog-modal-footer">
           <div className="changelog-footer-info">
             <ShieldCheck size={15} className="text-emerald-400" />
-            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.4.1)</span>
+            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.4.2)</span>
           </div>
           <button type="button" className="tv-btn-primary" onClick={onClose}>
             Entendi, voltar ao painel

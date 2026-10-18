@@ -28,6 +28,10 @@ import {
   getFavoriteDeviceIds,
   generateSessionProtocol,
   detectClientTelemetry,
+  getLastActiveUserId,
+  setLastActiveUserId,
+  getUserViewPreferences,
+  saveUserViewPreferences,
   type RecentConnectionRecord,
 } from './teamviewer-storage';
 
@@ -82,7 +86,15 @@ function DeviceRows({ devices, statusState, service, canConnect, canManage, onDe
 export function DeviceDirectory({ service, onSessionExpired }: { service: DeviceDirectoryService; onSessionExpired(): void }) {
   const queryClient = useQueryClient();
   const [epoch] = useState(() => sessionEpoch(queryClient));
-  const [filters, setFilters] = useState<DeviceFiltersValue>({ organizationId: '', status: '', search: '' });
+  const hasUserService = Boolean(service.getMe);
+  const initialUserId = useMemo(() => (hasUserService ? getLastActiveUserId() : null), [hasUserService]);
+  const initialUserPrefs = useMemo(() => getUserViewPreferences(initialUserId), [initialUserId]);
+
+  const [filters, setFilters] = useState<DeviceFiltersValue>(() => ({
+    organizationId: initialUserPrefs.organizationId,
+    status: initialUserPrefs.status,
+    search: initialUserPrefs.search,
+  }));
   const [selected, setSelected] = useState<DeviceView>();
   const [connectionEvents, setConnectionEvents] = useState<Record<string, ConnectionLogEvent[]>>({});
   const [logoutPending, setLogoutPending] = useState(false);
@@ -90,15 +102,17 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   const [deviceToDelete, setDeviceToDelete] = useState<DeviceView | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteDirectError, setDeleteDirectError] = useState('');
-  
-  // Estados do TeamViewer
+
+  // Estados do TeamViewer (Persistidos por Usuário)
   const [activeTab, setActiveTab] = useState<TeamViewerTab>('devices');
-  const [viewMode, setViewMode] = useState<'teamviewer' | 'table'>('teamviewer');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [viewMode, setViewMode] = useState<'teamviewer' | 'table'>(() => initialUserPrefs.viewMode);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => initialUserPrefs.sidebarCollapsed);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const loadedUserRef = useRef<string | null>(initialUserId);
+
   const isLocalCategory = Boolean(
     filters.organizationId &&
     (filters.organizationId === 'recent' || filters.organizationId.startsWith('group_'))
@@ -109,6 +123,37 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   }, [filters, isLocalCategory]);
 
   const query = useDevices(service, apiFilters);
+  const resolvedUserId = query.profile?.id || null;
+  const activeUserId = resolvedUserId || initialUserId;
+
+  // Quando o perfil do usuário autenticado é carregado (ou trocado), restaura os filtros que esse usuário deixou
+  useEffect(() => {
+    if (!resolvedUserId) return;
+    setLastActiveUserId(resolvedUserId);
+    if (loadedUserRef.current !== resolvedUserId) {
+      loadedUserRef.current = resolvedUserId;
+      const userPrefs = getUserViewPreferences(resolvedUserId);
+      setFilters({
+        organizationId: userPrefs.organizationId,
+        status: userPrefs.status,
+        search: userPrefs.search,
+      });
+      setViewMode(userPrefs.viewMode);
+      setSidebarCollapsed(userPrefs.sidebarCollapsed);
+    }
+  }, [resolvedUserId]);
+
+  // Salva automaticamente os filtros e preferências de visualização do usuário sempre que alterados
+  useEffect(() => {
+    if (!activeUserId || loadedUserRef.current !== activeUserId) return;
+    saveUserViewPreferences(activeUserId, {
+      organizationId: filters.organizationId,
+      status: filters.status,
+      search: filters.search,
+      viewMode,
+      sidebarCollapsed,
+    });
+  }, [activeUserId, filters.organizationId, filters.status, filters.search, viewMode, sidebarCollapsed]);
 
   const displayedDevices = useMemo(() => {
     return isLocalCategory ? filterDevicesByCategory(query.rows, filters.organizationId) : query.rows;
@@ -304,10 +349,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={() => setIsChangelogOpen(true)}
-                title="Clique para ver todas as novidades da versão v1.4.1"
-                aria-label="Ver novidades da versão v1.4.1 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.4.2"
+                aria-label="Ver novidades da versão v1.4.2 (mobile)"
               >
-                v1.4.1
+                v1.4.2
               </button>
             </div>
           </div>
@@ -353,10 +398,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.4.1"
-              aria-label="Ver novidades da versão v1.4.1"
+              title="Clique para ver todas as novidades da versão v1.4.2"
+              aria-label="Ver novidades da versão v1.4.2"
             >
-              v1.4.1
+              v1.4.2
             </button>
           </div>
 
@@ -484,6 +529,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                             activeCategory={filters.organizationId}
                             onSelectCategory={(cat) => setFilters((prev) => ({ ...prev, organizationId: cat }))}
                             allDevices={query.rows}
+                            currentUserId={activeUserId}
                           />
                           {/* Tabela mantida acessível no DOM para leitores e testes de conformidade */}
                           <div style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>

@@ -335,17 +335,67 @@ describe('DeviceDirectory', () => {
   it('opens the release notes modal when clicking the version number button', async () => {
     renderDirectory(service());
     await screen.findAllByText('Recepcao 01');
-    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.4.1' });
+    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.4.2' });
     expect(versionButtons.length).toBeGreaterThan(0);
     await userEvent.click(versionButtons[0]);
     const dialog = await screen.findByRole('dialog', { name: /Novidades da Plataforma/i });
     expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText('Memória Persistente de Filtros e Preferências por Usuário')).toBeInTheDocument();
     expect(within(dialog).getByText('Motor de Documentação Automatizada & Telemetria Máxima de Atendimento')).toBeInTheDocument();
-    expect(within(dialog).getByText('Central Interativa de Novidades & Changelog')).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Entendi, voltar ao painel' }));
     expect(screen.queryByRole('dialog', { name: /Novidades da Plataforma/i })).not.toBeInTheDocument();
   });
+
+  it('persists and restores chosen filters separately for each authenticated user when returning to the application', async () => {
+    localStorage.clear();
+    try {
+      const ronaldoService = service({
+        getMe: vi.fn().mockResolvedValue({
+          id: 'user-ronaldo',
+          displayName: 'Ronaldo',
+          globalRole: 'super_admin',
+          authorization: [],
+        }),
+      });
+
+      const firstSession = renderDirectory(ronaldoService);
+      await screen.findAllByText('Recepcao 01');
+      await waitFor(() => expect(ronaldoService.getMe).toHaveBeenCalled());
+
+      await userEvent.selectOptions(screen.getByLabelText('Organizacao'), 'org-b');
+      await userEvent.selectOptions(screen.getByLabelText('Status'), 'ONLINE');
+      expect(screen.getByLabelText('Organizacao')).toHaveValue('org-b');
+      expect(screen.getByLabelText('Status')).toHaveValue('ONLINE');
+      firstSession.unmount();
+
+      // Outro usuário (Arthur) entra na aplicação e vê seus próprios filtros padrão
+      const arthurService = service({
+        getMe: vi.fn().mockResolvedValue({
+          id: 'user-arthur',
+          displayName: 'Arthur',
+          globalRole: 'super_admin',
+          authorization: [],
+        }),
+      });
+      const secondSession = renderDirectory(arthurService);
+      await screen.findAllByText('Recepcao 01');
+      await waitFor(() => expect(screen.getByLabelText('Organizacao')).toHaveValue(''));
+      expect(screen.getByLabelText('Status')).toHaveValue('');
+      await userEvent.selectOptions(screen.getByLabelText('Organizacao'), 'org-a');
+      secondSession.unmount();
+
+      // Ronaldo volta para a aplicação e encontra exatamente os filtros que havia deixado
+      const returnSession = renderDirectory(ronaldoService);
+      await screen.findAllByText('Recepcao 01');
+      await waitFor(() => expect(screen.getByLabelText('Organizacao')).toHaveValue('org-b'));
+      expect(screen.getByLabelText('Status')).toHaveValue('ONLINE');
+      returnSession.unmount();
+    } finally {
+      localStorage.clear();
+    }
+  });
 });
+
 
 
 

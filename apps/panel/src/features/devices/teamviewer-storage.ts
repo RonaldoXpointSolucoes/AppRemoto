@@ -485,9 +485,13 @@ export function saveDeviceCustomMetadata(deviceId: string, metadata: DeviceCusto
 
 const FAVORITES_KEY = 'xpoint_favorite_devices_v1';
 
-export function getFavoriteDeviceIds(): string[] {
+export function getFavoriteDeviceIds(userId?: string | null): string[] {
   if (typeof window === 'undefined') return [];
   try {
+    if (userId) {
+      const userRaw = localStorage.getItem(`${FAVORITES_KEY}_${userId}`);
+      return userRaw ? JSON.parse(userRaw) : [];
+    }
     const raw = localStorage.getItem(FAVORITES_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch {
@@ -495,13 +499,17 @@ export function getFavoriteDeviceIds(): string[] {
   }
 }
 
-export function toggleFavoriteDeviceId(deviceId: string): string[] {
+export function toggleFavoriteDeviceId(deviceId: string, userId?: string | null): string[] {
   if (typeof window === 'undefined') return [];
   try {
-    const current = getFavoriteDeviceIds();
+    const current = getFavoriteDeviceIds(userId);
     const exists = current.includes(deviceId);
     const updated = exists ? current.filter((id) => id !== deviceId) : [deviceId, ...current];
-    localStorage.setItem(FAVORITES_KEY, JSON.stringify(updated));
+    if (userId) {
+      localStorage.setItem(`${FAVORITES_KEY}_${userId}`, JSON.stringify(updated));
+    } else {
+      localStorage.setItem(FAVORITES_KEY, JSON.stringify(updated));
+    }
     return updated;
   } catch {
     return [];
@@ -603,4 +611,102 @@ export function filterDevicesByCategory<T extends { id: string; displayName?: st
     return false;
   });
 }
+
+export interface UserViewPreferences {
+  organizationId: string;
+  status: '' | 'ONLINE' | 'OFFLINE';
+  search: string;
+  viewMode: 'teamviewer' | 'table';
+  sidebarCollapsed: boolean;
+  onlyOnlineQuickFilter: boolean;
+  onlyFavoritesQuickFilter: boolean;
+  sortBy: 'smart' | 'name' | 'recent';
+  compactMode: boolean;
+  updatedAt?: string;
+}
+
+export const DEFAULT_USER_VIEW_PREFERENCES: UserViewPreferences = {
+  organizationId: '',
+  status: '',
+  search: '',
+  viewMode: 'teamviewer',
+  sidebarCollapsed: false,
+  onlyOnlineQuickFilter: false,
+  onlyFavoritesQuickFilter: false,
+  sortBy: 'smart',
+  compactMode: false,
+};
+
+const USER_PREFS_PREFIX = 'xpoint_user_view_prefs_v1_';
+const LAST_ACTIVE_USER_KEY = 'xpoint_last_active_user_id_v1';
+
+export function getLastActiveUserId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(LAST_ACTIVE_USER_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setLastActiveUserId(userId: string): void {
+  if (typeof window === 'undefined' || !userId) return;
+  try {
+    localStorage.setItem(LAST_ACTIVE_USER_KEY, userId);
+  } catch {}
+}
+
+export function getUserViewPreferences(userId?: string | null): UserViewPreferences {
+  if (typeof window === 'undefined' || !userId) {
+    return { ...DEFAULT_USER_VIEW_PREFERENCES };
+  }
+  try {
+    const raw = localStorage.getItem(`${USER_PREFS_PREFIX}${userId}`);
+    if (!raw) return { ...DEFAULT_USER_VIEW_PREFERENCES };
+    const parsed = JSON.parse(raw) as Partial<UserViewPreferences>;
+    return {
+      organizationId: typeof parsed.organizationId === 'string' ? parsed.organizationId : '',
+      status:
+        parsed.status === 'ONLINE' || parsed.status === 'OFFLINE' || parsed.status === ''
+          ? parsed.status
+          : '',
+      search: typeof parsed.search === 'string' ? parsed.search : '',
+      viewMode: parsed.viewMode === 'table' ? 'table' : 'teamviewer',
+      sidebarCollapsed: Boolean(parsed.sidebarCollapsed),
+      onlyOnlineQuickFilter: Boolean(parsed.onlyOnlineQuickFilter),
+      onlyFavoritesQuickFilter: Boolean(parsed.onlyFavoritesQuickFilter),
+      sortBy:
+        parsed.sortBy === 'name' || parsed.sortBy === 'recent' || parsed.sortBy === 'smart'
+          ? parsed.sortBy
+          : 'smart',
+      compactMode: Boolean(parsed.compactMode),
+      updatedAt: parsed.updatedAt,
+    };
+  } catch {
+    return { ...DEFAULT_USER_VIEW_PREFERENCES };
+  }
+}
+
+export function saveUserViewPreferences(
+  userId: string | null | undefined,
+  partial: Partial<UserViewPreferences>
+): UserViewPreferences {
+  if (typeof window === 'undefined' || !userId) {
+    return { ...DEFAULT_USER_VIEW_PREFERENCES, ...partial };
+  }
+  try {
+    const current = getUserViewPreferences(userId);
+    const updated: UserViewPreferences = {
+      ...current,
+      ...partial,
+      updatedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(`${USER_PREFS_PREFIX}${userId}`, JSON.stringify(updated));
+    setLastActiveUserId(userId);
+    return updated;
+  } catch {
+    return { ...DEFAULT_USER_VIEW_PREFERENCES, ...partial };
+  }
+}
+
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { DeviceView } from '@appremoto/contracts';
 import {
   Clock,
@@ -46,6 +46,8 @@ import {
   getDeviceFolderName,
   getFavoriteDeviceIds,
   toggleFavoriteDeviceId,
+  getUserViewPreferences,
+  saveUserViewPreferences,
   type DeviceGroup,
   type DeviceCustomMetadata,
 } from './teamviewer-storage';
@@ -74,6 +76,7 @@ export function TeamViewerDeviceTree({
   activeCategory = '',
   onSelectCategory,
   allDevices = devices,
+  currentUserId = null,
 }: {
   devices: DeviceView[];
   statusState: DeviceStatusState;
@@ -89,18 +92,46 @@ export function TeamViewerDeviceTree({
   activeCategory?: string;
   onSelectCategory?(category: string): void;
   allDevices?: DeviceView[];
+  currentUserId?: string | null;
 }) {
+  const initialTreePrefs = useMemo(() => getUserViewPreferences(currentUserId), [currentUserId]);
+  const loadedTreeUserRef = useRef<string | null>(currentUserId);
   const [groups, setGroups] = useState<DeviceGroup[]>(() => getDeviceGroups());
   const [menuOpenForDevice, setMenuOpenForDevice] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Estados de Mobilidade & Operação Rápida (PC e Celular)
-  const [favoriteIds, setFavoriteIds] = useState<string[]>(() => getFavoriteDeviceIds());
-  const [onlyOnlineQuickFilter, setOnlyOnlineQuickFilter] = useState(false);
-  const [onlyFavoritesQuickFilter, setOnlyFavoritesQuickFilter] = useState(false);
-  const [sortBy, setSortBy] = useState<'smart' | 'name' | 'recent'>('smart');
-  const [compactMode, setCompactMode] = useState(false);
+  // Estados de Mobilidade & Operação Rápida (PC e Celular - Persistidos por Usuário)
+  const [favoriteIds, setFavoriteIds] = useState<string[]>(() => getFavoriteDeviceIds(currentUserId));
+  const [onlyOnlineQuickFilter, setOnlyOnlineQuickFilter] = useState<boolean>(() => initialTreePrefs.onlyOnlineQuickFilter);
+  const [onlyFavoritesQuickFilter, setOnlyFavoritesQuickFilter] = useState<boolean>(() => initialTreePrefs.onlyFavoritesQuickFilter);
+  const [sortBy, setSortBy] = useState<'smart' | 'name' | 'recent'>(() => initialTreePrefs.sortBy);
+  const [compactMode, setCompactMode] = useState<boolean>(() => initialTreePrefs.compactMode);
   const [actionSheetDevice, setActionSheetDevice] = useState<DeviceView | null>(null);
+
+  // Restaura preferências rápidas e favoritos quando o usuário autenticado muda ou é resolvido
+  useEffect(() => {
+    if (!currentUserId) return;
+    if (loadedTreeUserRef.current !== currentUserId) {
+      loadedTreeUserRef.current = currentUserId;
+      const prefs = getUserViewPreferences(currentUserId);
+      setOnlyOnlineQuickFilter(prefs.onlyOnlineQuickFilter);
+      setOnlyFavoritesQuickFilter(prefs.onlyFavoritesQuickFilter);
+      setSortBy(prefs.sortBy);
+      setCompactMode(prefs.compactMode);
+      setFavoriteIds(getFavoriteDeviceIds(currentUserId));
+    }
+  }, [currentUserId]);
+
+  // Salva filtros rápidos, ordenação e modo compacto no perfil do usuário ativo
+  useEffect(() => {
+    if (!currentUserId || loadedTreeUserRef.current !== currentUserId) return;
+    saveUserViewPreferences(currentUserId, {
+      onlyOnlineQuickFilter,
+      onlyFavoritesQuickFilter,
+      sortBy,
+      compactMode,
+    });
+  }, [currentUserId, onlyOnlineQuickFilter, onlyFavoritesQuickFilter, sortBy, compactMode]);
 
   // Estados dos Modais
   const [editingDevice, setEditingDevice] = useState<DeviceView | null>(null);
@@ -129,7 +160,7 @@ export function TeamViewerDeviceTree({
 
   function handleToggleFavorite(dev: DeviceView, e?: React.MouseEvent) {
     e?.stopPropagation();
-    const updated = toggleFavoriteDeviceId(dev.id);
+    const updated = toggleFavoriteDeviceId(dev.id, currentUserId);
     setFavoriteIds(updated);
     const isNowFav = updated.includes(dev.id);
     showToast(isNowFav ? `⭐ "${dev.displayName}" fixado no topo` : `Removido dos fixados`);
@@ -761,7 +792,7 @@ export function TeamViewerDeviceTree({
                     <span className={`tv-status-dot ${isOnline ? 'online' : 'offline'}`} />
                   </div>
                   <div className="tv-name-info">
-                    {/* Título Principal: Nome do Cliente / Computador + Favorito */}
+                    {/* Título Principal: Nome Completo do Cliente / Computador */}
                     <div className="tv-name-header">
                       <button
                         type="button"
@@ -787,13 +818,13 @@ export function TeamViewerDeviceTree({
                       >
                         <Pencil size={12} />
                       </button>
-                      <span className={`tv-badge-os ${sys.badge.toLowerCase().replace(/\s+/g, '')}`}>
+                      <span className={`tv-badge-os tv-badge-os-desktop ${sys.badge.toLowerCase().replace(/\s+/g, '')}`}>
                         {sys.badge}
                       </span>
                       {isFavorite && <span className="tv-badge-pinned">Fixado</span>}
                     </div>
 
-                    {/* Subtítulo Linha 1: ID RustDesk com espaçamento limpo e cópia rápida */}
+                    {/* Subtítulo Linha 1: ID RustDesk + Status Online + Selo OS no Mobile */}
                     <div className="tv-subtext-primary">
                       <span
                         className="tv-id-subtext"
@@ -826,6 +857,9 @@ export function TeamViewerDeviceTree({
                       </button>
                       <span className={`tv-mobile-inline-status ${isOnline ? 'online' : 'offline'}`}>
                         {isOnline ? '● Online' : `Visto: ${formatLastSeen(dev.lastSeenAt)}`}
+                      </span>
+                      <span className={`tv-badge-os tv-badge-os-mobile ${sys.badge.toLowerCase().replace(/\s+/g, '')}`}>
+                        {sys.badge}
                       </span>
                     </div>
 

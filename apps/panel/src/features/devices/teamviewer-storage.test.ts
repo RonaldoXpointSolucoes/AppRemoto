@@ -168,5 +168,59 @@ describe('teamviewer-storage', () => {
     expect(updatedList[0].autoReportText).toContain('1m 11s (71s)');
     expect(updatedList[0].autoReportText).toContain('Reinício / Destravamento de Totem ou PDV');
   });
+
+  it('mantem salvos os filtros, ordenacao, densidade e favoritos separadamente para cada usuario', async () => {
+    const {
+      getUserViewPreferences,
+      saveUserViewPreferences,
+      getLastActiveUserId,
+      setLastActiveUserId,
+    } = await import('./teamviewer-storage');
+
+    // Usuário 1 (Ronaldo) escolhe pasta X-Point Soluções, status ONLINE, ordenação por nome e modo compacto
+    setLastActiveUserId('user-ronaldo');
+    saveUserViewPreferences('user-ronaldo', {
+      organizationId: 'group_xpoint',
+      status: 'ONLINE',
+      search: 'Servidor',
+      onlyOnlineQuickFilter: true,
+      sortBy: 'name',
+      compactMode: true,
+    });
+    toggleFavoriteDeviceId('dev-srv-01', 'user-ronaldo');
+
+    // Usuário 2 (Arthur) escolhe pasta Clientes, busca "Totem", modo tabela
+    setLastActiveUserId('user-arthur');
+    saveUserViewPreferences('user-arthur', {
+      organizationId: 'group_clients',
+      status: '',
+      search: 'Totem',
+      viewMode: 'table',
+      onlyFavoritesQuickFilter: true,
+    });
+    toggleFavoriteDeviceId('dev-totem-99', 'user-arthur');
+
+    expect(getLastActiveUserId()).toBe('user-arthur');
+
+    const prefsRonaldo = getUserViewPreferences('user-ronaldo');
+    expect(prefsRonaldo.organizationId).toBe('group_xpoint');
+    expect(prefsRonaldo.status).toBe('ONLINE');
+    expect(prefsRonaldo.search).toBe('Servidor');
+    expect(prefsRonaldo.onlyOnlineQuickFilter).toBe(true);
+    expect(prefsRonaldo.sortBy).toBe('name');
+    expect(prefsRonaldo.compactMode).toBe(true);
+    expect(prefsRonaldo.viewMode).toBe('teamviewer');
+    expect(getFavoriteDeviceIds('user-ronaldo')).toEqual(['dev-srv-01']);
+
+    const prefsArthur = getUserViewPreferences('user-arthur');
+    expect(prefsArthur.organizationId).toBe('group_clients');
+    expect(prefsArthur.status).toBe('');
+    expect(prefsArthur.search).toBe('Totem');
+    expect(prefsArthur.viewMode).toBe('table');
+    expect(prefsArthur.onlyFavoritesQuickFilter).toBe(true);
+    expect(prefsArthur.compactMode).toBe(false);
+    expect(getFavoriteDeviceIds('user-arthur')).toEqual(['dev-totem-99']);
+  });
 });
+
 
