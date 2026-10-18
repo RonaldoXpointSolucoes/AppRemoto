@@ -335,13 +335,13 @@ describe('DeviceDirectory', () => {
   it('opens the release notes modal when clicking the version number button', async () => {
     renderDirectory(service());
     await screen.findAllByText('Recepcao 01');
-    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.4.4' });
+    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.4.5' });
     expect(versionButtons.length).toBeGreaterThan(0);
     await userEvent.click(versionButtons[0]);
     const dialog = await screen.findByRole('dialog', { name: /Novidades da Plataforma/i });
     expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText('Integração Nativa C:\\DataDivas\\config.ini no Instalador EXE v1.2.8 & Ficha Cadastral no Painel')).toBeInTheDocument();
     expect(within(dialog).getByText('Handoff Nativo Android Intent & Retorno Pós-Conexão sem Queda de Página')).toBeInTheDocument();
-    expect(within(dialog).getByText('Documentação Automática em 20s & Supressão de Caixa Duplicada')).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Entendi, voltar ao painel' }));
     expect(screen.queryByRole('dialog', { name: /Novidades da Plataforma/i })).not.toBeInTheDocument();
   });

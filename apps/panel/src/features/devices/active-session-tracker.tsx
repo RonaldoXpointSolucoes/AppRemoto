@@ -20,6 +20,7 @@ import {
   Sparkles,
   Share2,
 } from 'lucide-react';
+import type { DataDivasInfo } from '@appremoto/contracts';
 import {
   updateRecentConnectionNotes,
   SMART_ACTION_PRESETS,
@@ -47,6 +48,7 @@ export interface ActiveSession {
   osBuild?: string;
   osBadge?: string;
   localIp?: string;
+  datadivas?: DataDivasInfo;
   deviceStatusAtStart?: string;
   lastSeenBeforeConnect?: string;
   isFavorite?: boolean;
@@ -214,6 +216,7 @@ export function ActiveSessionTracker({
     osBuild: session.osBuild,
     osBadge: session.osBadge,
     localIp: session.localIp,
+    datadivas: session.datadivas,
     deviceStatusAtStart: session.deviceStatusAtStart || 'ONLINE',
     lastSeenBeforeConnect: session.lastSeenBeforeConnect,
     isFavorite: session.isFavorite,

@@ -32,11 +32,31 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.4.5',
+    date: 'Outubro 2026',
+    title: 'Integração Nativa C:\\DataDivas\\config.ini no Instalador EXE v1.2.8 & Ficha Cadastral no Painel',
+    highlight: 'Leitura automática de Nome Fantasia, Razão Social, CNPJ, Serial, IE, Endereço, IP Máquina e IP DataDivas direto do PC do cliente e sincronização no banco.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Extração Automática de C:\\DataDivas\\config.ini pelo Instalador e Serviço Windows (v1.2.8)',
+        description:
+          'O instalador .exe e o serviço em segundo plano leem automaticamente C:\\DataDivas\\config.ini e DATA.INI (com suporte a acentuação Windows-1252 e UTF-8), sugerindo o Nome Fantasia + Máquina na instalação e enviando todos os dados ao banco a cada batimento.',
+        tag: 'Novo',
+      },
+      {
+        title: 'Ficha Cadastral Completa do Cliente no Painel, Busca Inteligente e Laudos',
+        description:
+          'Exibição direta na listagem, no modal de detalhes e nos laudos automáticos de Nome Fantasia, Razão Social, CNPJ, Serial DataDivas, IE, Endereço Completo, IP Máquina (ipmaq) e IP Servidor DataDivas, com cópia em 1 clique e pesquisa instantânea.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.4.4',
     date: 'Outubro 2026',
     title: 'Handoff Nativo Android Intent & Retorno Pós-Conexão sem Queda de Página',
     highlight: 'Eliminação do erro "This page couldn\'t load" ao encerrar conexões no celular/PWA e preservação contínua da barra de atendimento.',
-    isCurrent: true,
     items: [
       {
         title: 'Protocolo Android Intent com Fallback Seguro no Retorno do RustDesk',

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { DeviceDetailsResponseSchema, UpdateDeviceRequestSchema, UpdateDeviceResponseSchema, ConnectionEventRequestSchema,
-  ConnectionHistoryResponseSchema, DeviceViewSchema, DeleteDeviceResponseSchema, type DeviceDetailsResponse, type UpdateDeviceRequest,
-  type UpdateDeviceResponse, type ConnectionEventInput, type ConnectionHistoryResponse,
+  ConnectionHistoryResponseSchema, DeviceViewSchema, DeleteDeviceResponseSchema, extractDataDivasFromNotes, mergeDataDivasIntoNotes,
+  type DeviceDetailsResponse, type UpdateDeviceRequest, type UpdateDeviceResponse, type ConnectionEventInput, type ConnectionHistoryResponse,
   type ConnectionHistoryEvent, type DeviceView, type DeleteDeviceResponse } from '@appremoto/contracts';
 import type { AuthenticatedTechnician } from '../plugins/technician-auth.ts';
 import { enrollmentId, IndeterminateEnrollmentWrite, type EnrollmentData, type EnrollmentRepository,
@@ -41,12 +41,14 @@ export function createDeviceTools(deps: Dependencies): DeviceToolsService {
   }
   function view(id: string, device: EnrollmentData, name: string): DeviceView {
     const age = typeof device.last_seen_at === 'string' ? now().getTime() - Date.parse(device.last_seen_at) : NaN;
+    const { datadivas } = extractDataDivasFromNotes(typeof device.notes === 'string' ? device.notes : null);
     return DeviceViewSchema.parse({ id, organizationId: device.organization_id, organizationName: name,
       deviceUuid: device.device_uuid, displayName: device.display_name, hostname: device.hostname,
       operatingSystem: device.operating_system, osVersion: device.os_version, rustdeskId: device.rustdesk_id,
       agentVersion: device.agent_version ?? null, rustdeskVersion: device.rustdesk_version ?? null,
       lastSeenAt: device.last_seen_at ?? null, enabled: device.enabled,
-      status: device.enabled === true && age >= 0 && age <= 90_000 ? 'ONLINE' : 'OFFLINE' });
+      status: device.enabled === true && age >= 0 && age <= 90_000 ? 'ONLINE' : 'OFFLINE',
+      ...(datadivas ? { datadivas } : {}) });
   }
   async function heartbeatConfirmed(deviceId: string, device: EnrollmentData): Promise<boolean> {
     const token = await repo.snapshot('device_tokens', deviceId);
@@ -58,9 +60,10 @@ export function createDeviceTools(deps: Dependencies): DeviceToolsService {
     async details(technician, deviceId) {
       const { device, organization } = await authorizedDevice(technician, deviceId, 'canView');
       const projected = view(deviceId, device, organization.name);
+      const { cleanNotes } = extractDataDivasFromNotes(typeof device.notes === 'string' ? device.notes : null);
       const canConnect = technician.authorization.some((item) => item.organizationId === organization.id && item.canConnect);
       const credential = canConnect ? await repo.snapshot('device_credentials', deviceId) : null;
-      return DeviceDetailsResponseSchema.parse({ device: projected, notes: device.notes ?? '', diagnostics: {
+      return DeviceDetailsResponseSchema.parse({ device: projected, notes: cleanNotes, diagnostics: {
         agentOnline: projected.status === 'ONLINE', heartbeatConfirmed: await heartbeatConfirmed(deviceId, device),
         rustdeskIdValid: validId(device.rustdesk_id), credentialAvailable: Boolean(credential && credential.device_id === deviceId &&
           typeof credential.password_ciphertext === 'string' && credential.password_ciphertext && credential.key_version === deps.keyVersion),
@@ -74,14 +77,19 @@ export function createDeviceTools(deps: Dependencies): DeviceToolsService {
       if (!await deps.guard.beginHeartbeatGuard(guard)) throw new DeviceToolError('DEVICE_BUSY', 409);
       let uncertain = false;
       try {
-        const { organization } = await authorizedDevice(technician, deviceId, 'canManageDevices');
+        const { device: priorDevice, organization } = await authorizedDevice(technician, deviceId, 'canManageDevices');
         const event = { organizationId: organization.id, actorId: technician.userId, deviceId, sourceIp };
         await audit.recordOperator(randomUUID(), { ...event, action: 'device.update.requested' });
-        await deps.receipts.updateDeviceFields(deviceId, request);
+        const existingDataDivas = extractDataDivasFromNotes(typeof priorDevice.notes === 'string' ? priorDevice.notes : null).datadivas;
+        const persistedNotes = existingDataDivas
+          ? (mergeDataDivasIntoNotes(request.notes, existingDataDivas) ?? request.notes)
+          : request.notes;
+        await deps.receipts.updateDeviceFields(deviceId, { displayName: request.displayName, notes: persistedNotes });
         const { device } = await authorizedDevice(technician, deviceId, 'canManageDevices');
-        if (device.display_name !== request.displayName || device.notes !== request.notes) throw unavailable();
+        if (device.display_name !== request.displayName || device.notes !== persistedNotes) throw unavailable();
         await audit.recordOperator(randomUUID(), { ...event, action: 'device.update' });
-        return UpdateDeviceResponseSchema.parse({ device: view(deviceId, device, organization.name), notes: device.notes });
+        const { cleanNotes } = extractDataDivasFromNotes(typeof device.notes === 'string' ? device.notes : null);
+        return UpdateDeviceResponseSchema.parse({ device: view(deviceId, device, organization.name), notes: cleanNotes });
       } catch (error) {
         uncertain = error instanceof IndeterminateEnrollmentWrite;
         throw error;

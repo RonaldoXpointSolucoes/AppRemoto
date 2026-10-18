@@ -240,3 +240,36 @@ test('operator delete requires canManageDevices, removes device records and logs
   await assert.rejects(f.service.delete!(technician, 'non-existent', '127.0.0.1'), OperatorSetupDenied);
 });
 
+test('details and update project DataDivas metadata from notes while keeping operator notes clean and preserving DataDivas on save', async () => {
+  const { mergeDataDivasIntoNotes } = await import('@appremoto/contracts');
+  const f = fixture();
+  const sampleDataDivas = {
+    nomeFantasia: 'SISTEMA DEMONSTRAÇÃO',
+    razaoSocial: 'SISTEMA DEMO',
+    cnpj: '254.867.528-90',
+    serial: 'XPOI-AAAA-DDDD-0028',
+    ie: '110.042.490.114',
+    endereco: 'PRAÇA MIGUEL ORTEGA, 340',
+    cidade: 'TABOAO DA SERRA',
+    uf: 'SP',
+    ipMaq: '192.168.0.3',
+    ipDataDivas: '192.168.0.250',
+    nomeMaq: 'RONALDO-ASUS',
+    banco: '192.168.0.250:C:\\DataDivas\\DADOS\\BANCODEDADOS.FDB',
+  };
+  f.rows.get('devices/device')!.notes = mergeDataDivasIntoNotes('[pasta:Clientes VIP] Atendimento prioritário', sampleDataDivas);
+
+  const details = await f.service.details!(technician, 'device');
+  assert.equal(details.notes, '[pasta:Clientes VIP] Atendimento prioritário');
+  assert.deepEqual(details.device.datadivas, sampleDataDivas);
+
+  const updated = await f.service.update!(
+    technician,
+    'device',
+    { displayName: 'SISTEMA DEMONSTRAÇÃO - RONALDO-ASUS', notes: '[pasta:Clientes VIP] Novo contato: João' },
+    '127.0.0.1',
+  );
+  assert.equal(updated.notes, '[pasta:Clientes VIP] Novo contato: João');
+  assert.deepEqual(updated.device.datadivas, sampleDataDivas);
+  assert.ok(String(f.rows.get('devices/device')!.notes ?? '').includes('[datadivas_b64:'));
+});

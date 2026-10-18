@@ -150,7 +150,8 @@ func runAgent(ctx context.Context) (err error) {
 		return e
 	}
 	osName, osver := CollectSystemInfo()
-	result, e := en.Run(ctx, token, enroll.Metadata{DisplayName: reg.DeviceDisplayName, Hostname: host, OperatingSystem: osName, OSVersion: osver, AgentVersion: Version})
+	dataDivas := CollectDataDivasInfo()
+	result, e := en.Run(ctx, token, enroll.Metadata{DisplayName: reg.DeviceDisplayName, Hostname: host, OperatingSystem: osName, OSVersion: osver, AgentVersion: Version, DataDivas: dataDivas})
 	if e != nil {
 		var stage *enroll.StageError
 		if !errors.As(e, &stage) {
@@ -175,7 +176,7 @@ func runAgent(ctx context.Context) (err error) {
 	operation = "HEARTBEAT_SCHEDULER"
 	scheduler, e := heartbeat.NewScheduler(func(c context.Context) error {
 		r.Record(6, "HEARTBEAT_REQUEST", "START", nil)
-		_, e := apiClient.Heartbeat(c, result.DeviceToken, api.HeartbeatRequest{AgentVersion: Version, RustDeskVersion: info.Version, RustDeskID: info.ID, OperatingSystem: osName, OSVersion: osver})
+		_, e := apiClient.Heartbeat(c, result.DeviceToken, api.HeartbeatRequest{AgentVersion: Version, RustDeskVersion: info.Version, RustDeskID: info.ID, OperatingSystem: osName, OSVersion: osver, DataDivas: CollectDataDivasInfo()})
 		if e != nil {
 			r.Record(6, "HEARTBEAT_RETRY", "WAIT", e)
 			return e

@@ -169,7 +169,25 @@ export function TeamViewerDeviceTree({
   async function handleShareDeviceCard(dev: DeviceView, e?: React.MouseEvent) {
     e?.stopPropagation();
     const cleanId = formatRustDeskId(dev.rustdeskId);
-    const shareText = `🖥️ Computador: ${dev.displayName}\n🔑 ID RustDesk: ${cleanId}\n💻 Hostname: ${dev.hostname}\n🏢 Organização: ${dev.organizationName}`;
+    const dd = dev.datadivas;
+    const shareLines = [
+      `🖥️ Computador: ${dev.displayName}`,
+      `🔑 ID RustDesk: ${cleanId}`,
+      `💻 Hostname: ${dev.hostname}`,
+      `🏢 Organização: ${dev.organizationName}`,
+    ];
+    if (dd?.nomeFantasia) shareLines.push(`🏷️ Nome Fantasia: ${dd.nomeFantasia}`);
+    if (dd?.razaoSocial) shareLines.push(`🏛️ Razão Social: ${dd.razaoSocial}`);
+    if (dd?.cnpj) shareLines.push(`🪪 CNPJ/CPF: ${dd.cnpj}`);
+    if (dd?.serial) shareLines.push(`🔐 Serial DataDivas: ${dd.serial}`);
+    if (dd?.ie) shareLines.push(`📄 IE: ${dd.ie}`);
+    if (dd?.endereco || dd?.cidade || dd?.uf) {
+      const loc = [dd.endereco, [dd.cidade, dd.uf].filter(Boolean).join('/')].filter(Boolean).join(' — ');
+      shareLines.push(`📍 Endereço: ${loc}`);
+    }
+    if (dd?.ipMaq) shareLines.push(`🌐 IP Máquina: ${dd.ipMaq}${dd.nomeMaq ? ` (${dd.nomeMaq})` : ''}`);
+    if (dd?.ipDataDivas) shareLines.push(`🗄️ IP DataDivas: ${dd.ipDataDivas}`);
+    const shareText = shareLines.join('\n');
     try {
       if (typeof navigator !== 'undefined' && navigator.share && window.innerWidth <= 768) {
         await navigator.share({
@@ -868,11 +886,11 @@ export function TeamViewerDeviceTree({
                       <span className="tv-subtext-host">{dev.hostname}</span>
                       <span className="tv-subtext-sep">·</span>
                       <span className="tv-subtext-os">{sys.osName} {sys.versionLabel}</span>
-                      {sys.ip && (
+                      {(sys.ip || dev.datadivas?.ipMaq) && (
                         <>
                           <span className="tv-subtext-sep">·</span>
-                          <span className="tv-subtext-ip" title="IP Local na rede">
-                            <Globe size={11} className="tv-ip-icon" /> {sys.ip}
+                          <span className="tv-subtext-ip" title="IP Local na rede (ipmaq)">
+                            <Globe size={11} className="tv-ip-icon" /> {sys.ip || dev.datadivas?.ipMaq}
                           </span>
                         </>
                       )}
@@ -903,6 +921,97 @@ export function TeamViewerDeviceTree({
                         </>
                       )}
                     </div>
+
+                    {/* Linha 3: Dados Cadastrais DataDivas (C:\DataDivas\config.ini) */}
+                    {dev.datadivas && (
+                      <div className="tv-datadivas-strip" aria-label="Dados DataDivas do cliente">
+                        {(dev.datadivas.nomeFantasia || dev.datadivas.razaoSocial) && (
+                          <span
+                            className="tv-dd-pill tv-dd-pill-company"
+                            title={`Fantasia: ${dev.datadivas.nomeFantasia || '—'} | Razão Social: ${dev.datadivas.razaoSocial || '—'}`}
+                          >
+                            🏢 {dev.datadivas.nomeFantasia || dev.datadivas.razaoSocial}
+                            {dev.datadivas.razaoSocial &&
+                              dev.datadivas.nomeFantasia &&
+                              dev.datadivas.razaoSocial.toLowerCase() !== dev.datadivas.nomeFantasia.toLowerCase() && (
+                                <span className="tv-dd-pill-sub"> · {dev.datadivas.razaoSocial}</span>
+                              )}
+                          </span>
+                        )}
+                        {dev.datadivas.cnpj && (
+                          <button
+                            type="button"
+                            className="tv-dd-pill tv-dd-pill-copyable"
+                            title="CNPJ / CPF no config.ini (clique para copiar)"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void navigator.clipboard.writeText(dev.datadivas!.cnpj!).then(() => {
+                                showToast(`CNPJ/CPF ${dev.datadivas!.cnpj} copiado!`);
+                              });
+                            }}
+                          >
+                            <span>CNPJ: {dev.datadivas.cnpj}</span>
+                            <Copy size={10} />
+                          </button>
+                        )}
+                        {dev.datadivas.serial && (
+                          <button
+                            type="button"
+                            className="tv-dd-pill tv-dd-pill-serial tv-dd-pill-copyable"
+                            title="Serial DataDivas no config.ini (clique para copiar)"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void navigator.clipboard.writeText(dev.datadivas!.serial!).then(() => {
+                                showToast(`Serial ${dev.datadivas!.serial} copiado!`);
+                              });
+                            }}
+                          >
+                            <span>Serial: {dev.datadivas.serial}</span>
+                            <Copy size={10} />
+                          </button>
+                        )}
+                        {dev.datadivas.ie && (
+                          <span className="tv-dd-pill" title="Inscrição Estadual (IE)">
+                            IE: {dev.datadivas.ie}
+                          </span>
+                        )}
+                        {dev.datadivas.ipDataDivas && (
+                          <button
+                            type="button"
+                            className="tv-dd-pill tv-dd-pill-copyable"
+                            title={`IP DataDivas: ${dev.datadivas.ipDataDivas}${dev.datadivas.banco ? ` (${dev.datadivas.banco})` : ''} — clique para copiar`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void navigator.clipboard.writeText(dev.datadivas!.ipDataDivas!).then(() => {
+                                showToast(`IP DataDivas ${dev.datadivas!.ipDataDivas} copiado!`);
+                              });
+                            }}
+                          >
+                            <span>IP DataDivas: {dev.datadivas.ipDataDivas}</span>
+                            <Copy size={10} />
+                          </button>
+                        )}
+                        {(dev.datadivas.endereco || dev.datadivas.cidade || dev.datadivas.uf) && (
+                          <span
+                            className="tv-dd-pill tv-dd-pill-address"
+                            title={[
+                              dev.datadivas.endereco,
+                              [dev.datadivas.cidade, dev.datadivas.uf].filter(Boolean).join('/'),
+                            ]
+                              .filter(Boolean)
+                              .join(' — ')}
+                          >
+                            📍{' '}
+                            {[
+                              dev.datadivas.endereco,
+                              [dev.datadivas.cidade, dev.datadivas.uf].filter(Boolean).join('/'),
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1271,6 +1380,48 @@ export function TeamViewerDeviceTree({
                   <span className="tv-meta-label">Organização:</span>
                   <span className="tv-meta-val">{editingDevice.organizationName}</span>
                 </div>
+                {editingDevice.datadivas?.nomeFantasia && (
+                  <div className="tv-modal-meta-item">
+                    <span className="tv-meta-label">Nome Fantasia:</span>
+                    <span className="tv-meta-val">{editingDevice.datadivas.nomeFantasia}</span>
+                  </div>
+                )}
+                {editingDevice.datadivas?.razaoSocial && (
+                  <div className="tv-modal-meta-item">
+                    <span className="tv-meta-label">Razão Social:</span>
+                    <span className="tv-meta-val">{editingDevice.datadivas.razaoSocial}</span>
+                  </div>
+                )}
+                {editingDevice.datadivas?.cnpj && (
+                  <div className="tv-modal-meta-item">
+                    <span className="tv-meta-label">CNPJ / CPF:</span>
+                    <span className="tv-meta-val mono">{editingDevice.datadivas.cnpj}</span>
+                  </div>
+                )}
+                {editingDevice.datadivas?.serial && (
+                  <div className="tv-modal-meta-item">
+                    <span className="tv-meta-label">Serial:</span>
+                    <span className="tv-meta-val mono">{editingDevice.datadivas.serial}</span>
+                  </div>
+                )}
+                {editingDevice.datadivas?.ie && (
+                  <div className="tv-modal-meta-item">
+                    <span className="tv-meta-label">IE:</span>
+                    <span className="tv-meta-val mono">{editingDevice.datadivas.ie}</span>
+                  </div>
+                )}
+                {editingDevice.datadivas?.ipMaq && (
+                  <div className="tv-modal-meta-item">
+                    <span className="tv-meta-label">IP Máquina:</span>
+                    <span className="tv-meta-val mono">{editingDevice.datadivas.ipMaq}</span>
+                  </div>
+                )}
+                {editingDevice.datadivas?.ipDataDivas && (
+                  <div className="tv-modal-meta-item">
+                    <span className="tv-meta-label">IP DataDivas:</span>
+                    <span className="tv-meta-val mono">{editingDevice.datadivas.ipDataDivas}</span>
+                  </div>
+                )}
               </div>
 
               {deviceSaveError && (

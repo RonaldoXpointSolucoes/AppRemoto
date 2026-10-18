@@ -14,6 +14,7 @@ export interface DeviceRecord {
   rustdeskVersion: string | null;
   lastSeenAt: string | null;
   enabled: boolean;
+  notes?: string | null;
 }
 
 export interface DeviceScan {
@@ -37,11 +38,12 @@ type DeviceDocument = Models.Document & {
   rustdesk_version?: string | null;
   last_seen_at?: string | null;
   enabled: boolean;
+  notes?: string | null;
 };
 
 const selectedFields = ['$id', '$createdAt', 'organization_id', 'device_uuid', 'display_name',
   'hostname', 'operating_system', 'os_version', 'rustdesk_id', 'agent_version',
-  'rustdesk_version', 'last_seen_at', 'enabled'];
+  'rustdesk_version', 'last_seen_at', 'enabled', 'notes'];
 
 export function createDeviceRepository(databases: Databases): DeviceRepository {
   return {
@@ -66,7 +68,7 @@ export function createDeviceRepository(databases: Databases): DeviceRepository {
           operatingSystem: doc.operating_system, osVersion: doc.os_version,
           rustdeskId: doc.rustdesk_id, agentVersion: doc.agent_version ?? null,
           rustdeskVersion: doc.rustdesk_version ?? null, lastSeenAt: doc.last_seen_at ?? null,
-          enabled: doc.enabled,
+          enabled: doc.enabled, ...(doc.notes != null ? { notes: doc.notes } : {}),
         })),
         hasMore: page.documents.length > limit,
       };

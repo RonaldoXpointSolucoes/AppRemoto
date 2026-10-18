@@ -3,10 +3,10 @@ export * from './setup.ts';
 export * from './device-tools.ts';
 export * from './generic-installer.ts';
 
-export { DeviceListQuerySchema, DeviceViewSchema } from './devices.ts';
+export { DeviceListQuerySchema, DeviceViewSchema, normalizeDataDivasInfo, extractDataDivasFromNotes, mergeDataDivasIntoNotes } from './devices.ts';
 export type { DeviceListQuery, DeviceView } from './devices.ts';
-export { ReconfigureRequestSchema, ReconfigureResponseSchema, EnrollRequestSchema, EnrollResponseSchema, HeartbeatRequestSchema, HeartbeatResponseSchema } from './agent.ts';
-export type { ReconfigureRequest, ReconfigureResponse, EnrollRequest, EnrollResponse, HeartbeatRequest, HeartbeatResponse } from './agent.ts';
+export { DataDivasInfoSchema, ReconfigureRequestSchema, ReconfigureResponseSchema, EnrollRequestSchema, EnrollResponseSchema, HeartbeatRequestSchema, HeartbeatResponseSchema } from './agent.ts';
+export type { DataDivasInfo, ReconfigureRequest, ReconfigureResponse, EnrollRequest, EnrollResponse, HeartbeatRequest, HeartbeatResponse } from './agent.ts';
 
 export const ApiErrorSchema = z.object({
   code: z.string().regex(/^[A-Z][A-Z0-9_]{2,63}$/),

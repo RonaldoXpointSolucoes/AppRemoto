@@ -1,5 +1,5 @@
 import type { HeartbeatRequest, HeartbeatResponse } from '@appremoto/contracts';
-import { HeartbeatRequestSchema } from '@appremoto/contracts';
+import { HeartbeatRequestSchema, mergeDataDivasIntoNotes } from '@appremoto/contracts';
 import { randomUUID } from 'node:crypto';
 import { enrollmentId, IndeterminateEnrollmentWrite, sameEnrollmentState,
   type EnrollmentData, type EnrollmentRepository,
@@ -73,10 +73,14 @@ export function createHeartbeatService(dependencies: HeartbeatDependencies): Rec
         await releaseGuard();
         throw new HeartbeatError('UNAUTHENTICATED');
       }
+      const nextNotes = request.data.datadivas
+        ? mergeDataDivasIntoNotes(typeof device.notes === 'string' ? device.notes : null, request.data.datadivas)
+        : device.notes;
       const updatedDevice = { ...device, operating_system: request.data.operatingSystem,
         os_version: request.data.osVersion, agent_version: request.data.agentVersion,
         rustdesk_id: request.data.rustdeskId, rustdesk_version: request.data.rustdeskVersion,
-        last_seen_at: timestamp, last_ip: sourceIp };
+        last_seen_at: timestamp, last_ip: sourceIp,
+        ...(nextNotes !== undefined ? { notes: nextNotes } : {}) };
       const updatedToken = { ...token, last_used_at: timestamp };
       const event = { organizationId: device.organization_id, deviceId, sourceIp,
         result: 'success' as const, recoveryRequired: false };

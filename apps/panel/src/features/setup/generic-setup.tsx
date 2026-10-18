@@ -122,9 +122,9 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
   const available = installers.filter((item) => item.active && !item.revokedAt);
   return <section className="automatic-setup" aria-labelledby="generic-setup-title">
     <div className="setup-introduction">
-      <p className="eyebrow">Instalador completo 1.2.7 · Windows 64 bits</p>
+      <p className="eyebrow">Instalador completo 1.2.8 · Windows 64 bits</p>
       <h1 id="generic-setup-title">Um instalador para todos os computadores.</h1>
-      <p>Baixe uma vez e use o mesmo arquivo nos computadores dos clientes. Se o RustDesk já estiver instalado, ele aplica os padrões da XPoint. Se não estiver, instala tudo e cadastra o computador no painel.</p>
+      <p>Baixe uma vez e use o mesmo arquivo nos computadores dos clientes. Se o RustDesk já estiver instalado, ele aplica os padrões da XPoint. Se não estiver, instala tudo, lê automaticamente os dados do <code>C:\DataDivas\config.ini</code> e cadastra o computador no painel.</p>
     </div>
     {loading ? <p role="status">Carregando instalador…</p> : !admin ? <p role="status">Peça a um administrador o instalador completo. Depois de receber o arquivo, você pode instalar sem entrar no painel.</p> : <div className="installer-form">
       {available.length > 1 && <div className="installer-field"><label htmlFor="generic-installer-selection">Autorização do instalador</label>

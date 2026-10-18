@@ -1,6 +1,23 @@
 import { z } from 'zod';
 
 const version = z.string().min(1).max(64);
+const optField = (max: number) => z.string().trim().max(max).optional();
+
+export const DataDivasInfoSchema = z.object({
+  nomeFantasia: optField(160),
+  razaoSocial: optField(160),
+  cnpj: optField(64),
+  serial: optField(128),
+  ie: optField(64),
+  endereco: optField(255),
+  cidade: optField(128),
+  uf: optField(16),
+  nomeMaq: optField(128),
+  ipMaq: optField(128),
+  ipDataDivas: optField(160),
+  banco: optField(255),
+}).strict();
+export type DataDivasInfo = z.infer<typeof DataDivasInfoSchema>;
 
 export const EnrollRequestSchema = z.object({
   enrollmentToken: z.string().min(32).max(512),
@@ -12,6 +29,7 @@ export const EnrollRequestSchema = z.object({
   agentVersion: version,
   rustdeskId: z.string().min(1).max(64),
   rustdeskVersion: version,
+  datadivas: DataDivasInfoSchema.optional(),
 }).strict();
 
 export const ReconfigureRequestSchema = EnrollRequestSchema.extend({
@@ -37,6 +55,7 @@ export const HeartbeatRequestSchema = z.object({
   rustdeskId: z.string().min(1).max(64),
   operatingSystem: z.string().min(1).max(64),
   osVersion: z.string().min(1).max(128),
+  datadivas: DataDivasInfoSchema.optional(),
 }).strict();
 
 export const HeartbeatResponseSchema = z.object({

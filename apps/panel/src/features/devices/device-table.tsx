@@ -209,7 +209,8 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       operatingSystem: sysInfo.osName,
       osBuild: sysInfo.versionLabel,
       osBadge: sysInfo.badge,
-      localIp: sysInfo.ip,
+      localIp: sysInfo.ip || device.datadivas?.ipMaq,
+      datadivas: device.datadivas,
       deviceStatusAtStart: device.status,
       lastSeenBeforeConnect: device.lastSeenAt ?? undefined,
       isFavorite,
@@ -232,7 +233,8 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       operatingSystem: sysInfo.osName,
       osBuild: sysInfo.versionLabel,
       osBadge: sysInfo.badge,
-      localIp: sysInfo.ip,
+      localIp: sysInfo.ip || device.datadivas?.ipMaq,
+      datadivas: device.datadivas,
       deviceStatusAtStart: device.status,
       lastSeenBeforeConnect: device.lastSeenAt ?? undefined,
       isFavorite,
@@ -353,10 +355,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={() => setIsChangelogOpen(true)}
-                title="Clique para ver todas as novidades da versão v1.4.4"
-                aria-label="Ver novidades da versão v1.4.4 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.4.5"
+                aria-label="Ver novidades da versão v1.4.5 (mobile)"
               >
-                v1.4.4
+                v1.4.5
               </button>
             </div>
           </div>
@@ -402,10 +404,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.4.4"
-              aria-label="Ver novidades da versão v1.4.4"
+              title="Clique para ver todas as novidades da versão v1.4.5"
+              aria-label="Ver novidades da versão v1.4.5"
             >
-              v1.4.4
+              v1.4.5
             </button>
           </div>
 
@@ -415,7 +417,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               <input
                 ref={searchInputRef}
                 type="search"
-                placeholder="Pesquisar nome, host ou ID..."
+                placeholder="Pesquisar fantasia, razão, CNPJ, serial, IP ou ID..."
                 value={filters.search}
                 onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
                 aria-label="Pesquisar e conectar dispositivo"

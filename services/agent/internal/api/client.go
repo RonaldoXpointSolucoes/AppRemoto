@@ -22,16 +22,32 @@ const (
 
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 
+type DataDivasInfo struct {
+	NomeFantasia string `json:"nomeFantasia,omitempty"`
+	RazaoSocial  string `json:"razaoSocial,omitempty"`
+	CNPJ         string `json:"cnpj,omitempty"`
+	Serial       string `json:"serial,omitempty"`
+	IE           string `json:"ie,omitempty"`
+	Endereco     string `json:"endereco,omitempty"`
+	Cidade       string `json:"cidade,omitempty"`
+	UF           string `json:"uf,omitempty"`
+	NomeMaq      string `json:"nomeMaq,omitempty"`
+	IPMaq        string `json:"ipMaq,omitempty"`
+	IPDataDivas  string `json:"ipDataDivas,omitempty"`
+	Banco        string `json:"banco,omitempty"`
+}
+
 type EnrollRequest struct {
-	EnrollmentToken string `json:"enrollmentToken"`
-	DeviceUUID      string `json:"deviceUuid"`
-	DisplayName     string `json:"displayName"`
-	Hostname        string `json:"hostname"`
-	OperatingSystem string `json:"operatingSystem"`
-	OSVersion       string `json:"osVersion"`
-	AgentVersion    string `json:"agentVersion"`
-	RustDeskID      string `json:"rustdeskId"`
-	RustDeskVersion string `json:"rustdeskVersion"`
+	EnrollmentToken string         `json:"enrollmentToken"`
+	DeviceUUID      string         `json:"deviceUuid"`
+	DisplayName     string         `json:"displayName"`
+	Hostname        string         `json:"hostname"`
+	OperatingSystem string         `json:"operatingSystem"`
+	OSVersion       string         `json:"osVersion"`
+	AgentVersion    string         `json:"agentVersion"`
+	RustDeskID      string         `json:"rustdeskId"`
+	RustDeskVersion string         `json:"rustdeskVersion"`
+	DataDivas       *DataDivasInfo `json:"datadivas,omitempty"`
 }
 
 type EnrollResponse struct {
@@ -42,11 +58,12 @@ type EnrollResponse struct {
 }
 
 type HeartbeatRequest struct {
-	AgentVersion    string `json:"agentVersion"`
-	RustDeskVersion string `json:"rustdeskVersion"`
-	RustDeskID      string `json:"rustdeskId"`
-	OperatingSystem string `json:"operatingSystem"`
-	OSVersion       string `json:"osVersion"`
+	AgentVersion    string         `json:"agentVersion"`
+	RustDeskVersion string         `json:"rustdeskVersion"`
+	RustDeskID      string         `json:"rustdeskId"`
+	OperatingSystem string         `json:"operatingSystem"`
+	OSVersion       string         `json:"osVersion"`
+	DataDivas       *DataDivasInfo `json:"datadivas,omitempty"`
 }
 
 type HeartbeatResponse struct {

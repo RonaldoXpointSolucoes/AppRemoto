@@ -1,5 +1,7 @@
 'use client';
 
+import type { DataDivasInfo } from '@appremoto/contracts';
+
 export type SessionResolutionStatus = 'resolved' | 'monitoring' | 'pending_parts' | 'escalated';
 
 export interface SessionTimelineEvent {
@@ -20,6 +22,7 @@ export interface RecentConnectionRecord {
   osBuild?: string;
   osBadge?: string;
   localIp?: string;
+  datadivas?: DataDivasInfo;
   deviceStatusAtStart?: string;
   lastSeenBeforeConnect?: string;
   isFavorite?: boolean;
@@ -162,8 +165,32 @@ export function buildAutomatedTechnicalReport(record: RecentConnectionRecord): s
     `• ID RustDesk: ${record.rustdeskId}`,
     `• Organização / Pasta: ${record.organizationName || 'XPoint'}${record.folderName ? ` › ${record.folderName}` : ''}`,
     `• Sistema Operacional: ${record.operatingSystem || 'Windows'}${record.osBuild ? ` (${record.osBuild})` : ''}`,
-    `• Rede / IP Local: ${record.localIp || 'Roteamento P2P / HBBR Relay (21116/21117)'}`,
+    `• Rede / IP Local: ${record.localIp || record.datadivas?.ipMaq || 'Roteamento P2P / HBBR Relay (21116/21117)'}`,
     `• Estado no Handshake: ${record.deviceStatusAtStart || 'ONLINE'}${record.isFavorite ? ' · ⭐ Fixado/Prioritário' : ''}`,
+  ];
+
+  if (record.datadivas && Object.keys(record.datadivas).length > 0) {
+    const dd = record.datadivas;
+    lines.push(`──────────────────────────────────────────────`);
+    lines.push(`🏢 CADASTRO DO CLIENTE (DATADIVAS / CONFIG.INI):`);
+    if (dd.nomeFantasia) lines.push(`• Nome Fantasia: ${dd.nomeFantasia}`);
+    if (dd.razaoSocial) lines.push(`• Razão Social: ${dd.razaoSocial}`);
+    if (dd.cnpj) lines.push(`• CNPJ / CPF: ${dd.cnpj}`);
+    if (dd.serial) lines.push(`• Serial DataDivas: ${dd.serial}`);
+    if (dd.ie) lines.push(`• Inscrição Estadual (IE): ${dd.ie}`);
+    if (dd.endereco || dd.cidade || dd.uf) {
+      const loc = [dd.endereco, [dd.cidade, dd.uf].filter(Boolean).join('/')].filter(Boolean).join(' — ');
+      lines.push(`• Endereço: ${loc}`);
+    }
+    if (dd.ipMaq || dd.nomeMaq) {
+      lines.push(`• IP Máquina (config.ini): ${dd.ipMaq || '—'}${dd.nomeMaq ? ` (${dd.nomeMaq})` : ''}`);
+    }
+    if (dd.ipDataDivas || dd.banco) {
+      lines.push(`• IP Servidor DataDivas: ${dd.ipDataDivas || '—'}${dd.banco ? ` | Banco: ${dd.banco}` : ''}`);
+    }
+  }
+
+  lines.push(
     `──────────────────────────────────────────────`,
     `⏱️ TELEMETRIA DA SESSÃO & ORIGEM:`,
     `• Técnico Responsável: ${record.technicianName}${record.technicianEmail ? ` (${record.technicianEmail})` : ''}`,
@@ -176,7 +203,7 @@ export function buildAutomatedTechnicalReport(record: RecentConnectionRecord): s
     `──────────────────────────────────────────────`,
     `🛠️ PROCEDIMENTOS & AÇÕES REALIZADAS:`,
     actions,
-  ];
+  );
 
   if (record.notes && record.notes.trim()) {
     lines.push(`──────────────────────────────────────────────`);
@@ -722,6 +749,7 @@ export interface ActiveSessionDraft {
   osBuild?: string;
   osBadge?: string;
   localIp?: string;
+  datadivas?: DataDivasInfo;
   deviceStatusAtStart?: string;
   lastSeenBeforeConnect?: string;
   isFavorite?: boolean;

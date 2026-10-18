@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export const installerVersion = '1.2.7';
+export const installerVersion = '1.2.8';
 export const rustDesk = Object.freeze({
   version: '1.4.9',
   bytes: 24472432,

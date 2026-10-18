@@ -47,7 +47,10 @@ type artifactStore interface {
 	Publish(string, []byte) error
 }
 
-type Metadata struct{ DisplayName, Hostname, OperatingSystem, OSVersion, AgentVersion string }
+type Metadata struct {
+	DisplayName, Hostname, OperatingSystem, OSVersion, AgentVersion string
+	DataDivas                                                       *api.DataDivasInfo
+}
 type Result struct {
 	DeviceID                 string
 	DeviceToken              []byte
@@ -226,7 +229,8 @@ func (service *Service) Run(ctx context.Context, enrollmentToken []byte, metadat
 			reconfigureRequest = api.EnrollRequest{
 				EnrollmentToken: string(enrollmentToken), DeviceUUID: identity.DeviceUUID,
 				DisplayName: metadata.DisplayName, Hostname: metadata.Hostname, OperatingSystem: metadata.OperatingSystem,
-				OSVersion: metadata.OSVersion, AgentVersion: metadata.AgentVersion, RustDeskID: info.ID, RustDeskVersion: info.Version}
+				OSVersion: metadata.OSVersion, AgentVersion: metadata.AgentVersion, RustDeskID: info.ID, RustDeskVersion: info.Version,
+				DataDivas: metadata.DataDivas}
 			response, err := client.Reconfigure(ctx, result.DeviceToken, reconfigureRequest)
 			if err != nil {
 				return err
@@ -282,7 +286,8 @@ func (service *Service) Run(ctx context.Context, enrollmentToken []byte, metadat
 	}
 	request := api.EnrollRequest{EnrollmentToken: string(enrollmentToken), DeviceUUID: identity.DeviceUUID,
 		DisplayName: metadata.DisplayName, Hostname: metadata.Hostname, OperatingSystem: metadata.OperatingSystem,
-		OSVersion: metadata.OSVersion, AgentVersion: metadata.AgentVersion, RustDeskID: info.ID, RustDeskVersion: info.Version}
+		OSVersion: metadata.OSVersion, AgentVersion: metadata.AgentVersion, RustDeskID: info.ID, RustDeskVersion: info.Version,
+		DataDivas: metadata.DataDivas}
 	if err := api.ValidateEnrollRequest(request); err != nil {
 		return Result{}, errors.New("invalid enrollment inputs")
 	}

@@ -1,5 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
-import { DeviceViewSchema, type DeviceListQuery, type DeviceView } from '@appremoto/contracts';
+import { DeviceViewSchema, extractDataDivasFromNotes, type DeviceListQuery, type DeviceView } from '@appremoto/contracts';
 
 import type { AuthenticatedTechnician } from '../plugins/technician-auth.ts';
 import type { DeviceRecord, DeviceRepository } from '../repositories/devices.ts';
@@ -37,6 +37,7 @@ function viewOf(record: DeviceRecord, organizationName: string, snapshotTime: st
   const currentAge = currentRequestTime.getTime() - seen;
   const online = record.enabled && Number.isFinite(seen) && seen <= currentRequestTime.getTime() &&
     (seen > snapshotAt ? currentAge <= 90_000 : snapshotAge >= 0 && snapshotAge <= 90_000);
+  const { datadivas } = extractDataDivasFromNotes(record.notes);
   return DeviceViewSchema.parse({
     id: record.id, organizationId: record.organizationId, organizationName,
     deviceUuid: record.deviceUuid, displayName: record.displayName, hostname: record.hostname,
@@ -46,6 +47,7 @@ function viewOf(record: DeviceRecord, organizationName: string, snapshotTime: st
     lastSeenAt: Number.isFinite(seen) ? new Date(seen).toISOString() : null,
     enabled: record.enabled,
     status: online ? 'ONLINE' : 'OFFLINE',
+    ...(datadivas ? { datadivas } : {}),
   });
 }
 
@@ -132,8 +134,21 @@ export async function listDevices(technician: AuthenticatedTechnician, query: De
       scanned++;
       const view = viewOf(record, visible.get(record.organizationId)!.name, state.t, now);
       if ((!query.status || view.status === query.status) &&
-          (!search || [view.displayName, view.hostname, view.rustdeskId]
-            .some((value) => value.toLocaleLowerCase().includes(search)))) devices.push(view);
+          (!search || [
+            view.displayName,
+            view.hostname,
+            view.rustdeskId,
+            view.datadivas?.nomeFantasia,
+            view.datadivas?.razaoSocial,
+            view.datadivas?.cnpj,
+            view.datadivas?.serial,
+            view.datadivas?.ie,
+            view.datadivas?.endereco,
+            view.datadivas?.cidade,
+            view.datadivas?.ipMaq,
+            view.datadivas?.ipDataDivas,
+            view.datadivas?.nomeMaq,
+          ].some((value) => value && value.toLocaleLowerCase().includes(search)))) devices.push(view);
       if (devices.length === query.limit) {
         if (index + 1 < page.records.length || page.hasMore) {
           return { devices, nextCursor: encodeCursor(state, cursorSecret) };

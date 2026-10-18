@@ -36,6 +36,7 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
   const [deleteError, setDeleteError] = useState('');
   const [copiedCommand, setCopiedCommand] = useState(false);
   const [copiedIp, setCopiedIp] = useState(false);
+  const [copiedDataDivasField, setCopiedDataDivasField] = useState<string | null>(null);
   const active = useRef(true);
   const closeRef = useRef(onClose); closeRef.current = onClose;
   const expiredRef = useRef(onSessionExpired); expiredRef.current = onSessionExpired;
@@ -128,8 +129,51 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
     });
   }
 
+  function copyDataDivasValue(key: string, value: string) {
+    void navigator.clipboard.writeText(value).then(() => {
+      setCopiedDataDivasField(key);
+      setTimeout(() => setCopiedDataDivasField(null), 2800);
+    });
+  }
+
   const currentDev = details?.device ?? device;
   const sys = parseSystemInfo(currentDev.operatingSystem, currentDev.osVersion);
+  const dd = currentDev.datadivas ?? device.datadivas;
+  const hasDataDivas = Boolean(
+    dd &&
+      (dd.nomeFantasia ||
+        dd.razaoSocial ||
+        dd.cnpj ||
+        dd.serial ||
+        dd.ie ||
+        dd.endereco ||
+        dd.cidade ||
+        dd.uf ||
+        dd.ipMaq ||
+        dd.ipDataDivas ||
+        dd.nomeMaq ||
+        dd.banco)
+  );
+  const fullAddress = dd
+    ? [dd.endereco, [dd.cidade, dd.uf].filter(Boolean).join('/')].filter(Boolean).join(' — ')
+    : '';
+
+  function copyFullDataDivasSummary() {
+    if (!dd) return;
+    const summaryLines = [
+      `📋 FICHA CADASTRAL DATADIVAS (${currentDev.displayName})`,
+      dd.nomeFantasia ? `Nome Fantasia: ${dd.nomeFantasia}` : '',
+      dd.razaoSocial ? `Razão Social: ${dd.razaoSocial}` : '',
+      dd.cnpj ? `CNPJ / CPF: ${dd.cnpj}` : '',
+      dd.serial ? `Serial: ${dd.serial}` : '',
+      `IE: ${dd.ie || 'Não informado'}`,
+      fullAddress ? `Endereço: ${fullAddress}` : '',
+      dd.ipMaq || dd.nomeMaq ? `IP Máquina: ${dd.ipMaq || '—'}${dd.nomeMaq ? ` (${dd.nomeMaq})` : ''}` : '',
+      dd.ipDataDivas ? `IP DataDivas: ${dd.ipDataDivas}${dd.banco ? ` (${dd.banco})` : ''}` : '',
+      `RustDesk ID: ${currentDev.rustdeskId}`,
+    ].filter(Boolean);
+    copyDataDivasValue('all', summaryLines.join('\n'));
+  }
 
   return <div className="device-dialog-backdrop">
     <div ref={panel} className="device-dialog" role="dialog" aria-modal="true" aria-label={details?.device.displayName ?? device.displayName} onKeyDown={(event) => {
@@ -165,13 +209,13 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
         <div className="device-spec-item">
           <span className="spec-label">Endereço IP Local</span>
           <div className="spec-ip-box">
-            <strong className="spec-val">{sys.ip || 'Não detectado'}</strong>
-            {sys.ip && (
+            <strong className="spec-val">{sys.ip || dd?.ipMaq || 'Não detectado'}</strong>
+            {(sys.ip || dd?.ipMaq) && (
               <button
                 type="button"
                 className="spec-copy-btn"
                 title="Copiar IP"
-                onClick={() => copyIp(sys.ip!)}
+                onClick={() => copyIp((sys.ip || dd?.ipMaq)!)}
               >
                 {copiedIp ? <Check size={12} /> : <Copy size={12} />}
                 <span>{copiedIp ? 'Copiado!' : 'Copiar'}</span>
@@ -185,6 +229,123 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
           <strong className="spec-val">{currentDev.hostname}</strong>
         </div>
       </div>
+
+      {/* Card com Dados Cadastrais do Cliente lidos de C:\DataDivas\config.ini */}
+      {hasDataDivas && dd && (
+        <section className="datadivas-client-card" aria-label="Dados cadastrais DataDivas">
+          <div className="datadivas-card-header">
+            <div className="datadivas-card-title-group">
+              <span className="datadivas-card-badge">C:\DataDivas\config.ini</span>
+              <h3>Dados Cadastrais do Cliente (DataDivas)</h3>
+            </div>
+            <button
+              type="button"
+              className="spec-copy-btn"
+              onClick={copyFullDataDivasSummary}
+              title="Copiar todos os dados cadastrais do cliente"
+            >
+              {copiedDataDivasField === 'all' ? <Check size={12} /> : <Copy size={12} />}
+              <span>{copiedDataDivasField === 'all' ? 'Ficha copiada!' : 'Copiar Ficha Completa'}</span>
+            </button>
+          </div>
+
+          <div className="datadivas-grid">
+            <div className="datadivas-field">
+              <span className="spec-label">Nome Fantasia</span>
+              <strong className="spec-val">{dd.nomeFantasia || '—'}</strong>
+            </div>
+
+            <div className="datadivas-field">
+              <span className="spec-label">Razão Social</span>
+              <strong className="spec-val">{dd.razaoSocial || '—'}</strong>
+            </div>
+
+            <div className="datadivas-field">
+              <span className="spec-label">CNPJ / CPF</span>
+              <div className="spec-ip-box">
+                <strong className="spec-val mono">{dd.cnpj || '—'}</strong>
+                {dd.cnpj && (
+                  <button
+                    type="button"
+                    className="spec-copy-btn"
+                    onClick={() => copyDataDivasValue('cnpj', dd.cnpj!)}
+                  >
+                    {copiedDataDivasField === 'cnpj' ? <Check size={11} /> : <Copy size={11} />}
+                    <span>{copiedDataDivasField === 'cnpj' ? 'Copiado' : 'Copiar'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="datadivas-field">
+              <span className="spec-label">Serial DataDivas</span>
+              <div className="spec-ip-box">
+                <strong className="spec-val mono">{dd.serial || '—'}</strong>
+                {dd.serial && (
+                  <button
+                    type="button"
+                    className="spec-copy-btn"
+                    onClick={() => copyDataDivasValue('serial', dd.serial!)}
+                  >
+                    {copiedDataDivasField === 'serial' ? <Check size={11} /> : <Copy size={11} />}
+                    <span>{copiedDataDivasField === 'serial' ? 'Copiado' : 'Copiar'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="datadivas-field">
+              <span className="spec-label">Inscrição Estadual (IE)</span>
+              <strong className="spec-val mono">{dd.ie || 'Isento / Não informado'}</strong>
+            </div>
+
+            <div className="datadivas-field">
+              <span className="spec-label">Endereço Completo</span>
+              <strong className="spec-val">{fullAddress || '—'}</strong>
+            </div>
+
+            <div className="datadivas-field">
+              <span className="spec-label">IP Máquina (ipmaq / nomemaq)</span>
+              <div className="spec-ip-box">
+                <strong className="spec-val mono">
+                  {dd.ipMaq || sys.ip || '—'}
+                  {dd.nomeMaq ? ` (${dd.nomeMaq})` : ''}
+                </strong>
+                {(dd.ipMaq || sys.ip) && (
+                  <button
+                    type="button"
+                    className="spec-copy-btn"
+                    onClick={() => copyDataDivasValue('ipMaq', (dd.ipMaq || sys.ip)!)}
+                  >
+                    {copiedDataDivasField === 'ipMaq' ? <Check size={11} /> : <Copy size={11} />}
+                    <span>{copiedDataDivasField === 'ipMaq' ? 'Copiado' : 'Copiar'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="datadivas-field">
+              <span className="spec-label">IP Servidor DataDivas</span>
+              <div className="spec-ip-box">
+                <strong className="spec-val mono" title={dd.banco || undefined}>
+                  {dd.ipDataDivas || '—'}
+                </strong>
+                {dd.ipDataDivas && (
+                  <button
+                    type="button"
+                    className="spec-copy-btn"
+                    onClick={() => copyDataDivasValue('ipDataDivas', dd.ipDataDivas!)}
+                  >
+                    {copiedDataDivasField === 'ipDataDivas' ? <Check size={11} /> : <Copy size={11} />}
+                    <span>{copiedDataDivasField === 'ipDataDivas' ? 'Copiado' : 'Copiar'}</span>
+                  </button>
+                )}
+              </div>
+              {dd.banco && <small className="datadivas-db-subtext">Banco: {dd.banco}</small>}
+            </div>
+          </div>
+        </section>
+      )}
 
       {busy && <p role="status">Atualizando dados…</p>}
       {readError && <p role="alert">Parte do diagnóstico não pôde ser carregada. O log local continua disponível.</p>}

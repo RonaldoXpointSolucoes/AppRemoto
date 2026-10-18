@@ -84,3 +84,60 @@ it('projects a log defensively without allowing arbitrary exception text or extr
   const text = connectionLogText('device-1', [{ ...event, code: 'password=private', stage: 'rustdesk://secret', secret: 'private token' } as typeof event]);
   expect(text).toContain('REQUEST_FAILED'); expect(text).not.toContain('private'); expect(text).not.toContain('rustdesk://');
 });
+it('renders DataDivas client information extracted from C:\\DataDivas\\config.ini', async () => {
+  const client = new QueryClient();
+  const deviceWithDataDivas: DeviceView = {
+    ...device,
+    datadivas: {
+      nomeFantasia: 'SISTEMA DEMONSTRAÇÃO',
+      razaoSocial: 'SISTEMA DEMO',
+      cnpj: '254.867.528-90',
+      serial: 'XPOI-AAAA-DDDD-0028',
+      ie: '110.042.490.114',
+      endereco: 'PRAÇA MIGUEL ORTEGA, 340',
+      cidade: 'TABOAO DA SERRA',
+      uf: 'SP',
+      ipMaq: '192.168.0.3',
+      ipDataDivas: '192.168.0.250',
+      nomeMaq: 'RONALDO-ASUS',
+      banco: '192.168.0.250:C:\\DataDivas\\DADOS\\BANCODEDADOS.FDB',
+    },
+  };
+  const service = {
+    getOrganizations: vi.fn(),
+    getDevices: vi.fn(),
+    expireSession: vi.fn(),
+    getDeviceDetails: vi.fn().mockResolvedValue({
+      device: deviceWithDataDivas,
+      notes: 'Andar 2',
+      diagnostics: details.diagnostics,
+    }),
+    getConnectionHistory: vi.fn().mockResolvedValue({ events: [] }),
+    updateDevice: vi.fn(),
+    connectDevice: vi.fn(),
+    recordConnectionEvent: vi.fn(),
+  };
+  render(
+    <QueryClientProvider client={client}>
+      <DeviceTools
+        device={deviceWithDataDivas}
+        service={service}
+        canConnect
+        canManage
+        events={[]}
+        onEvent={vi.fn()}
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />
+    </QueryClientProvider>
+  );
+  await screen.findByText('Dados Cadastrais do Cliente (DataDivas)');
+  expect(screen.getByText('SISTEMA DEMONSTRAÇÃO')).toBeInTheDocument();
+  expect(screen.getByText('SISTEMA DEMO')).toBeInTheDocument();
+  expect(screen.getByText('254.867.528-90')).toBeInTheDocument();
+  expect(screen.getByText('XPOI-AAAA-DDDD-0028')).toBeInTheDocument();
+  expect(screen.getByText('110.042.490.114')).toBeInTheDocument();
+  expect(screen.getByText(/PRAÇA MIGUEL ORTEGA, 340 — TABOAO DA SERRA\/SP/)).toBeInTheDocument();
+  expect(screen.getByText('192.168.0.3 (RONALDO-ASUS)')).toBeInTheDocument();
+  expect(screen.getByText('192.168.0.250')).toBeInTheDocument();
+});

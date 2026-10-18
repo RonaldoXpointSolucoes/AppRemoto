@@ -2,7 +2,7 @@ import { reconfigureExistingDevice } from './reconfigure-device.ts';
 import { randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { ReconfigureRequestSchema, type ReconfigureRequest, type ReconfigureResponse, EnrollRequestSchema, EnrollResponseSchema,
   GenericPasswordRequestSchema, type GenericPasswordRequest, type GenericPasswordResponse, type ConfirmGenericPasswordResponse,
-  type EnrollRequest, type EnrollResponse } from '@appremoto/contracts';
+  mergeDataDivasIntoNotes, type EnrollRequest, type EnrollResponse } from '@appremoto/contracts';
 import { enrollmentId, IndeterminateEnrollmentWrite, sameEnrollmentState,
   type HeartbeatTokenRepository, type EnrollmentRepository, type EnrollmentToken, type EnrollmentKind, type EnrollmentData } from '../repositories/enrollment.ts';
 import { rotateGenericPassword } from './generic-password.ts';
@@ -196,10 +196,14 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
           device_id: deviceId, device_uuid: request.deviceUuid, status: 'pending', token_use_consumed: false,
           expected_use_count: token.use_count + 1, recovery_frozen: false };
         await write('enrollment_receipts', receiptId, pending, receipt);
+        const mergedNotes = request.datadivas
+          ? mergeDataDivasIntoNotes(typeof device?.notes === 'string' ? device.notes : null, request.datadivas)
+          : (typeof device?.notes === 'string' ? device.notes : undefined);
         await write('devices', deviceId, { organization_id: token.organization_id, device_uuid: request.deviceUuid,
           display_name: request.displayName, hostname: request.hostname, operating_system: request.operatingSystem,
           os_version: request.osVersion, agent_version: request.agentVersion, rustdesk_id: request.rustdeskId,
-          rustdesk_version: request.rustdeskVersion, enabled: true, last_seen_at: now().toISOString(), last_ip: sourceIp }, device);
+          rustdesk_version: request.rustdeskVersion, enabled: true, last_seen_at: now().toISOString(), last_ip: sourceIp,
+          ...(mergedNotes != null ? { notes: mergedNotes } : {}) }, device);
         await write('device_tokens', deviceId, { device_id: deviceId, token_hash: hashToken(deviceTokenPlaintext),
           last_used_at: null, revoked_at: null }, deviceToken);
         await write('device_credentials', deviceId, { device_id: deviceId, password_ciphertext: envelope.passwordCiphertext,

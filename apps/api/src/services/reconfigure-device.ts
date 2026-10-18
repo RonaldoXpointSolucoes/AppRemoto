@@ -1,5 +1,5 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import type { EnrollRequest, ReconfigureResponse } from '@appremoto/contracts';
+import { mergeDataDivasIntoNotes, type EnrollRequest, type ReconfigureResponse } from '@appremoto/contracts';
 import { IndeterminateEnrollmentWrite, type EnrollmentData, type EnrollmentRepository,
   type EnrollmentToken, type HeartbeatTokenRepository } from '../repositories/enrollment.ts';
 import type { AuditRepository, EnrollmentAudit } from '../repositories/audit.ts';
@@ -82,7 +82,10 @@ export async function reconfigureExistingDevice(c: Context): Promise<Reconfigure
     }
     await activeToken(expected);
     // Narrow patch: identity, credentials and heartbeat data stay intact.
-    await repo.write('devices', deviceId, { ...currentDevice, display_name: request.displayName }, currentDevice);
+    const nextNotes = request.datadivas
+      ? mergeDataDivasIntoNotes(typeof currentDevice.notes === 'string' ? currentDevice.notes : null, request.datadivas)
+      : currentDevice.notes;
+    await repo.write('devices', deviceId, { ...currentDevice, display_name: request.displayName, ...(nextNotes !== undefined ? { notes: nextNotes } : {}) }, currentDevice);
     await c.audit.record(randomUUID(), { ...c.event, retry: true });
     await repo.write('enrollment_receipts', receiptId, { ...pending, status: 'committed', token_use_consumed: true }, pending);
     await activeToken(expected);
