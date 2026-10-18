@@ -13,24 +13,22 @@ WORKDIR /app
 
 FROM base AS dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/package.json
 COPY apps/panel/package.json apps/panel/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
-RUN pnpm install --frozen-lockfile --filter @appremoto/panel...
+RUN pnpm install --frozen-lockfile --filter @appremoto/panel... && pnpm store prune && rm -rf /root/.local/share/pnpm/store /tmp/*
 
-FROM base AS builder
+FROM dependencies AS builder
 ARG NEXT_PUBLIC_APPWRITE_ENDPOINT
 ARG NEXT_PUBLIC_APPWRITE_PROJECT_ID
 ARG NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_APPWRITE_ENDPOINT=$NEXT_PUBLIC_APPWRITE_ENDPOINT
 ENV NEXT_PUBLIC_APPWRITE_PROJECT_ID=$NEXT_PUBLIC_APPWRITE_PROJECT_ID
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
-COPY --from=dependencies /app/node_modules ./node_modules
-COPY --from=dependencies /app/apps/panel/node_modules ./apps/panel/node_modules
-COPY --from=dependencies /app/packages/contracts/node_modules ./packages/contracts/node_modules
 COPY . .
 COPY --from=windows-installer /out/xpoint-setup-1.3.0.exe ./apps/panel/public/installers/xpoint-setup-1.3.0.exe
 RUN node apps/panel/scripts/package-installer.mjs
-RUN pnpm --filter @appremoto/panel build
+RUN pnpm --config.verify-deps-before-run=false --filter @appremoto/panel build && rm -rf /app/apps/panel/.next/cache
 
 FROM node:24-alpine AS runner
 RUN apk add --no-cache curl
