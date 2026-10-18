@@ -23,6 +23,10 @@ function createDeviceDirectoryService(): DeviceDirectoryService {
     recordConnectionEvent: api.recordConnectionEvent,
     getOrganizations: api.getOrganizations,
     getDevices: api.getDevices,
+    getCnpjGroups: api.getCnpjGroups,
+    suggestCnpjName: api.suggestCnpjName,
+    executeCnpjGroupAction: api.executeCnpjGroupAction,
+    migrateCnpjGroups: api.migrateCnpjGroups,
     expireSession: async () => { await account.deleteSession('current'); },
   };
 }

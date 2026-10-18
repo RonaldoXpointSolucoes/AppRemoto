@@ -20,7 +20,7 @@ export default function SetupPage() {
         <header className="setup-header">
           <div className="product-title-row">
             <p className="product-name">AppRemoto · Instalar no cliente</p>
-            <span className="version-badge" title="Versão da Plataforma">v1.2.9</span>
+            <span className="version-badge" title="Versão da Plataforma">v1.3.0</span>
           </div>
           <div className="devices-header-actions">
             <ThemeToggle />

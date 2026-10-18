@@ -49,6 +49,13 @@ const DATADIVAS_KEYS: (keyof DataDivasInfo)[] = [
   'ipMaq',
   'ipDataDivas',
   'banco',
+  'funcao',
+  'windowsHostnameDesejado',
+  'statusRenomeacao',
+  'erroRenomeacao',
+  'ultimaSincronizacao',
+  'reservaId',
+  'substituiuDeviceId',
 ];
 
 const DATADIVAS_TAG_REGEX = /\n?\[datadivas_b64:([A-Za-z0-9_-]+)\]\s*$/;
@@ -112,11 +119,14 @@ export function mergeDataDivasIntoNotes(
   incoming?: DataDivasInfo | null
 ): string | null {
   const { datadivas: prevDataDivas, cleanNotes } = extractDataDivasFromNotes(existingRawNotes);
-  const nextDataDivas = normalizeDataDivasInfo(incoming) ?? prevDataDivas;
-  if (!nextDataDivas) {
+  const normalizedIncoming = normalizeDataDivasInfo(incoming);
+  const merged = prevDataDivas && normalizedIncoming
+    ? normalizeDataDivasInfo({ ...prevDataDivas, ...normalizedIncoming })
+    : (normalizedIncoming ?? prevDataDivas);
+  if (!merged) {
     return existingRawNotes ?? null;
   }
-  const tag = `[datadivas_b64:${toBase64Url(JSON.stringify(nextDataDivas))}]`;
+  const tag = `[datadivas_b64:${toBase64Url(JSON.stringify(merged))}]`;
   const trimmedClean = cleanNotes.trimEnd();
   if (!trimmedClean) {
     return tag.length <= 2048 ? tag : existingRawNotes ?? null;

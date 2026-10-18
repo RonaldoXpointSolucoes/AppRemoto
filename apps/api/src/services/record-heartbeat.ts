@@ -1,5 +1,5 @@
 import type { HeartbeatRequest, HeartbeatResponse } from '@appremoto/contracts';
-import { HeartbeatRequestSchema, mergeDataDivasIntoNotes } from '@appremoto/contracts';
+import { HeartbeatRequestSchema, extractDataDivasFromNotes, mergeDataDivasIntoNotes, normalizeWindowsHostname } from '@appremoto/contracts';
 import { randomUUID } from 'node:crypto';
 import { enrollmentId, IndeterminateEnrollmentWrite, sameEnrollmentState,
   type EnrollmentData, type EnrollmentRepository,
@@ -73,10 +73,32 @@ export function createHeartbeatService(dependencies: HeartbeatDependencies): Rec
         await releaseGuard();
         throw new HeartbeatError('UNAUTHENTICATED');
       }
-      const nextNotes = request.data.datadivas
-        ? mergeDataDivasIntoNotes(typeof device.notes === 'string' ? device.notes : null, request.data.datadivas)
+      const existingDataDivas = extractDataDivasFromNotes(typeof device.notes === 'string' ? device.notes : null).datadivas;
+      const incomingHost = request.data.hostname || request.data.datadivas?.nomeMaq || (typeof device.hostname === 'string' ? device.hostname : '');
+      const desiredHost = request.data.datadivas?.windowsHostnameDesejado || existingDataDivas?.windowsHostnameDesejado || (typeof device.display_name === 'string' ? device.display_name : '');
+      const normActual = normalizeWindowsHostname(incomingHost);
+      const normDesired = normalizeWindowsHostname(desiredHost);
+      let nextRenameStatus = request.data.datadivas?.statusRenomeacao || existingDataDivas?.statusRenomeacao;
+      if (normActual && normDesired) {
+        if ((nextRenameStatus === 'APLICADO_AGUARDANDO_REBOOT' || nextRenameStatus === 'RESERVADO' || nextRenameStatus === 'DIVERGENTE') && normActual === normDesired) {
+          nextRenameStatus = 'CONFIRMADO';
+        } else if (nextRenameStatus === 'CONFIRMADO' && normActual !== normDesired) {
+          nextRenameStatus = 'DIVERGENTE';
+        }
+      }
+      const enrichedDataDivas = (request.data.datadivas || existingDataDivas)
+        ? {
+            ...(request.data.datadivas ?? {}),
+            ...(nextRenameStatus ? { statusRenomeacao: nextRenameStatus } : {}),
+            ultimaSincronizacao: timestamp,
+          }
+        : undefined;
+      const nextNotes = enrichedDataDivas
+        ? mergeDataDivasIntoNotes(typeof device.notes === 'string' ? device.notes : null, enrichedDataDivas)
         : device.notes;
-      const updatedDevice = { ...device, operating_system: request.data.operatingSystem,
+      const updatedDevice = { ...device,
+        ...(request.data.hostname ? { hostname: request.data.hostname } : {}),
+        operating_system: request.data.operatingSystem,
         os_version: request.data.osVersion, agent_version: request.data.agentVersion,
         rustdesk_id: request.data.rustdeskId, rustdesk_version: request.data.rustdeskVersion,
         last_seen_at: timestamp, last_ip: sourceIp,

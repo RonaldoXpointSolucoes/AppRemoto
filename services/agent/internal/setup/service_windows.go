@@ -150,7 +150,7 @@ func runAgent(ctx context.Context) (err error) {
 		return e
 	}
 	osName, osver := CollectSystemInfo()
-	dataDivas := CollectDataDivasInfo()
+	dataDivas := EnrichDataDivasWithNamingState(CollectDataDivasInfo(), ps)
 	result, e := en.Run(ctx, token, enroll.Metadata{DisplayName: reg.DeviceDisplayName, Hostname: host, OperatingSystem: osName, OSVersion: osver, AgentVersion: Version, DataDivas: dataDivas})
 	if e != nil {
 		var stage *enroll.StageError
@@ -173,10 +173,27 @@ func runAgent(ctx context.Context) (err error) {
 	if e != nil {
 		return e
 	}
+	if curHost, hErr := os.Hostname(); hErr == nil && curHost != "" {
+		dd := EnrichDataDivasWithNamingState(CollectDataDivasInfo(), ps)
+		syncReq := api.DeviceSyncRequest{
+			WindowsHostnameAtual: curHost,
+			RustDeskID:           info.ID,
+		}
+		if dd != nil {
+			syncReq.WindowsHostnameDesejado = dd.WindowsHostnameDesejado
+			syncReq.StatusRenomeacao = dd.StatusRenomeacao
+			syncReq.ErroRenomeacao = dd.ErroRenomeacao
+			syncReq.Cnpj = NormalizeCnpjDigits(dd.CNPJ)
+		}
+		syncCtx, cancelSync := context.WithTimeout(ctx, 8*time.Second)
+		_, _ = apiClient.SyncDevice(syncCtx, result.DeviceToken, syncReq)
+		cancelSync()
+	}
 	operation = "HEARTBEAT_SCHEDULER"
 	scheduler, e := heartbeat.NewScheduler(func(c context.Context) error {
 		r.Record(6, "HEARTBEAT_REQUEST", "START", nil)
-		_, e := apiClient.Heartbeat(c, result.DeviceToken, api.HeartbeatRequest{AgentVersion: Version, RustDeskVersion: info.Version, RustDeskID: info.ID, OperatingSystem: osName, OSVersion: osver, DataDivas: CollectDataDivasInfo()})
+		curHost, _ := os.Hostname()
+		_, e := apiClient.Heartbeat(c, result.DeviceToken, api.HeartbeatRequest{AgentVersion: Version, RustDeskVersion: info.Version, RustDeskID: info.ID, Hostname: curHost, OperatingSystem: osName, OSVersion: osver, DataDivas: EnrichDataDivasWithNamingState(CollectDataDivasInfo(), ps)})
 		if e != nil {
 			r.Record(6, "HEARTBEAT_RETRY", "WAIT", e)
 			return e

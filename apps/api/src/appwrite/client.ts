@@ -14,6 +14,8 @@ import { createOperatorSetupService } from '../services/operator-setup.ts';
 import { createSetupReceiptRepository } from '../repositories/operator-setup.ts';
 import { createGenericInstallerRepository } from '../repositories/generic-installers.ts';
 import { createGenericInstallerService } from '../services/generic-installers.ts';
+import { createCnpjNamingRepository } from '../repositories/cnpj-naming.ts';
+import { createCnpjNamingService } from '../services/cnpj-naming.ts';
 
 export function createAppwriteServices(config: ApiConfig): TechnicianServices {
   const dataClient = new Client().setEndpoint(config.appwriteEndpoint)
@@ -22,11 +24,18 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
 
   const enrollmentRepository = createEnrollmentRepository(databases);
   const auditRepository = createAuditRepository(databases);
-  const genericInstallers = createGenericInstallerService({ repository: createGenericInstallerRepository(databases),
+  const genericInstallerRepository = createGenericInstallerRepository(databases);
+  const genericInstallers = createGenericInstallerService({ repository: genericInstallerRepository,
     enrollment: enrollmentRepository, audit: auditRepository, encryptionKey: config.masterEncryptionKey,
     sharedPassword: config.genericInstallerSharedPassword });
+  const cnpjNaming = createCnpjNamingService({
+    repository: createCnpjNamingRepository(databases),
+    installers: genericInstallerRepository,
+    encryptionKey: config.masterEncryptionKey,
+  });
   return {
     genericInstallers,
+    cnpjNaming,
     projectId: config.appwriteProjectId,
     jwtVerifier: {
       async verify(jwt) {

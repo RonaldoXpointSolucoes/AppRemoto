@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ReconfigureRequestSchema } from './agent.ts';
+import { ComputerRoleCodeSchema } from './cnpj-naming.ts';
 const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/);
 const label = z.string().trim().min(1).max(128).regex(/^[^\u0000-\u001f\u007f]+$/);
 const secret = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
@@ -14,7 +15,9 @@ export const DownloadGenericInstallerResponseSchema = GenericInstallerPackageRes
 export const RevokeGenericInstallerResponseSchema = z.object({ revoked: z.literal(true) }).strict();
 export const GenericInstallerParamsSchema = z.object({ installerId: id }).strict();
 export const PrepareInstallationRequestSchema = z.object({ installerId: id, requestId: z.uuid(), requestSecret: secret,
-  companyName: label, deviceDisplayName: label, existingOrganizationId: id.optional() }).strict();
+  companyName: label, deviceDisplayName: label, existingOrganizationId: id.optional(),
+  cnpj: z.string().max(32).optional(), role: ComputerRoleCodeSchema.optional(),
+  reservationId: z.string().max(64).optional(), replaceDeviceId: id.optional() }).strict();
 export const PrepareInstallationResponseSchema = z.object({ schemaVersion: z.literal(1), enrollmentId: id,
   enrollmentToken: secret, expiresAt: z.iso.datetime({ offset: true }), organizationId: id,
   organizationName: label, deviceDisplayName: label }).strict();

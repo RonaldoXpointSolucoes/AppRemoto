@@ -94,5 +94,5 @@ func main() {
 		os.Exit(1)
 	}
 	report.Close()
-	setup.Message("Configuracao concluida. O computador esta disponivel na lista Dispositivos do painel XPoint.\n\nLog: " + report.Path())
+	setup.PromptCompletionAndOptionalReboot(report.Path())
 }

@@ -23,18 +23,25 @@ const (
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 
 type DataDivasInfo struct {
-	NomeFantasia string `json:"nomeFantasia,omitempty"`
-	RazaoSocial  string `json:"razaoSocial,omitempty"`
-	CNPJ         string `json:"cnpj,omitempty"`
-	Serial       string `json:"serial,omitempty"`
-	IE           string `json:"ie,omitempty"`
-	Endereco     string `json:"endereco,omitempty"`
-	Cidade       string `json:"cidade,omitempty"`
-	UF           string `json:"uf,omitempty"`
-	NomeMaq      string `json:"nomeMaq,omitempty"`
-	IPMaq        string `json:"ipMaq,omitempty"`
-	IPDataDivas  string `json:"ipDataDivas,omitempty"`
-	Banco        string `json:"banco,omitempty"`
+	NomeFantasia            string `json:"nomeFantasia,omitempty"`
+	RazaoSocial             string `json:"razaoSocial,omitempty"`
+	CNPJ                    string `json:"cnpj,omitempty"`
+	Serial                  string `json:"serial,omitempty"`
+	IE                      string `json:"ie,omitempty"`
+	Endereco                string `json:"endereco,omitempty"`
+	Cidade                  string `json:"cidade,omitempty"`
+	UF                      string `json:"uf,omitempty"`
+	NomeMaq                 string `json:"nomeMaq,omitempty"`
+	IPMaq                   string `json:"ipMaq,omitempty"`
+	IPDataDivas             string `json:"ipDataDivas,omitempty"`
+	Banco                   string `json:"banco,omitempty"`
+	Funcao                  string `json:"funcao,omitempty"`
+	WindowsHostnameDesejado string `json:"windowsHostnameDesejado,omitempty"`
+	StatusRenomeacao        string `json:"statusRenomeacao,omitempty"`
+	ErroRenomeacao          string `json:"erroRenomeacao,omitempty"`
+	UltimaSincronizacao     string `json:"ultimaSincronizacao,omitempty"`
+	ReservaID               string `json:"reservaId,omitempty"`
+	SubstituiuDeviceID      string `json:"substituiuDeviceId,omitempty"`
 }
 
 type EnrollRequest struct {
@@ -61,6 +68,7 @@ type HeartbeatRequest struct {
 	AgentVersion    string         `json:"agentVersion"`
 	RustDeskVersion string         `json:"rustdeskVersion"`
 	RustDeskID      string         `json:"rustdeskId"`
+	Hostname        string         `json:"hostname,omitempty"`
 	OperatingSystem string         `json:"operatingSystem"`
 	OSVersion       string         `json:"osVersion"`
 	DataDivas       *DataDivasInfo `json:"datadivas,omitempty"`
@@ -69,6 +77,24 @@ type HeartbeatRequest struct {
 type HeartbeatResponse struct {
 	DeviceID   string    `json:"deviceId"`
 	LastSeenAt time.Time `json:"lastSeenAt"`
+}
+
+type DeviceSyncRequest struct {
+	WindowsHostnameAtual    string `json:"windowsHostnameAtual"`
+	WindowsHostnameDesejado string `json:"windowsHostnameDesejado,omitempty"`
+	StatusRenomeacao        string `json:"statusRenomeacao,omitempty"`
+	ErroRenomeacao          string `json:"erroRenomeacao,omitempty"`
+	RustDeskID              string `json:"rustdeskId,omitempty"`
+	Cnpj                    string `json:"cnpj,omitempty"`
+}
+
+type DeviceSyncResponse struct {
+	DeviceID                string `json:"deviceId"`
+	DisplayName             string `json:"displayName"`
+	WindowsHostnameAtual    string `json:"windowsHostnameAtual"`
+	WindowsHostnameDesejado string `json:"windowsHostnameDesejado,omitempty"`
+	StatusRenomeacao        string `json:"statusRenomeacao"`
+	SyncedAt                string `json:"syncedAt"`
 }
 
 type ErrorCode string
@@ -307,6 +333,53 @@ func (client *Client) Heartbeat(ctx context.Context, deviceToken []byte, request
 	return HeartbeatResponse{}, mapErrorResponse(response.StatusCode, data, map[int]ErrorCode{
 		400: ErrorInvalidHeartbeat, 401: ErrorUnauthenticated, 403: ErrorHeartbeatForbidden, 503: ErrorHeartbeatUnavailable,
 	})
+}
+
+func (client *Client) SyncDevice(ctx context.Context, deviceToken []byte, request DeviceSyncRequest) (DeviceSyncResponse, error) {
+	if !validDeviceToken(deviceToken) {
+		return DeviceSyncResponse{}, &Error{Code: ErrorUnauthenticated}
+	}
+	if !length(request.WindowsHostnameAtual, 1, 255) {
+		return DeviceSyncResponse{}, &Error{Code: ErrorInvalidHeartbeat}
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
+		return DeviceSyncResponse{}, &Error{Code: ErrorInvalidHeartbeat}
+	}
+	defer clear(body)
+	requestCtx, cancel := context.WithTimeout(ctx, client.timeout)
+	defer cancel()
+	httpRequest, err := http.NewRequestWithContext(requestCtx, http.MethodPost, client.endpoint("/v1/agent/device/sync"), bytes.NewReader(body))
+	if err != nil {
+		return DeviceSyncResponse{}, &Error{Code: ErrorTransport}
+	}
+	httpRequest.Header.Set("Content-Type", "application/json")
+	httpRequest.Header.Set("Accept", "application/json")
+	httpRequest.Header.Set("Authorization", "Bearer "+string(deviceToken))
+	response, err := client.httpClient.Do(httpRequest)
+	if err != nil {
+		if requestCtx.Err() != nil {
+			return DeviceSyncResponse{}, &Error{Code: ErrorTransport, cause: requestCtx.Err()}
+		}
+		return DeviceSyncResponse{}, &Error{Code: ErrorTransport}
+	}
+	defer response.Body.Close()
+	data, err := readBounded(response.Body, maxResponseBytes)
+	if err != nil {
+		return DeviceSyncResponse{}, &Error{Code: ErrorUnexpectedResponse}
+	}
+	defer clear(data)
+	if !isJSONContentType(response.Header.Get("Content-Type")) {
+		return DeviceSyncResponse{}, &Error{Code: ErrorUnexpectedResponse}
+	}
+	if response.StatusCode == http.StatusOK {
+		var result DeviceSyncResponse
+		if json.Unmarshal(data, &result) != nil || !length(result.DeviceID, 1, 36) {
+			return DeviceSyncResponse{}, &Error{Code: ErrorUnexpectedResponse}
+		}
+		return result, nil
+	}
+	return DeviceSyncResponse{}, &Error{Code: ErrorUnexpectedResponse}
 }
 
 func (client *Client) endpoint(path string) string {

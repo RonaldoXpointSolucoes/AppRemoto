@@ -26,6 +26,16 @@ type GenericProvisioning struct {
 type InstallationInput struct {
 	CompanyName       string `json:"companyName"`
 	DeviceDisplayName string `json:"deviceDisplayName"`
+	Cnpj              string `json:"cnpj,omitempty"`
+	RazaoSocial       string `json:"razaoSocial,omitempty"`
+	NomeFantasia      string `json:"nomeFantasia,omitempty"`
+	Role              string `json:"role,omitempty"`
+	DesiredHostname   string `json:"desiredHostname,omitempty"`
+	OperationMode     string `json:"operationMode,omitempty"`
+	ReplacesDeviceID  string `json:"replacesDeviceId,omitempty"`
+	RenameWindows     bool   `json:"renameWindows,omitempty"`
+	ReservationID     string `json:"reservationId,omitempty"`
+	OfflineFallback   bool   `json:"offlineFallback,omitempty"`
 }
 
 type preparationRequest struct {
@@ -35,6 +45,10 @@ type preparationRequest struct {
 	CompanyName            string `json:"companyName"`
 	DeviceDisplayName      string `json:"deviceDisplayName"`
 	ExistingOrganizationID string `json:"existingOrganizationId,omitempty"`
+	Cnpj                   string `json:"cnpj,omitempty"`
+	Role                   string `json:"role,omitempty"`
+	ReservationID          string `json:"reservationId,omitempty"`
+	ReplaceDeviceID        string `json:"replaceDeviceId,omitempty"`
 }
 
 type preparationState struct {
@@ -145,7 +159,17 @@ func newPreparationRequest(p GenericProvisioning, input InstallationInput) (prep
 		return preparationRequest{}, err
 	}
 	defer clear(secret[:])
-	return preparationRequest{InstallerID: p.InstallerID, RequestID: fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]), RequestSecret: base64.RawURLEncoding.EncodeToString(secret[:]), CompanyName: input.CompanyName, DeviceDisplayName: input.DeviceDisplayName}, nil
+	return preparationRequest{
+		InstallerID:       p.InstallerID,
+		RequestID:         fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]),
+		RequestSecret:     base64.RawURLEncoding.EncodeToString(secret[:]),
+		CompanyName:       input.CompanyName,
+		DeviceDisplayName: input.DeviceDisplayName,
+		Cnpj:              input.Cnpj,
+		Role:              input.Role,
+		ReservationID:     input.ReservationID,
+		ReplaceDeviceID:   input.ReplacesDeviceID,
+	}, nil
 }
 
 // No generic token or password enters command arguments, disk logs or errors.

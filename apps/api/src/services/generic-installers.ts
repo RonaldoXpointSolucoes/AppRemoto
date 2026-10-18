@@ -70,19 +70,38 @@ export function createGenericInstallerService(deps: Dependencies): GenericInstal
       installerToken: secret('generic-installer-capability', [row.id]) } });
   }
   async function resolveOrganization(request: PrepareInstallationRequest): Promise<Organization> {
+    const cnpjDigits = typeof request.cnpj === 'string' ? request.cnpj.replace(/\D+/g, '') : '';
+    const validCnpj = cnpjDigits.length === 14 && !/^(\d)\1{13}$/.test(cnpjDigits) ? cnpjDigits : null;
     const canonical = normalizeCompanyName(request.companyName);
+    const allOrgs = await repo.organizations();
+    if (validCnpj) {
+      const cnpjSlug = `cnpj-${validCnpj}`;
+      const byCnpjSlug = allOrgs.find((value) => value.active !== false && value.slug === cnpjSlug);
+      if (byCnpjSlug) return byCnpjSlug;
+      const id = enrollmentId('cnpj-org', validCnpj);
+      const byId = allOrgs.find((value) => value.id === id);
+      if (byId) return byId;
+      const companyTitle = canonical !== normalizeCompanyName('Remote Platform E2E')
+        ? request.companyName.normalize('NFKC').trim().replace(/\s+/gu, ' ')
+        : `CNPJ ${validCnpj}`;
+      const created = { id, name: companyTitle, slug: cnpjSlug, active: true };
+      await repo.createOrganization(created);
+      return created;
+    }
     if (request.existingOrganizationId) {
       const existing = await repo.organization(request.existingOrganizationId);
       if (existing && existing.active && normalizeCompanyName(existing.name) === canonical) {
         return existing;
       }
     }
-    const matching = (await repo.organizations()).filter((value) => normalizeCompanyName(value.name) === canonical);
+    const matching = allOrgs.filter((value) => normalizeCompanyName(value.name) === canonical);
     const activeMatching = matching.filter((value) => value.active !== false);
     if (activeMatching.length >= 1) return activeMatching[0]!;
-    const id = enrollmentId('generic-organization', canonical);
-    const created = { id, name: request.companyName.normalize('NFKC').trim().replace(/\s+/gu, ' '),
-      slug: `client-${createHash('sha256').update(canonical).digest('hex').slice(0, 32)}`, active: true };
+    const id = validCnpj ? enrollmentId('cnpj-org', validCnpj) : enrollmentId('generic-organization', canonical);
+    const slug = validCnpj
+      ? `cnpj-${validCnpj}`
+      : `client-${createHash('sha256').update(canonical).digest('hex').slice(0, 32)}`;
+    const created = { id, name: request.companyName.normalize('NFKC').trim().replace(/\s+/gu, ' '), slug, active: true };
     await repo.createOrganization(created);
     return created;
   }

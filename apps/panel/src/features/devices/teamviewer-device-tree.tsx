@@ -77,6 +77,7 @@ export function TeamViewerDeviceTree({
   onSelectCategory,
   allDevices = devices,
   currentUserId = null,
+  onOpenCnpjGroup,
 }: {
   devices: DeviceView[];
   statusState: DeviceStatusState;
@@ -93,6 +94,7 @@ export function TeamViewerDeviceTree({
   onSelectCategory?(category: string): void;
   allDevices?: DeviceView[];
   currentUserId?: string | null;
+  onOpenCnpjGroup?(cnpj: string): void;
 }) {
   const initialTreePrefs = useMemo(() => getUserViewPreferences(currentUserId), [currentUserId]);
   const loadedTreeUserRef = useRef<string | null>(currentUserId);
@@ -938,6 +940,42 @@ export function TeamViewerDeviceTree({
                               )}
                           </span>
                         )}
+                        {dev.datadivas.funcao && (
+                          <span
+                            className="tv-dd-pill tv-dd-pill-role"
+                            title={`Função da máquina no CNPJ: ${dev.datadivas.funcao}`}
+                          >
+                            🏷️ {dev.datadivas.funcao}
+                          </span>
+                        )}
+                        {dev.datadivas.statusRenomeacao &&
+                          dev.datadivas.statusRenomeacao !== 'NOT_REQUESTED' &&
+                          dev.datadivas.statusRenomeacao !== 'NAO_SOLICITADO' && (
+                            <span
+                              className={`tv-dd-pill tv-dd-pill-rename-${dev.datadivas.statusRenomeacao.toLowerCase()}`}
+                              title={
+                                dev.datadivas.statusRenomeacao === 'PENDING_REBOOT' ||
+                                dev.datadivas.statusRenomeacao === 'APLICADO_AGUARDANDO_REBOOT'
+                                  ? `Renomeação Windows pendente de reinicialização para ${dev.datadivas.windowsHostnameDesejado || ''}`
+                                  : dev.datadivas.statusRenomeacao === 'COMPLETED' ||
+                                      dev.datadivas.statusRenomeacao === 'CONFIRMADO'
+                                    ? `Hostname Windows sincronizado (${dev.datadivas.windowsHostnameDesejado || dev.hostname})`
+                                    : dev.datadivas.statusRenomeacao === 'BLOCKED_DOMAIN'
+                                      ? 'Computador em domínio Active Directory — renomeação Windows bloqueada'
+                                      : 'Falha ou divergência ao renomear computador no Windows'
+                              }
+                            >
+                              {dev.datadivas.statusRenomeacao === 'PENDING_REBOOT' ||
+                              dev.datadivas.statusRenomeacao === 'APLICADO_AGUARDANDO_REBOOT'
+                                ? `⏳ Reinício Pendente (${dev.datadivas.windowsHostnameDesejado || 'Windows'})`
+                                : dev.datadivas.statusRenomeacao === 'COMPLETED' ||
+                                    dev.datadivas.statusRenomeacao === 'CONFIRMADO'
+                                  ? '✅ Hostname OK'
+                                  : dev.datadivas.statusRenomeacao === 'BLOCKED_DOMAIN'
+                                    ? '🔒 Domínio AD'
+                                    : '⚠️ Erro Renomeação'}
+                            </span>
+                          )}
                         {dev.datadivas.cnpj && (
                           <button
                             type="button"
@@ -952,6 +990,19 @@ export function TeamViewerDeviceTree({
                           >
                             <span>CNPJ: {dev.datadivas.cnpj}</span>
                             <Copy size={10} />
+                          </button>
+                        )}
+                        {dev.datadivas.cnpj && onOpenCnpjGroup && (
+                          <button
+                            type="button"
+                            className="tv-dd-pill tv-dd-pill-copyable"
+                            title="Abrir Gestão Inteligente de Computadores deste CNPJ"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenCnpjGroup(dev.datadivas!.cnpj!);
+                            }}
+                          >
+                            <span>⚙️ Gerir CNPJ</span>
                           </button>
                         )}
                         {dev.datadivas.serial && (

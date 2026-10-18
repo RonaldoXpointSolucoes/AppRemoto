@@ -1,6 +1,19 @@
 'use client';
 
-import type { DeviceListQuery, DeviceDetailsResponse, UpdateDeviceResponse, DeleteDeviceResponse, ConnectionHistoryEvent } from '@appremoto/contracts';
+import type {
+  DeviceListQuery,
+  DeviceDetailsResponse,
+  UpdateDeviceResponse,
+  DeleteDeviceResponse,
+  ConnectionHistoryEvent,
+  CnpjGroupsListResponse,
+  SuggestNameRequest,
+  SuggestNameResponse,
+  AdminCnpjNamingActionRequest,
+  CnpjCompanyGroupView,
+  CnpjMigrationRequest,
+  CnpjMigrationResponse,
+} from '@appremoto/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 
@@ -16,6 +29,10 @@ export interface DeviceDirectoryService extends Partial<ConnectionService> {
   getConnectionHistory?(deviceId: string): Promise<{ events: ConnectionHistoryEvent[] }>;
   getOrganizations(): Promise<OrganizationView[]>;
   getDevices(query: DeviceListQuery): Promise<DevicePage>;
+  getCnpjGroups?(cnpj?: string): Promise<CnpjGroupsListResponse>;
+  suggestCnpjName?(input: SuggestNameRequest): Promise<SuggestNameResponse>;
+  executeCnpjGroupAction?(input: AdminCnpjNamingActionRequest): Promise<CnpjCompanyGroupView>;
+  migrateCnpjGroups?(input: CnpjMigrationRequest): Promise<CnpjMigrationResponse>;
   expireSession(): Promise<void>;
 }
 

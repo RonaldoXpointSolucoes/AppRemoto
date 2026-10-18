@@ -32,11 +32,31 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.4.6',
+    date: 'Outubro 2026',
+    title: 'Gestão Inteligente de Computadores por CNPJ, Nomenclatura Sequencial & Renomeação Real do Windows (EXE v1.3.0)',
+    highlight: 'Agrupamento automático por CNPJ (14 dígitos), catálogo padronizado de funções (SERVIDOR, CAIXA-01, BALANCA-01...), reserva atômica contra colisão e renomeação real do Windows.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Instalador Windows v1.3.0 com Tela "Identificação do Computador" e Renomeação Real do Windows',
+        description:
+          'Durante a instalação, o EXE consulta os computadores existentes do mesmo CNPJ no Appwrite, diferencia Nova Instalação, Reinstalação na Mesma Máquina e Substituição Autorizada, sugere o primeiro número livre e aplica SetComputerNameExW no Windows com proteção para Domínio AD.',
+        tag: 'Novo',
+      },
+      {
+        title: 'Painel de Gestão por CNPJ, Reserva Atômica e Migração da Base Legada',
+        description:
+          'Nova central "Gestão por CNPJ" no painel para auditar ocupação de nomes, liberar ou transferir funções, consultar conflitos legados e executar a migração assistida (Dry-Run ou Aplicar).',
+        tag: 'Infra & Cockpit',
+      },
+    ],
+  },
+  {
     version: 'v1.4.5',
     date: 'Outubro 2026',
     title: 'Integração Nativa C:\\DataDivas\\config.ini no Instalador EXE v1.2.8 & Ficha Cadastral no Painel',
     highlight: 'Leitura automática de Nome Fantasia, Razão Social, CNPJ, Serial, IE, Endereço, IP Máquina e IP DataDivas direto do PC do cliente e sincronização no banco.',
-    isCurrent: true,
     items: [
       {
         title: 'Extração Automática de C:\\DataDivas\\config.ini pelo Instalador e Serviço Windows (v1.2.8)',

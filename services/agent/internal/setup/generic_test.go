@@ -13,7 +13,7 @@ import (
 
 func TestGenericPrepareUsesBoundProofAndAcceptsOnlyProvisioning(t *testing.T) {
 	capability := GenericProvisioning{2, "installer-1", strings.Repeat("c", 43)}
-	request, _ := newPreparationRequest(capability, InstallationInput{"Empresa", "PC"})
+	request, _ := newPreparationRequest(capability, InstallationInput{CompanyName: "Empresa", DeviceDisplayName: "PC"})
 	request.ExistingOrganizationID = "org-1"
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" || r.URL.Path != "/v1/agent/prepare-installation" || r.URL.RawQuery != "" || r.Header.Get("Authorization") != "Bearer "+capability.InstallerToken {
@@ -59,7 +59,7 @@ func TestGenericPrepareErrorsAreBoundedAndRedacted(t *testing.T) {
 
 func TestGenericPrepareExpiredLostResponseRenewsOnlyWithSafeLocalState(t *testing.T) {
 	capability := GenericProvisioning{2, "installer-1", strings.Repeat("A", 43)}
-	input := InstallationInput{"Empresa", "PC"}
+	input := InstallationInput{CompanyName: "Empresa", DeviceDisplayName: "PC"}
 	request, _ := newPreparationRequest(capability, input)
 	for _, safe := range []bool{false, true} {
 		saved := preparationState{Request: request}
@@ -88,7 +88,7 @@ func TestGenericPrepareExpiredLostResponseRenewsOnlyWithSafeLocalState(t *testin
 
 func TestGenericPrepareReusesUnsentAttemptAndRefreshesCompletedInstallation(t *testing.T) {
 	p := GenericProvisioning{2, "installer-1", strings.Repeat("A", 43)}
-	input := InstallationInput{"Empresa", "PC"}
+	input := InstallationInput{CompanyName: "Empresa", DeviceDisplayName: "PC"}
 	req, _ := newPreparationRequest(p, input)
 	saved := preparationState{Request: req}
 	if !reusePreparation(saved, p, input, "", false, time.Now()) {
@@ -97,7 +97,7 @@ func TestGenericPrepareReusesUnsentAttemptAndRefreshesCompletedInstallation(t *t
 	if reusePreparation(saved, p, input, "", true, time.Now()) {
 		t.Fatal("completed registration reused a consumed enrollment token")
 	}
-	if reusePreparation(saved, p, InstallationInput{"Empresa", "Novo nome"}, "", false, time.Now()) {
+	if reusePreparation(saved, p, InstallationInput{CompanyName: "Empresa", DeviceDisplayName: "Novo nome"}, "", false, time.Now()) {
 		t.Fatal("new label did not get a fresh package")
 	}
 	saved.Provisioning = &Provisioning{ExpiresAt: time.Now().Add(-time.Minute).Format(time.RFC3339)}

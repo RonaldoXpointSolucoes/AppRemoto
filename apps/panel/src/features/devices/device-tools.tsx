@@ -152,7 +152,10 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
         dd.ipMaq ||
         dd.ipDataDivas ||
         dd.nomeMaq ||
-        dd.banco)
+        dd.banco ||
+        dd.funcao ||
+        dd.windowsHostnameDesejado ||
+        dd.statusRenomeacao)
   );
   const fullAddress = dd
     ? [dd.endereco, [dd.cidade, dd.uf].filter(Boolean).join('/')].filter(Boolean).join(' — ')
@@ -165,6 +168,8 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
       dd.nomeFantasia ? `Nome Fantasia: ${dd.nomeFantasia}` : '',
       dd.razaoSocial ? `Razão Social: ${dd.razaoSocial}` : '',
       dd.cnpj ? `CNPJ / CPF: ${dd.cnpj}` : '',
+      dd.funcao ? `Função no CNPJ: ${dd.funcao}` : '',
+      dd.windowsHostnameDesejado ? `Hostname Desejado: ${dd.windowsHostnameDesejado} (${dd.statusRenomeacao || 'CONFIRMADO'})` : '',
       dd.serial ? `Serial: ${dd.serial}` : '',
       `IE: ${dd.ie || 'Não informado'}`,
       fullAddress ? `Endereço: ${fullAddress}` : '',
@@ -342,6 +347,26 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
                 )}
               </div>
               {dd.banco && <small className="datadivas-db-subtext">Banco: {dd.banco}</small>}
+            </div>
+
+            <div className="datadivas-field">
+              <span className="spec-label">Função Padronizada no CNPJ</span>
+              <strong className="spec-val mono">{dd.funcao || '—'}</strong>
+            </div>
+
+            <div className="datadivas-field">
+              <span className="spec-label">Renomeação Real do Windows</span>
+              <strong className="spec-val">
+                {dd.statusRenomeacao === 'APLICADO_AGUARDANDO_REBOOT' || dd.statusRenomeacao === 'PENDING_REBOOT'
+                  ? `⏳ Reinício Pendente (${dd.windowsHostnameDesejado || 'Windows'})`
+                  : dd.statusRenomeacao === 'CONFIRMADO' || dd.statusRenomeacao === 'COMPLETED'
+                    ? `✅ Concluído (${dd.windowsHostnameDesejado || currentDev.hostname})`
+                    : dd.statusRenomeacao === 'BLOCKED_DOMAIN'
+                      ? '🔒 Bloqueado (Domínio AD)'
+                      : dd.statusRenomeacao === 'ERRO' || dd.statusRenomeacao === 'FAILED'
+                        ? `⚠️ Falhou (${dd.erroRenomeacao || 'Erro'})`
+                        : 'Não solicitado'}
+              </strong>
             </div>
           </div>
         </section>

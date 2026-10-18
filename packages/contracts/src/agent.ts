@@ -16,6 +16,13 @@ export const DataDivasInfoSchema = z.object({
   ipMaq: optField(128),
   ipDataDivas: optField(160),
   banco: optField(255),
+  funcao: optField(32),
+  windowsHostnameDesejado: optField(64),
+  statusRenomeacao: optField(48),
+  erroRenomeacao: optField(255),
+  ultimaSincronizacao: optField(64),
+  reservaId: optField(64),
+  substituiuDeviceId: optField(64),
 }).strict();
 export type DataDivasInfo = z.infer<typeof DataDivasInfoSchema>;
 
@@ -55,6 +62,7 @@ export const HeartbeatRequestSchema = z.object({
   rustdeskId: z.string().min(1).max(64),
   operatingSystem: z.string().min(1).max(64),
   osVersion: z.string().min(1).max(128),
+  hostname: z.string().min(1).max(255).optional(),
   datadivas: DataDivasInfoSchema.optional(),
 }).strict();
 

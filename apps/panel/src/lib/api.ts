@@ -1,6 +1,7 @@
 import { ApiErrorSchema, DeviceViewSchema, type DeviceListQuery, type DeviceView } from '@appremoto/contracts';
 import { CreateEnrollmentTokenResponseSchema, EnrollmentStatusResponseSchema, ConnectDeviceLaunchResponseSchema, DeviceDetailsResponseSchema, UpdateDeviceResponseSchema, DeleteDeviceResponseSchema, ConnectionHistoryResponseSchema, RecordConnectionEventResponseSchema, type ConnectionMode, type ConnectionEventInput } from '@appremoto/contracts';
 import { GenericInstallerListResponseSchema, CreateGenericInstallerResponseSchema, GenericInstallerPackageResponseSchema, RevokeGenericInstallerResponseSchema } from '@appremoto/contracts';
+import { CnpjGroupsListResponseSchema, SuggestNameResponseSchema, CnpjCompanyGroupViewSchema, CnpjMigrationResponseSchema, type SuggestNameRequest, type AdminCnpjNamingActionRequest, type CnpjMigrationRequest } from '@appremoto/contracts';
 import { AppwriteException } from 'appwrite';
 import { z, type ZodType } from 'zod';
 
@@ -197,5 +198,12 @@ export function createApiClient(options: ApiClientOptions) {
       params.set('limit', String(query.limit));
       return request(`/v1/devices?${params.toString()}`, DevicePageSchema);
     },
+    getCnpjGroups: (cnpj?: string) => {
+      const qs = cnpj ? `?cnpj=${encodeURIComponent(cnpj)}` : '';
+      return request(`/v1/cnpj-groups${qs}`, CnpjGroupsListResponseSchema);
+    },
+    suggestCnpjName: (input: SuggestNameRequest) => request('/v1/cnpj-groups/suggest-name', SuggestNameResponseSchema, input),
+    executeCnpjGroupAction: (input: AdminCnpjNamingActionRequest) => request('/v1/cnpj-groups/action', CnpjCompanyGroupViewSchema, input),
+    migrateCnpjGroups: (input: CnpjMigrationRequest) => request('/v1/cnpj-groups/migrate', CnpjMigrationResponseSchema, input),
   };
 }

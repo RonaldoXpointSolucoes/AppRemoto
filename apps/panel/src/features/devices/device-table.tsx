@@ -1,7 +1,7 @@
 'use client';
 
 import type { DeviceView } from '@appremoto/contracts';
-import { ChevronLeft, ChevronRight, Download, LogOut, Plus, Search, Trash2, LayoutGrid, Table, Monitor, History, Zap, RefreshCw, Users, X } from 'lucide-react';
+import { Building2, ChevronLeft, ChevronRight, Download, LogOut, Plus, Search, Trash2, LayoutGrid, Table, Monitor, History, Zap, RefreshCw, Users, X } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -20,6 +20,7 @@ import { ConnectionHistoryView } from './connection-history-view';
 import { ActiveSessionTracker, type ActiveSession } from './active-session-tracker';
 import { AddConnectionDialog } from './add-connection-dialog';
 import { VersionChangelogModal } from './version-changelog-modal';
+import { CnpjManagementModal } from './cnpj-management-modal';
 import { parseSystemInfo } from './system-info';
 import {
   saveRecentConnection,
@@ -111,6 +112,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => initialUserPrefs.sidebarCollapsed);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
+  const [cnpjModalFilter, setCnpjModalFilter] = useState<string | null | undefined>(undefined);
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(() => getActiveSessionDraft());
   const searchInputRef = useRef<HTMLInputElement>(null);
   const loadedUserRef = useRef<string | null>(initialUserId);
@@ -355,14 +357,25 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={() => setIsChangelogOpen(true)}
-                title="Clique para ver todas as novidades da versão v1.4.5"
-                aria-label="Ver novidades da versão v1.4.5 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.4.6"
+                aria-label="Ver novidades da versão v1.4.6 (mobile)"
               >
-                v1.4.5
+                v1.4.6
               </button>
             </div>
           </div>
           <div className="tv-mobile-top-actions">
+            {activeTab === 'devices' && service.getCnpjGroups && (
+              <button
+                type="button"
+                className="tv-mobile-logout-btn"
+                title="Gestão Inteligente de Computadores por CNPJ"
+                aria-label="Gestão por CNPJ (mobile)"
+                onClick={() => setCnpjModalFilter(null)}
+              >
+                <Building2 size={17} className="text-cyan-400" />
+              </button>
+            )}
             {activeTab === 'devices' && (
               <button
                 type="button"
@@ -404,10 +417,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.4.5"
-              aria-label="Ver novidades da versão v1.4.5"
+              title="Clique para ver todas as novidades da versão v1.4.6"
+              aria-label="Ver novidades da versão v1.4.6"
             >
-              v1.4.5
+              v1.4.6
             </button>
           </div>
 
@@ -439,6 +452,19 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
           )}
 
           <div className="tv-toolbar-actions">
+            {activeTab === 'devices' && service.getCnpjGroups && (
+              <button
+                type="button"
+                className="tv-btn-refresh-status"
+                onClick={() => setCnpjModalFilter(null)}
+                title="Gerenciar empresas por CNPJ, funções de computadores, sugestão de nomes e renomeação Windows"
+                aria-label="Gestão de Computadores por CNPJ"
+              >
+                <Building2 size={14} className="text-cyan-400" />
+                <span>Gestão CNPJ</span>
+              </button>
+            )}
+
             {activeTab === 'devices' && (
               <button
                 type="button"
@@ -536,6 +562,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                             onSelectCategory={(cat) => setFilters((prev) => ({ ...prev, organizationId: cat }))}
                             allDevices={query.rows}
                             currentUserId={activeUserId}
+                            onOpenCnpjGroup={service.getCnpjGroups ? (cnpj) => setCnpjModalFilter(cnpj) : undefined}
                           />
                           {/* Tabela mantida acessível no DOM para leitores e testes de conformidade */}
                           <div style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
@@ -558,6 +585,25 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
         {selected && <DeviceTools device={query.rows.find((row) => row.id === selected.id) ?? selected} service={service}
           canConnect={query.canConnect(selected.organizationId)} canManage={query.canManage(selected.organizationId)}
           events={connectionEvents[selected.id] ?? []} onEvent={(event) => addEvent(selected.id, event)} onClose={() => setSelected(undefined)} onSaved={() => query.refresh()} onSessionExpired={handleExpiredAction} />}
+
+        {/* Modal de Gestão Inteligente por CNPJ */}
+        {cnpjModalFilter !== undefined &&
+          service.getCnpjGroups &&
+          service.suggestCnpjName &&
+          service.executeCnpjGroupAction &&
+          service.migrateCnpjGroups && (
+            <CnpjManagementModal
+              api={{
+                getCnpjGroups: service.getCnpjGroups,
+                suggestCnpjName: service.suggestCnpjName,
+                executeCnpjGroupAction: service.executeCnpjGroupAction,
+                migrateCnpjGroups: service.migrateCnpjGroups,
+              }}
+              initialCnpj={cnpjModalFilter}
+              onClose={() => setCnpjModalFilter(undefined)}
+              onChanged={() => void query.refresh()}
+            />
+          )}
 
         {/* Modal de Adicionar Conexão Rápida / Criar Grupo */}
         <AddConnectionDialog

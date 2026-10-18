@@ -37,7 +37,7 @@ func ReadInstallationInput(report *Report) (*InstallationInput, error) {
 	if p.Generic.SchemaVersion != 2 {
 		return nil, nil
 	}
-	return promptInstallation(report)
+	return promptInstallation(report, p.Generic)
 }
 
 func prepareGeneric(ctx context.Context, p GenericProvisioning, input InstallationInput, ps Paths, report *Report) (Provisioning, error) {
@@ -50,6 +50,23 @@ func prepareGeneric(ctx context.Context, p GenericProvisioning, input Installati
 		return Provisioning{}, err
 	}
 	defer windows.CloseHandle(h)
+	if input.DesiredHostname != "" || input.Cnpj != "" || input.Role != "" {
+		initialRenameStatus := "NAO_SOLICITADO"
+		if input.RenameWindows {
+			initialRenameStatus = "PENDENTE"
+		}
+		_ = SaveNamingState(ps, PersistedNamingState{
+			Cnpj:                    input.Cnpj,
+			RazaoSocial:             input.RazaoSocial,
+			NomeFantasia:            input.NomeFantasia,
+			Role:                    input.Role,
+			WindowsHostnameDesejado: input.DesiredHostname,
+			StatusRenomeacao:        initialRenameStatus,
+			ReservationID:           input.ReservationID,
+			OperationMode:           input.OperationMode,
+			ReplacesDeviceID:        input.ReplacesDeviceID,
+		})
+	}
 	pending, err := privateExists(filepath.Join(ps.Agent, "enrollment-pending.json"))
 	if err != nil {
 		return Provisioning{}, err
