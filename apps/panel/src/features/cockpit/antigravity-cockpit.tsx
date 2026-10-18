@@ -38,9 +38,11 @@ import { DiskStorageModal } from './disk-storage-modal';
 export function AntigravityCockpit({
   service,
   onBackToDevices,
+  onOpenChangelog,
 }: {
   service: DeviceDirectoryService;
   onBackToDevices?(): void;
+  onOpenChangelog?(): void;
 }) {
   const [, startTransition] = useTransition();
   const [logs, setLogs] = useState<CockpitLogEntry[]>(() => {
@@ -171,9 +173,15 @@ export function AntigravityCockpit({
             <div className="cockpit-main-title">
               <span className="cockpit-title-accent">Antigravity</span>
               <span className="cockpit-pill-tag">COCKPIT</span>
-              <span className="text-[11px] font-mono text-cyan-400 bg-cyan-950/50 border border-cyan-800/50 px-2 py-0.5 rounded-full font-bold">
-                v1.3.9
-              </span>
+              <button
+                type="button"
+                className="text-[11px] font-mono text-cyan-400 bg-cyan-950/50 border border-cyan-800/50 px-2 py-0.5 rounded-full font-bold hover:bg-cyan-900/60 hover:border-cyan-500/60 transition-all cursor-pointer"
+                onClick={onOpenChangelog}
+                title="Clique para ver todas as novidades da versão v1.4.1"
+                aria-label="Ver novidades da versão v1.4.1"
+              >
+                v1.4.1
+              </button>
               <div className="cockpit-status-online">
                 <span className="cockpit-pulse-dot" />
                 <span>ONLINE</span>
@@ -364,7 +372,7 @@ export function AntigravityCockpit({
             <span className="metric-label">taxa de sucesso heartbeat</span>
           </div>
           <div className="card-footer-info">
-            <span>Next.js Panel v1.3.9 · Fastify API</span>
+            <span>Next.js Panel v1.4.1 · Fastify API</span>
           </div>
         </div>
       </section>

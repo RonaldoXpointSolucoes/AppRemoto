@@ -116,4 +116,57 @@ describe('teamviewer-storage', () => {
     const afterRemove = toggleFavoriteDeviceId('dev-a');
     expect(afterRemove).toEqual(['dev-b']);
   });
+
+  it('gera protocolo unico e laudo tecnico automatizado com telemetria completa', async () => {
+    const {
+      saveRecentConnection,
+      updateRecentConnectionNotes,
+      getRecentConnections,
+    } = await import('./teamviewer-storage');
+
+    const startedAt = '2026-10-17T21:38:00.000Z';
+    saveRecentConnection({
+      deviceId: 'dev-totem-01',
+      displayName: 'Burguer Plus Totem Balcão',
+      hostname: 'DESKTOP-S7VUVBE',
+      organizationName: 'XPoint',
+      folderName: 'Clientes',
+      rustdeskId: '1987892321',
+      operatingSystem: 'Windows 10 (22H2)',
+      osBuild: 'Build 19045',
+      osBadge: 'Win 10',
+      localIp: '192.168.15.42',
+      technicianName: 'Ronaldo',
+      connectedAt: startedAt,
+      mode: 'automatic',
+    });
+
+    const initialList = getRecentConnections();
+    expect(initialList).toHaveLength(1);
+    expect(initialList[0].protocolNumber).toMatch(/^XP-20261017-\d{4}$/);
+    expect(initialList[0].autoReportText).toContain('LAUDO TÉCNICO AUTOMATIZADO');
+    expect(initialList[0].autoReportText).toContain('Burguer Plus Totem Balcão (DESKTOP-S7VUVBE)');
+    expect(initialList[0].autoReportText).toContain('Windows 10 (22H2) (Build 19045)');
+
+    updateRecentConnectionNotes(
+      'dev-totem-01',
+      startedAt,
+      'Totem destravado e impressora testada',
+      71,
+      {
+        resolutionStatus: 'resolved',
+        executedActions: [
+          'Reinício / Destravamento de Totem ou PDV',
+          'Configuração de Impressora Térmica / Spooler',
+        ],
+      }
+    );
+
+    const updatedList = getRecentConnections();
+    expect(updatedList[0].durationSeconds).toBe(71);
+    expect(updatedList[0].executedActions).toHaveLength(2);
+    expect(updatedList[0].autoReportText).toContain('1m 11s (71s)');
+    expect(updatedList[0].autoReportText).toContain('Reinício / Destravamento de Totem ou PDV');
+  });
 });
+

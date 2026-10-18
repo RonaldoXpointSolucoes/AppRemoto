@@ -331,4 +331,21 @@ describe('DeviceDirectory', () => {
     expect(screen.getByLabelText('Buscar dispositivos')).toHaveValue('caixa 02');
     expect(screen.queryByRole('button', { name: 'Pagina anterior' })).not.toBeInTheDocument();
   });
+
+  it('opens the release notes modal when clicking the version number button', async () => {
+    renderDirectory(service());
+    await screen.findAllByText('Recepcao 01');
+    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.4.1' });
+    expect(versionButtons.length).toBeGreaterThan(0);
+    await userEvent.click(versionButtons[0]);
+    const dialog = await screen.findByRole('dialog', { name: /Novidades da Plataforma/i });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText('Motor de Documentação Automatizada & Telemetria Máxima de Atendimento')).toBeInTheDocument();
+    expect(within(dialog).getByText('Central Interativa de Novidades & Changelog')).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Entendi, voltar ao painel' }));
+    expect(screen.queryByRole('dialog', { name: /Novidades da Plataforma/i })).not.toBeInTheDocument();
+  });
 });
+
+
+

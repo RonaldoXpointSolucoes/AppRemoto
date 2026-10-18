@@ -1,16 +1,194 @@
 'use client';
 
+export type SessionResolutionStatus = 'resolved' | 'monitoring' | 'pending_parts' | 'escalated';
+
+export interface SessionTimelineEvent {
+  time: string;
+  label: string;
+}
+
 export interface RecentConnectionRecord {
+  protocolNumber?: string;
   deviceId: string;
   displayName: string;
   hostname: string;
   organizationName: string;
+  organizationId?: string;
+  folderName?: string;
   rustdeskId: string;
+  operatingSystem?: string;
+  osBuild?: string;
+  osBadge?: string;
+  localIp?: string;
+  deviceStatusAtStart?: string;
+  lastSeenBeforeConnect?: string;
+  isFavorite?: boolean;
+  previousDeviceNotes?: string;
   connectedAt: string;
+  endedAt?: string;
   technicianName: string;
+  technicianEmail?: string;
+  clientPlatform?: string;
+  clientNetwork?: string;
+  clientViewport?: string;
   mode: 'automatic' | 'manual';
   durationSeconds?: number;
+  resolutionStatus?: SessionResolutionStatus;
+  executedActions?: string[];
+  timelineEvents?: SessionTimelineEvent[];
   notes?: string;
+  autoReportText?: string;
+}
+
+export interface SmartActionPreset {
+  id: string;
+  label: string;
+  category: 'PDV & Totem' | 'Sistema & Rede' | 'Manutenção';
+}
+
+export const SMART_ACTION_PRESETS: SmartActionPreset[] = [
+  { id: 'totem_restart', label: 'Reinício / Destravamento de Totem ou PDV', category: 'PDV & Totem' },
+  { id: 'printer_config', label: 'Configuração de Impressora Térmica / Spooler', category: 'PDV & Totem' },
+  { id: 'pinpad_tef', label: 'Ajuste de Pinpad / TEF / Pagamento', category: 'PDV & Totem' },
+  { id: 'app_update', label: 'Atualização de Sistema / App X-Point', category: 'PDV & Totem' },
+  { id: 'db_sync', label: 'Sincronização de Cardápio / Banco de Dados', category: 'PDV & Totem' },
+  { id: 'disk_cleanup', label: 'Limpeza de Cache / Arquivos Temporários', category: 'Sistema & Rede' },
+  { id: 'network_dns', label: 'Verificação de Rede / DNS / IP Local', category: 'Sistema & Rede' },
+  { id: 'windows_fix', label: 'Correção de Permissão / Serviço do Windows', category: 'Sistema & Rede' },
+  { id: 'preventive_check', label: 'Inspeção Preventiva de Saúde e Desempenho', category: 'Manutenção' },
+  { id: 'operator_training', label: 'Orientação e Suporte ao Operador no Local', category: 'Manutenção' },
+];
+
+export const RESOLUTION_STATUS_LABELS: Record<SessionResolutionStatus, string> = {
+  resolved: 'Resolvido 100% (Operacional)',
+  monitoring: 'Em Monitoramento Preventivo',
+  pending_parts: 'Aguardando Ação Local / Terceiros',
+  escalated: 'Escalonado para Nível 2 / Infra',
+};
+
+export function generateSessionProtocol(isoDate?: string): string {
+  const d = isoDate ? new Date(isoDate) : new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const suffix = String(Math.floor(1000 + (d.getTime() % 9000))).padStart(4, '0');
+  return `XP-${yyyy}${mm}${dd}-${suffix}`;
+}
+
+export function detectClientTelemetry(): {
+  clientPlatform: string;
+  clientNetwork: string;
+  clientViewport: string;
+} {
+  if (typeof window === 'undefined') {
+    return {
+      clientPlatform: 'Painel Web XPoint',
+      clientNetwork: 'Conexão Criptografada HTTPS',
+      clientViewport: 'Padrão',
+    };
+  }
+  const ua = navigator.userAgent || '';
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  const os = /Android/i.test(ua)
+    ? 'Android Mobile'
+    : /iPhone|iPad|iPod/i.test(ua)
+    ? 'iOS Mobile'
+    : /Windows/i.test(ua)
+    ? 'Desktop Windows'
+    : /Mac/i.test(ua)
+    ? 'Desktop macOS'
+    : /Linux/i.test(ua)
+    ? 'Desktop Linux'
+    : isMobile
+    ? 'Smartphone Mobile'
+    : 'Estação Desktop';
+
+  const browser = /Edg\//i.test(ua)
+    ? 'Edge'
+    : /Chrome\//i.test(ua)
+    ? 'Chrome'
+    : /Firefox\//i.test(ua)
+    ? 'Firefox'
+    : /Safari\//i.test(ua)
+    ? 'Safari'
+    : 'Web Browser';
+
+  const navConn = (navigator as unknown as { connection?: { effectiveType?: string; downlink?: number } }).connection;
+  const netType = navConn?.effectiveType ? navConn.effectiveType.toUpperCase() : isMobile ? 'Rede Móvel / Wi-Fi' : 'Fibra / LAN';
+  const netSpeed = navConn?.downlink ? ` (~${navConn.downlink} Mbps)` : '';
+
+  return {
+    clientPlatform: `${os} · ${browser}`,
+    clientNetwork: `${netType}${netSpeed}`,
+    clientViewport: `${window.innerWidth}×${window.innerHeight}px (${isMobile ? 'Mobilidade' : 'Desktop'})`,
+  };
+}
+
+export function formatDurationDetailed(totalSeconds?: number): string {
+  if (totalSeconds === undefined || totalSeconds === null) return 'Sessão rápida (< 1 min)';
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s (${totalSeconds}s)`;
+  if (m > 0) return `${m}m ${s}s (${totalSeconds}s)`;
+  return `${s} segundos`;
+}
+
+export function buildAutomatedTechnicalReport(record: RecentConnectionRecord): string {
+  const protocol = record.protocolNumber || generateSessionProtocol(record.connectedAt);
+  const startFmt = new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'medium',
+  }).format(new Date(record.connectedAt));
+  const endFmt = record.endedAt
+    ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(record.endedAt))
+    : 'Em andamento / Finalizado automaticamente';
+  const statusLabel = RESOLUTION_STATUS_LABELS[record.resolutionStatus || 'resolved'];
+  const actions =
+    record.executedActions && record.executedActions.length > 0
+      ? record.executedActions.map((a) => `  • ${a}`).join('\n')
+      : '  • Conexão remota estabelecida, verificação de integridade da estação e validação de disponibilidade operacional.';
+  const timeline =
+    record.timelineEvents && record.timelineEvents.length > 0
+      ? record.timelineEvents.map((ev) => `  [${ev.time}] ${ev.label}`).join('\n')
+      : `  [${startFmt.split(' ')[1] || startFmt}] Handshake P2P RustDesk autenticado com sucesso`;
+
+  const lines = [
+    `📋 LAUDO TÉCNICO AUTOMATIZADO — XPOINT REMOTE`,
+    `Protocolo: ${protocol} | Status: ${statusLabel}`,
+    `──────────────────────────────────────────────`,
+    `🖥️ DADOS DA ESTAÇÃO REMOTA:`,
+    `• Computador: ${record.displayName} (${record.hostname})`,
+    `• ID RustDesk: ${record.rustdeskId}`,
+    `• Organização / Pasta: ${record.organizationName || 'XPoint'}${record.folderName ? ` › ${record.folderName}` : ''}`,
+    `• Sistema Operacional: ${record.operatingSystem || 'Windows'}${record.osBuild ? ` (${record.osBuild})` : ''}`,
+    `• Rede / IP Local: ${record.localIp || 'Roteamento P2P / HBBR Relay (21116/21117)'}`,
+    `• Estado no Handshake: ${record.deviceStatusAtStart || 'ONLINE'}${record.isFavorite ? ' · ⭐ Fixado/Prioritário' : ''}`,
+    `──────────────────────────────────────────────`,
+    `⏱️ TELEMETRIA DA SESSÃO & ORIGEM:`,
+    `• Técnico Responsável: ${record.technicianName}${record.technicianEmail ? ` (${record.technicianEmail})` : ''}`,
+    `• Modo de Autenticação: ${record.mode === 'automatic' ? 'Automático 1-Clique (Cofre Efêmero)' : 'Conexão Manual por ID'}`,
+    `• Origem do Acesso: ${record.clientPlatform || 'Painel Web'} · ${record.clientViewport || ''}`,
+    `• Conectividade do Técnico: ${record.clientNetwork || 'HTTPS Seguro'}`,
+    `• Início da Sessão: ${startFmt}`,
+    `• Encerramento / Registro: ${endFmt}`,
+    `• Duração Cronometrada: ${formatDurationDetailed(record.durationSeconds)}`,
+    `──────────────────────────────────────────────`,
+    `🛠️ PROCEDIMENTOS & AÇÕES REALIZADAS:`,
+    actions,
+  ];
+
+  if (record.notes && record.notes.trim()) {
+    lines.push(`──────────────────────────────────────────────`);
+    lines.push(`📝 OBSERVAÇÕES TÉCNICAS COMPLEMENTARES:`);
+    lines.push(`  ${record.notes.trim()}`);
+  }
+
+  lines.push(`──────────────────────────────────────────────`);
+  lines.push(`📡 TRILHA DE AUDITORIA AUTOMÁTICA:`);
+  lines.push(timeline);
+
+  return lines.join('\n');
 }
 
 export interface DeviceGroup {
@@ -48,12 +226,31 @@ export function saveRecentConnection(record: Omit<RecentConnectionRecord, 'conne
   if (typeof window === 'undefined') return [];
   try {
     const existing = getRecentConnections();
+    const connectedAt = record.connectedAt || new Date().toISOString();
+    const protocolNumber = record.protocolNumber || generateSessionProtocol(connectedAt);
+    const clientTelemetry = detectClientTelemetry();
+    const timeLabel = new Intl.DateTimeFormat('pt-BR', { timeStyle: 'medium' }).format(new Date(connectedAt));
+
     const newRecord: RecentConnectionRecord = {
+      ...clientTelemetry,
       ...record,
-      connectedAt: record.connectedAt || new Date().toISOString(),
+      connectedAt,
+      protocolNumber,
+      resolutionStatus: record.resolutionStatus || 'resolved',
+      executedActions: record.executedActions || [],
+      timelineEvents: record.timelineEvents || [
+        { time: timeLabel, label: `Handshake seguro iniciado para ${record.displayName} (${record.rustdeskId})` },
+        { time: timeLabel, label: `Sessão remota disparada por ${record.technicianName} via ${clientTelemetry.clientPlatform}` },
+      ],
     };
-    const filtered = existing.filter((item) => item.deviceId !== record.deviceId);
-    const updated = [newRecord, ...filtered].slice(0, 15);
+    newRecord.autoReportText = buildAutomatedTechnicalReport(newRecord);
+
+    const filtered = existing.filter(
+      (item) =>
+        item.protocolNumber !== newRecord.protocolNumber &&
+        !(item.deviceId === newRecord.deviceId && item.connectedAt === newRecord.connectedAt)
+    );
+    const updated = [newRecord, ...filtered].slice(0, 50);
     localStorage.setItem(RECENT_KEY, JSON.stringify(updated));
     return updated;
   } catch {
@@ -61,16 +258,58 @@ export function saveRecentConnection(record: Omit<RecentConnectionRecord, 'conne
   }
 }
 
-export function updateRecentConnectionNotes(deviceId: string, connectedAt: string, notes: string, durationSeconds?: number): RecentConnectionRecord[] {
+export function updateRecentConnectionNotes(
+  deviceId: string,
+  connectedAt: string,
+  notes: string,
+  durationSeconds?: number,
+  extra?: Partial<RecentConnectionRecord>
+): RecentConnectionRecord[] {
   if (typeof window === 'undefined') return [];
   try {
     const existing = getRecentConnections();
+    let matched = false;
     const updated = existing.map((item) => {
-      if (item.deviceId === deviceId && item.connectedAt === connectedAt) {
-        return { ...item, notes, durationSeconds: durationSeconds ?? item.durationSeconds };
+      if (
+        (item.deviceId === deviceId && item.connectedAt === connectedAt) ||
+        (extra?.protocolNumber && item.protocolNumber === extra.protocolNumber)
+      ) {
+        matched = true;
+        const merged: RecentConnectionRecord = {
+          ...item,
+          ...extra,
+          notes,
+          durationSeconds: durationSeconds ?? extra?.durationSeconds ?? item.durationSeconds,
+          endedAt: extra?.endedAt || new Date().toISOString(),
+        };
+        merged.autoReportText = buildAutomatedTechnicalReport(merged);
+        return merged;
       }
       return item;
     });
+
+    // Caso o registro tenha sido iniciado em memória, garante que seja persistido
+    if (!matched && extra && extra.displayName && extra.rustdeskId) {
+      const fallbackRecord: RecentConnectionRecord = {
+        deviceId,
+        displayName: extra.displayName,
+        hostname: extra.hostname || deviceId,
+        organizationName: extra.organizationName || 'XPoint',
+        rustdeskId: extra.rustdeskId,
+        connectedAt,
+        technicianName: extra.technicianName || 'Técnico',
+        mode: extra.mode || 'automatic',
+        ...extra,
+        notes,
+        durationSeconds,
+        endedAt: extra.endedAt || new Date().toISOString(),
+      };
+      fallbackRecord.autoReportText = buildAutomatedTechnicalReport(fallbackRecord);
+      const withFallback = [fallbackRecord, ...updated].slice(0, 50);
+      localStorage.setItem(RECENT_KEY, JSON.stringify(withFallback));
+      return withFallback;
+    }
+
     localStorage.setItem(RECENT_KEY, JSON.stringify(updated));
     return updated;
   } catch {
@@ -328,8 +567,8 @@ export function filterDevicesByCategory<T extends { id: string; displayName?: st
     const recents = getRecentConnections();
     const recentIndexMap = new Map<string, number>();
     recents.forEach((r, idx) => {
-      recentIndexMap.set(r.deviceId, idx);
-      recentIndexMap.set(r.rustdeskId, idx);
+      if (!recentIndexMap.has(r.deviceId)) recentIndexMap.set(r.deviceId, idx);
+      if (!recentIndexMap.has(r.rustdeskId)) recentIndexMap.set(r.rustdeskId, idx);
     });
     const matched = devices.filter((d) => recentIndexMap.has(d.id) || recentIndexMap.has(d.rustdeskId));
     return matched.sort((a, b) => {

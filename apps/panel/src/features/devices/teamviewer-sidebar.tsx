@@ -21,6 +21,7 @@ export function TeamViewerSidebar({
   activeTab,
   onTabChange,
   onOpenQuickConnect,
+  onOpenChangelog,
   onLogout,
   logoutPending,
   collapsed,
@@ -29,6 +30,7 @@ export function TeamViewerSidebar({
   activeTab: TeamViewerTab;
   onTabChange(tab: TeamViewerTab): void;
   onOpenQuickConnect(): void;
+  onOpenChangelog?(): void;
   onLogout(): void;
   logoutPending: boolean;
   collapsed: boolean;
@@ -44,7 +46,15 @@ export function TeamViewerSidebar({
           {!collapsed && (
             <div className="tv-brand-text">
               <span className="tv-brand-title">XPoint Remote</span>
-              <span className="tv-brand-badge">v1.3.9</span>
+              <button
+                type="button"
+                className="tv-brand-badge version-badge-btn"
+                onClick={onOpenChangelog}
+                title="Clique para ver todas as novidades da versão v1.4.1"
+                aria-label="Ver novidades da versão v1.4.1"
+              >
+                v1.4.1
+              </button>
             </div>
           )}
         </div>

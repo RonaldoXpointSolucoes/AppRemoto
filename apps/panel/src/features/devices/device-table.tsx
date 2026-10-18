@@ -19,7 +19,17 @@ import { TeamViewerDeviceTree } from './teamviewer-device-tree';
 import { ConnectionHistoryView } from './connection-history-view';
 import { ActiveSessionTracker, type ActiveSession } from './active-session-tracker';
 import { AddConnectionDialog } from './add-connection-dialog';
-import { saveRecentConnection, filterDevicesByCategory, type RecentConnectionRecord } from './teamviewer-storage';
+import { VersionChangelogModal } from './version-changelog-modal';
+import { parseSystemInfo } from './system-info';
+import {
+  saveRecentConnection,
+  filterDevicesByCategory,
+  getDeviceFolderName,
+  getFavoriteDeviceIds,
+  generateSessionProtocol,
+  detectClientTelemetry,
+  type RecentConnectionRecord,
+} from './teamviewer-storage';
 
 import { AntigravityCockpit } from '../cockpit/antigravity-cockpit';
 import { TechnicianManagementView } from '../technicians/technician-management-view';
@@ -86,6 +96,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   const [viewMode, setViewMode] = useState<'teamviewer' | 'table'>('teamviewer');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isLocalCategory = Boolean(
@@ -131,22 +142,58 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
 
   function handleSessionStart(device: DeviceView) {
     const techName = query.profile?.displayName || 'Técnico';
+    const techEmail = (query.profile as { email?: string } | undefined)?.email;
+    const startedAt = new Date().toISOString();
+    const protocolNumber = generateSessionProtocol(startedAt);
+    const sysInfo = parseSystemInfo(device.operatingSystem, device.osVersion);
+    const folderName = getDeviceFolderName(device);
+    const isFavorite = getFavoriteDeviceIds().includes(device.id);
+    const clientEnv = detectClientTelemetry();
+
     saveRecentConnection({
+      protocolNumber,
       deviceId: device.id,
       displayName: device.displayName,
       hostname: device.hostname,
       organizationName: device.organizationName,
+      organizationId: device.organizationId,
+      folderName,
       rustdeskId: device.rustdeskId,
+      operatingSystem: sysInfo.osName,
+      osBuild: sysInfo.versionLabel,
+      osBadge: sysInfo.badge,
+      localIp: sysInfo.ip,
+      deviceStatusAtStart: device.status,
+      lastSeenBeforeConnect: device.lastSeenAt ?? undefined,
+      isFavorite,
       technicianName: techName,
+      technicianEmail: techEmail,
+      ...clientEnv,
+      connectedAt: startedAt,
       mode: 'automatic',
     });
+
     setActiveSession({
+      protocolNumber,
       deviceId: device.id,
       displayName: device.displayName,
       hostname: device.hostname,
+      organizationName: device.organizationName,
+      organizationId: device.organizationId,
+      folderName,
       rustdeskId: device.rustdeskId,
+      operatingSystem: sysInfo.osName,
+      osBuild: sysInfo.versionLabel,
+      osBadge: sysInfo.badge,
+      localIp: sysInfo.ip,
+      deviceStatusAtStart: device.status,
+      lastSeenBeforeConnect: device.lastSeenAt ?? undefined,
+      isFavorite,
       technicianName: techName,
-      startedAt: new Date().toISOString(),
+      technicianEmail: techEmail,
+      ...clientEnv,
+      mode: 'automatic',
+      startedAt,
     });
   }
 
@@ -236,6 +283,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onOpenQuickConnect={() => setIsAddOpen(true)}
+        onOpenChangelog={() => setIsChangelogOpen(true)}
         onLogout={() => void handleLogout()}
         logoutPending={logoutPending}
         collapsed={sidebarCollapsed}
@@ -252,7 +300,15 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
             </span>
             <div className="tv-mobile-brand-meta">
               <span className="tv-mobile-title">XPoint Remote</span>
-              <span className="version-badge">v1.3.9</span>
+              <button
+                type="button"
+                className="version-badge version-badge-btn"
+                onClick={() => setIsChangelogOpen(true)}
+                title="Clique para ver todas as novidades da versão v1.4.1"
+                aria-label="Ver novidades da versão v1.4.1 (mobile)"
+              >
+                v1.4.1
+              </button>
             </div>
           </div>
           <div className="tv-mobile-top-actions">
@@ -293,7 +349,15 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 ? 'Técnicos & Convites'
                 : 'Histórico de Acessos'}
             </h1>
-            <span className="version-badge" title="Versão da Plataforma">v1.3.9</span>
+            <button
+              type="button"
+              className="version-badge version-badge-btn"
+              onClick={() => setIsChangelogOpen(true)}
+              title="Clique para ver todas as novidades da versão v1.4.1"
+              aria-label="Ver novidades da versão v1.4.1"
+            >
+              v1.4.1
+            </button>
           </div>
 
           {activeTab === 'devices' && (
@@ -380,7 +444,11 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
         {activeTab === 'history' ? (
           <ConnectionHistoryView onConnectAgain={handleConnectAgainFromHistory} />
         ) : activeTab === 'cockpit' ? (
-          <AntigravityCockpit service={service} onBackToDevices={() => setActiveTab('devices')} />
+          <AntigravityCockpit
+            service={service}
+            onBackToDevices={() => setActiveTab('devices')}
+            onOpenChangelog={() => setIsChangelogOpen(true)}
+          />
         ) : activeTab === 'technicians' ? (
           <TechnicianManagementView />
         ) : (
@@ -445,6 +513,12 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
           onClose={() => setIsAddOpen(false)}
           onGroupCreated={() => query.refresh()}
           technicianName={query.profile?.displayName || 'Técnico'}
+        />
+
+        {/* Modal de Novidades da Versão (Changelog Interativo) */}
+        <VersionChangelogModal
+          isOpen={isChangelogOpen}
+          onClose={() => setIsChangelogOpen(false)}
         />
 
         {/* Widget Flutuante de Sessão Ativa / Cronômetro de Atendimento */}
