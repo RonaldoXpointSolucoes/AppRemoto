@@ -13,6 +13,8 @@ import {
   encodeDeviceNotes,
   saveDeviceCustomMetadata,
   getCustomMetadataMap,
+  getFavoriteDeviceIds,
+  toggleFavoriteDeviceId,
 } from './teamviewer-storage';
 
 describe('teamviewer-storage', () => {
@@ -99,5 +101,19 @@ describe('teamviewer-storage', () => {
       notes: 'Entrada da loja',
       folderId: 'group_clients',
     });
+  });
+
+  it('fixa e desafixa computadores favoritos no topo para operação rápida', () => {
+    expect(getFavoriteDeviceIds()).toEqual([]);
+
+    const afterAdd = toggleFavoriteDeviceId('dev-a');
+    expect(afterAdd).toEqual(['dev-a']);
+    expect(getFavoriteDeviceIds()).toEqual(['dev-a']);
+
+    const afterAddSecond = toggleFavoriteDeviceId('dev-b');
+    expect(afterAddSecond).toEqual(['dev-b', 'dev-a']);
+
+    const afterRemove = toggleFavoriteDeviceId('dev-a');
+    expect(afterRemove).toEqual(['dev-b']);
   });
 });

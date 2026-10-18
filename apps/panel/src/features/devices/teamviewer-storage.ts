@@ -244,6 +244,31 @@ export function saveDeviceCustomMetadata(deviceId: string, metadata: DeviceCusto
   } catch {}
 }
 
+const FAVORITES_KEY = 'xpoint_favorite_devices_v1';
+
+export function getFavoriteDeviceIds(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(FAVORITES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function toggleFavoriteDeviceId(deviceId: string): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const current = getFavoriteDeviceIds();
+    const exists = current.includes(deviceId);
+    const updated = exists ? current.filter((id) => id !== deviceId) : [deviceId, ...current];
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify(updated));
+    return updated;
+  } catch {
+    return [];
+  }
+}
+
 export function parseDeviceNotes(rawNotes?: string | null): { folderName?: string; notes: string } {
   if (!rawNotes) return { notes: '' };
   const match = rawNotes.match(/^\[pasta:([^\]]+)\]\s*([\s\S]*)$/i);

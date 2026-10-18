@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { Plus, X, FolderPlus, Monitor, Download, Zap, Check } from 'lucide-react';
+import { Plus, X, FolderPlus, Monitor, Download, Zap, Check, ClipboardPaste } from 'lucide-react';
 import Link from 'next/link';
 import { createDeviceGroup, saveRecentConnection } from './teamviewer-storage';
 import { launchRustDesk, manualRustDeskUri } from './rustdesk-launch';
@@ -26,6 +26,23 @@ export function AddConnectionDialog({
   const [connectError, setConnectError] = useState('');
 
   if (!isOpen) return null;
+
+  async function handlePasteClipboard() {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        const text = await navigator.clipboard.readText();
+        const digits = text.replace(/\D+/g, '');
+        if (digits.length >= 6 && digits.length <= 16) {
+          setRustdeskId(digits);
+          setConnectError('');
+        } else if (text.trim()) {
+          setRustdeskId(text.trim());
+        }
+      }
+    } catch {
+      // Silencioso caso o navegador bloqueie leitura automática
+    }
+  }
 
   function handleQuickConnect(e: FormEvent) {
     e.preventDefault();
@@ -75,6 +92,7 @@ export function AddConnectionDialog({
   return (
     <div className="add-dialog-overlay" onClick={onClose}>
       <div className="add-dialog-card animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+        <div className="tv-sheet-drag-handle" aria-hidden="true" />
         <div className="add-dialog-header">
           <div className="add-dialog-title">
             <Plus size={20} className="text-primary" />
@@ -120,10 +138,22 @@ export function AddConnectionDialog({
               </p>
 
               <div className="field">
-                <label htmlFor="quick-rustdesk-id">ID do RustDesk (obrigatório):</label>
+                <div className="tv-field-label-row">
+                  <label htmlFor="quick-rustdesk-id">ID do RustDesk (obrigatório):</label>
+                  <button
+                    type="button"
+                    className="tv-paste-id-btn"
+                    onClick={() => void handlePasteClipboard()}
+                    title="Colar ID copiado do WhatsApp ou área de transferência"
+                  >
+                    <ClipboardPaste size={13} />
+                    <span>Colar ID</span>
+                  </button>
+                </div>
                 <input
                   id="quick-rustdesk-id"
                   type="text"
+                  inputMode="numeric"
                   placeholder="Ex: 264 741 357"
                   value={rustdeskId}
                   onChange={(e) => setRustdeskId(e.target.value)}

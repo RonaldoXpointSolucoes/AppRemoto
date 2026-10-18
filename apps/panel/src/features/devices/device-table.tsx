@@ -1,7 +1,7 @@
 'use client';
 
 import type { DeviceView } from '@appremoto/contracts';
-import { ChevronLeft, ChevronRight, Download, LogOut, Plus, Search, Trash2, LayoutGrid, Table, Monitor, History, Zap, RefreshCw, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, LogOut, Plus, Search, Trash2, LayoutGrid, Table, Monitor, History, Zap, RefreshCw, Users, X } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -252,10 +252,22 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
             </span>
             <div className="tv-mobile-brand-meta">
               <span className="tv-mobile-title">XPoint Remote</span>
-              <span className="version-badge">v1.3.8</span>
+              <span className="version-badge">v1.3.9</span>
             </div>
           </div>
           <div className="tv-mobile-top-actions">
+            {activeTab === 'devices' && (
+              <button
+                type="button"
+                className="tv-mobile-logout-btn"
+                title="Atualizar status agora"
+                aria-label="Atualizar dispositivos (mobile)"
+                disabled={query.isRefreshing}
+                onClick={() => void query.refresh()}
+              >
+                <RefreshCw size={17} className={query.isRefreshing ? 'animate-spin text-emerald-400' : ''} />
+              </button>
+            )}
             <ThemeToggle className="tv-mobile-theme-btn" />
             <button
               type="button"
@@ -281,7 +293,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 ? 'Técnicos & Convites'
                 : 'Histórico de Acessos'}
             </h1>
-            <span className="version-badge" title="Versão da Plataforma">v1.3.8</span>
+            <span className="version-badge" title="Versão da Plataforma">v1.3.9</span>
           </div>
 
           {activeTab === 'devices' && (
@@ -290,12 +302,24 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               <input
                 ref={searchInputRef}
                 type="search"
-                placeholder="Pesquisar e conectar..."
+                placeholder="Pesquisar nome, host ou ID..."
                 value={filters.search}
                 onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
                 aria-label="Pesquisar e conectar dispositivo"
               />
-              <span className="tv-kbd-shortcut">Ctrl K</span>
+              {filters.search ? (
+                <button
+                  type="button"
+                  className="tv-search-clear-btn"
+                  title="Limpar pesquisa"
+                  aria-label="Limpar pesquisa"
+                  onClick={() => setFilters((prev) => ({ ...prev, search: '' }))}
+                >
+                  <X size={14} />
+                </button>
+              ) : (
+                <span className="tv-kbd-shortcut">Ctrl K</span>
+              )}
             </div>
           )}
 
