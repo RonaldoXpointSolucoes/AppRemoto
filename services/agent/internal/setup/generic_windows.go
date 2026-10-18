@@ -59,7 +59,11 @@ func prepareGeneric(ctx context.Context, p GenericProvisioning, input Installati
 		return Provisioning{}, err
 	}
 	if pending != credentials {
-		return Provisioning{}, &preparationError{"RECONCILIATION"}
+		_ = os.Remove(filepath.Join(ps.Agent, "enrollment-pending.json"))
+		_ = os.Remove(filepath.Join(ps.Agent, "enrollment-credentials.json"))
+		_ = os.Remove(filepath.Join(ps.Agent, "rustdesk-configured.json"))
+		pending = false
+		credentials = false
 	}
 	var existingOrganization string
 	if data, e := readPrivate(filepath.Join(ps.Data, "installation.json"), 4096); e == nil {

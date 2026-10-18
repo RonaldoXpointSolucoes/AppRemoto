@@ -162,3 +162,13 @@ func TestServiceProgressKeepsCauseAndRejectsOldInstallations(t *testing.T) {
 		t.Fatal("duplicate events")
 	}
 }
+
+func TestServiceReportNeverPoisonsReportError(t *testing.T) {
+	r := serviceReport( filepath.Join(t.TempDir(), "nonexistent-dir"), "enroll-1")
+	r.Record(4, "ID_SERVER_WRITE", "START", nil)
+	r.Record(4, "RUSTDESK_CONFIGURED", "OK", nil)
+	if err := r.Err(); err != nil {
+		t.Fatalf("serviceReport poisoned r.Err() on transient status publish: %v", err)
+	}
+}
+

@@ -102,7 +102,7 @@ func replacePrivate(path string, data []byte, readable ...bool) error {
 		return e
 	}
 	defer os.Remove(tmp)
-	return windows.MoveFileEx(ptr(tmp), ptr(path), windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
+	return moveFileReplace(tmp, path)
 }
 func Install(ctx context.Context, r *Report) (code string) {
 	return InstallWithInput(ctx, r, nil)

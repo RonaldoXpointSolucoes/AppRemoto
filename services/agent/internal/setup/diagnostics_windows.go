@@ -275,7 +275,8 @@ func serviceReport(directory, enrollmentID string) *Report {
 		if e != nil {
 			return e
 		}
-		return publishStatus(directory, "setup-status.json", b)
+		_ = publishStatus(directory, "setup-status.json", b)
+		return nil
 	}}
 }
 

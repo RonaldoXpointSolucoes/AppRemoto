@@ -189,7 +189,7 @@ func runAgent(ctx context.Context) (err error) {
 			return e
 		}
 		defer os.Remove(tmp)
-		e = windows.MoveFileEx(ptr(tmp), ptr(dest), windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
+		e = moveFileReplace(tmp, dest)
 		if e != nil {
 			r.Record(6, "HEARTBEAT_PERSIST", "ERROR", e)
 		} else {
@@ -256,5 +256,5 @@ func publishStatus(directory, name string, data []byte) error {
 		return e
 	}
 	defer os.Remove(tmp)
-	return windows.MoveFileEx(ptr(tmp), ptr(filepath.Join(directory, name)), windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
+	return moveFileReplace(tmp, filepath.Join(directory, name))
 }

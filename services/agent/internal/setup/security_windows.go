@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 	"unsafe"
 )
 
@@ -136,7 +137,7 @@ func writeNew(path string, b []byte, readable ...bool) error {
 	return f.Sync()
 }
 func readPrivate(path string, max int64, readable ...bool) ([]byte, error) {
-	h, e := windows.CreateFile(ptr(path), windows.GENERIC_READ|windows.READ_CONTROL|windows.FILE_READ_ATTRIBUTES, windows.FILE_SHARE_READ|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	h, e := windows.CreateFile(ptr(path), windows.GENERIC_READ|windows.READ_CONTROL|windows.FILE_READ_ATTRIBUTES, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
 	if e != nil {
 		return nil, e
 	}
@@ -150,6 +151,20 @@ func readPrivate(path string, max int64, readable ...bool) ([]byte, error) {
 		return nil, errStage
 	}
 	return io.ReadAll(io.LimitReader(f, max+1))
+}
+func moveFileReplace(src, dst string) error {
+	var lastErr error
+	for i := 0; i < 20; i++ {
+		lastErr = windows.MoveFileEx(ptr(src), ptr(dst), windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
+		if lastErr == nil {
+			return nil
+		}
+		if !errors.Is(lastErr, windows.ERROR_ACCESS_DENIED) && !errors.Is(lastErr, windows.ERROR_SHARING_VIOLATION) {
+			return lastErr
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	return lastErr
 }
 func protectMachine(b []byte) ([]byte, error) {
 	if len(b) == 0 {
