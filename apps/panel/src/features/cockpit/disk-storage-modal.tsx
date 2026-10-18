@@ -76,7 +76,7 @@ export function DiskStorageModal({ isOpen, onClose, telemetry }: DiskStorageModa
         { name: 'Whatsmeow Engine (Go)', uuid: 'tgn7x5mqldi4j2ebcchczj4o', role: 'Worker de Mensageria WhatsApp (/data/whatsmeow/media ~34 GB)' },
         { name: 'RustDesk Server OSS', uuid: 'i7phe5rgnsc4ajahgg5tuzkc', role: 'HBBS 21116, HBBR 21117 Relay & Rendezvous' },
         { name: 'Remote API (Fastify)', uuid: 'qyrjepou8xchzlfirsbrhwr9', role: 'Heartbeat & Telemetry API Engine' },
-        { name: 'Remote Panel (Next.js)', uuid: 'hr1uqo4mlsw3sm7s2mehiaa2', role: 'Painel Web de Produção v1.4.3' },
+        { name: 'Remote Panel (Next.js)', uuid: 'hr1uqo4mlsw3sm7s2mehiaa2', role: 'Painel Web de Produção v1.4.4' },
         { name: 'Core Business Engine', uuid: 'k8takzbnyqyuoxz47tsrph5l', role: 'Microsserviço de Negócio Node.js' },
         { name: 'AI Engine (Gemini & RAG)', uuid: 'cuvzwwpjwwdlsf45qhbjof69', role: 'Motor de Inteligência Artificial' },
         { name: 'AppWeb Frontend', uuid: '7isvr9ftizrxhzititieqowd', role: 'Frontend AppWeb' },

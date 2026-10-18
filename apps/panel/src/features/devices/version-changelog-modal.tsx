@@ -32,11 +32,31 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.4.4',
+    date: 'Outubro 2026',
+    title: 'Handoff Nativo Android Intent & Retorno Pós-Conexão sem Queda de Página',
+    highlight: 'Eliminação do erro "This page couldn\'t load" ao encerrar conexões no celular/PWA e preservação contínua da barra de atendimento.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Protocolo Android Intent com Fallback Seguro no Retorno do RustDesk',
+        description:
+          'Substituição do redirecionamento destrutivo da janela principal por handoff via Android Intent nativo e âncora efêmera, impedindo que o navegador/PWA caia em tela de erro ao fechar o RustDesk.',
+        tag: 'Mobilidade',
+      },
+      {
+        title: 'Persistência da Sessão Ativa e Timer Auto 1-Click no Mobile',
+        description:
+          'Mesmo que o sistema operacional móvel recarregue a aba em segundo plano durante o suporte remoto, o protocolo ativo e a contagem regressiva de 20s retornam intactos.',
+        tag: 'Novo',
+      },
+    ],
+  },
+  {
     version: 'v1.4.3',
     date: 'Outubro 2026',
     title: 'Documentação Automática em 20s & Supressão de Caixa Duplicada',
     highlight: 'Conclusão automática do laudo após 20s de inatividade e exibição do aviso de conexão restrita apenas a erros críticos.',
-    isCurrent: true,
     items: [
       {
         title: 'Documentação Automática 1-Click após 20 Segundos de Inatividade',
@@ -278,7 +298,7 @@ export function VersionChangelogModal({
             <div className="changelog-title-group">
               <div className="changelog-title-row">
                 <h2 id="changelog-modal-title">Novidades da Plataforma</h2>
-                <span className="changelog-current-pill">v1.4.3 · ATUAL</span>
+                <span className="changelog-current-pill">v1.4.4 · ATUAL</span>
               </div>
               <p className="changelog-subtitle">
                 Histórico de atualizações, recursos de mobilidade e melhorias de UI/UX do XPoint Remote
@@ -367,7 +387,7 @@ export function VersionChangelogModal({
         <div className="changelog-modal-footer">
           <div className="changelog-footer-info">
             <ShieldCheck size={15} className="text-emerald-400" />
-            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.4.3)</span>
+            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.4.4)</span>
           </div>
           <button type="button" className="tv-btn-primary" onClick={onClose}>
             Entendi, voltar ao painel

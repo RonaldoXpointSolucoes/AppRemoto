@@ -221,6 +221,37 @@ describe('teamviewer-storage', () => {
     expect(prefsArthur.compactMode).toBe(false);
     expect(getFavoriteDeviceIds('user-arthur')).toEqual(['dev-totem-99']);
   });
+
+  it('persiste e restaura a sessao ativa caso o navegador mobile recarregue ao voltar do RustDesk', async () => {
+    const {
+      saveActiveSessionDraft,
+      getActiveSessionDraft,
+    } = await import('./teamviewer-storage');
+
+    expect(getActiveSessionDraft()).toBeNull();
+
+    const draft = {
+      protocolNumber: 'XP-20261017-9641',
+      deviceId: 'dev-bar-ne',
+      displayName: 'BAR DA NE SERVIDOR',
+      hostname: 'SERVIDOR',
+      organizationName: 'XPoint',
+      folderName: 'Clientes',
+      rustdeskId: '1546924957',
+      operatingSystem: 'Windows 11 (23H2)',
+      osBuild: 'Build 22631',
+      osBadge: 'Win 11',
+      technicianName: 'Ronaldo',
+      startedAt: new Date().toISOString(),
+    };
+
+    saveActiveSessionDraft(draft);
+    expect(getActiveSessionDraft()).toEqual(draft);
+
+    saveActiveSessionDraft(null);
+    expect(getActiveSessionDraft()).toBeNull();
+  });
 });
+
 
 

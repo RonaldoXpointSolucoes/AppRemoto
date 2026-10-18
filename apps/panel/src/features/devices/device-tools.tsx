@@ -8,6 +8,7 @@ import { onSessionClear, sessionEpoch } from '../auth/session-cache';
 import { ApiClientError } from '../../lib/api';
 import { RustDeskServerConfig } from '../setup/rustdesk-server-config';
 import { ConnectDevice } from './connect-device';
+import { probeRustDeskApp } from './rustdesk-launch';
 import { downloadConnectionLog, localEvent, stageLabels, type ConnectionLogEvent } from './connection-log';
 import type { DeviceDirectoryService } from './use-devices';
 import { formatLastSeen } from './device-record';
@@ -76,7 +77,7 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
     finally { if (current()) setBusy(false); }
   }
   function testOpening() {
-    try { window.location.assign('rustdesk://'); setProbe('Tentamos abrir o RustDesk neste computador do técnico. Confirme a abertura no navegador. Este teste não acessa o cliente.'); }
+    try { probeRustDeskApp(); setProbe('Tentamos abrir o RustDesk neste computador do técnico. Confirme a abertura no navegador. Este teste não acessa o cliente.'); }
     catch { setProbe('O navegador não conseguiu abrir o RustDesk. Confira a instalação neste computador e a permissão do navegador.'); }
   }
   const targetAlias = device.hostname || device.displayName || 'SERVER';

@@ -709,4 +709,63 @@ export function saveUserViewPreferences(
   }
 }
 
+export interface ActiveSessionDraft {
+  protocolNumber?: string;
+  deviceId: string;
+  displayName: string;
+  hostname: string;
+  organizationName?: string;
+  organizationId?: string;
+  folderName?: string;
+  rustdeskId: string;
+  operatingSystem?: string;
+  osBuild?: string;
+  osBadge?: string;
+  localIp?: string;
+  deviceStatusAtStart?: string;
+  lastSeenBeforeConnect?: string;
+  isFavorite?: boolean;
+  previousDeviceNotes?: string;
+  technicianName: string;
+  technicianEmail?: string;
+  clientPlatform?: string;
+  clientNetwork?: string;
+  clientViewport?: string;
+  mode?: 'automatic' | 'manual';
+  startedAt: string;
+}
+
+const ACTIVE_SESSION_DRAFT_KEY = 'xpoint_tv_active_session_v1';
+const ACTIVE_SESSION_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 horas
+
+export function saveActiveSessionDraft(session: ActiveSessionDraft | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!session) {
+      localStorage.removeItem(ACTIVE_SESSION_DRAFT_KEY);
+      return;
+    }
+    localStorage.setItem(ACTIVE_SESSION_DRAFT_KEY, JSON.stringify(session));
+  } catch {}
+}
+
+export function getActiveSessionDraft(): ActiveSessionDraft | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(ACTIVE_SESSION_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ActiveSessionDraft;
+    if (!parsed || !parsed.deviceId || !parsed.startedAt) return null;
+    const ageMs = Date.now() - new Date(parsed.startedAt).getTime();
+    if (Number.isNaN(ageMs) || ageMs > ACTIVE_SESSION_MAX_AGE_MS) {
+      localStorage.removeItem(ACTIVE_SESSION_DRAFT_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+
 

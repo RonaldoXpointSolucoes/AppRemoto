@@ -32,6 +32,8 @@ import {
   setLastActiveUserId,
   getUserViewPreferences,
   saveUserViewPreferences,
+  saveActiveSessionDraft,
+  getActiveSessionDraft,
   type RecentConnectionRecord,
 } from './teamviewer-storage';
 
@@ -109,7 +111,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => initialUserPrefs.sidebarCollapsed);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
-  const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+  const [activeSession, setActiveSession] = useState<ActiveSession | null>(() => getActiveSessionDraft());
   const searchInputRef = useRef<HTMLInputElement>(null);
   const loadedUserRef = useRef<string | null>(initialUserId);
 
@@ -158,7 +160,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   const displayedDevices = useMemo(() => {
     return isLocalCategory ? filterDevicesByCategory(query.rows, filters.organizationId) : query.rows;
   }, [isLocalCategory, filters.organizationId, query.rows]);
-  useEffect(() => onSessionClear(queryClient, () => { setSelected(undefined); setDeviceToDelete(null); setConnectionEvents({}); setActiveSession(null); }), [queryClient]);
+  useEffect(() => onSessionClear(queryClient, () => { setSelected(undefined); setDeviceToDelete(null); setConnectionEvents({}); saveActiveSessionDraft(null); setActiveSession(null); }), [queryClient]);
   const addEvent = (deviceId: string, event: ConnectionLogEvent) => {
     if (sessionEpoch(queryClient) !== epoch) return;
     setConnectionEvents((old) => ({ ...old, [deviceId]: [...(old[deviceId] ?? []), event].slice(-200) }));
@@ -218,7 +220,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       mode: 'automatic',
     });
 
-    setActiveSession({
+    const nextSession: ActiveSession = {
       protocolNumber,
       deviceId: device.id,
       displayName: device.displayName,
@@ -239,7 +241,9 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       ...clientEnv,
       mode: 'automatic',
       startedAt,
-    });
+    };
+    saveActiveSessionDraft(nextSession);
+    setActiveSession(nextSession);
   }
 
   function handleConnectAgainFromHistory(rec: RecentConnectionRecord) {
@@ -349,10 +353,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={() => setIsChangelogOpen(true)}
-                title="Clique para ver todas as novidades da versão v1.4.3"
-                aria-label="Ver novidades da versão v1.4.3 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.4.4"
+                aria-label="Ver novidades da versão v1.4.4 (mobile)"
               >
-                v1.4.3
+                v1.4.4
               </button>
             </div>
           </div>
@@ -398,10 +402,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.4.3"
-              aria-label="Ver novidades da versão v1.4.3"
+              title="Clique para ver todas as novidades da versão v1.4.4"
+              aria-label="Ver novidades da versão v1.4.4"
             >
-              v1.4.3
+              v1.4.4
             </button>
           </div>
 
@@ -570,7 +574,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
         {/* Widget Flutuante de Sessão Ativa / Cronômetro de Atendimento */}
         <ActiveSessionTracker
           session={activeSession}
-          onClose={() => setActiveSession(null)}
+          onClose={() => {
+            saveActiveSessionDraft(null);
+            setActiveSession(null);
+          }}
           onSaved={() => query.refresh()}
         />
 
