@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 
 import { SessionBoundary } from '../../features/auth/session-boundary';
 import { DeviceDirectory, type DeviceDirectoryService } from '../../features/devices/device-table';
+import { buildPreservedRoute } from '../../features/embed/chatbot-bridge';
 import { createApiClient } from '../../lib/api';
 import { createAppwriteSessionClient } from '../../lib/appwrite';
 import { getPublicConfig } from '../../lib/config';
@@ -36,7 +37,7 @@ export default function DevicesPage() {
   const service = useMemo(() => createDeviceDirectoryService(), []);
   return (
     <SessionBoundary>
-      <DeviceDirectory service={service} onSessionExpired={() => router.replace('/login')} />
+      <DeviceDirectory service={service} onSessionExpired={() => router.replace(buildPreservedRoute('/login'))} />
     </SessionBoundary>
   );
 }

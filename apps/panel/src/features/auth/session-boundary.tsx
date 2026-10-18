@@ -4,13 +4,14 @@ import { useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
 
 import { useSessionBoundary } from './session';
+import { buildPreservedRoute } from '../embed/chatbot-bridge';
 
 export function SessionBoundary({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { state, retry } = useSessionBoundary();
 
   useEffect(() => {
-    if (state.status === 'expired') router.replace('/login');
+    if (state.status === 'expired') router.replace(buildPreservedRoute('/login'));
   }, [router, state.status]);
 
   if (state.status === 'authenticated') return children;

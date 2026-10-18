@@ -1,7 +1,7 @@
 'use client';
 
 import type { DeviceView } from '@appremoto/contracts';
-import { Building2, ChevronLeft, ChevronRight, Download, LogOut, Plus, Search, Trash2, LayoutGrid, Table, Monitor, History, Zap, RefreshCw, Users, X } from 'lucide-react';
+import { Building2, ChevronLeft, ChevronRight, Download, LogOut, Plus, Search, Trash2, LayoutGrid, Table, Monitor, History, Zap, RefreshCw, Users, X, MessageSquare, Link2, Check } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -21,6 +21,15 @@ import { ActiveSessionTracker, type ActiveSession } from './active-session-track
 import { AddConnectionDialog } from './add-connection-dialog';
 import { VersionChangelogModal } from './version-changelog-modal';
 import { CnpjManagementModal } from './cnpj-management-modal';
+import {
+  emitToChatbotHost,
+  isRunningInIframe,
+  parseInitialChatbotContext,
+  subscribeToChatbotEvents,
+  toChatbotDeviceSummary,
+  type ChatbotCustomerContext,
+} from '../embed/chatbot-bridge';
+import { ChatbotIntegrationModal } from '../embed/chatbot-integration-modal';
 import { parseSystemInfo } from './system-info';
 import {
   saveRecentConnection,
@@ -92,11 +101,19 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   const hasUserService = Boolean(service.getMe);
   const initialUserId = useMemo(() => (hasUserService ? getLastActiveUserId() : null), [hasUserService]);
   const initialUserPrefs = useMemo(() => getUserViewPreferences(initialUserId), [initialUserId]);
+  const initialChatbotCtx = useMemo(() => parseInitialChatbotContext(), []);
+  const isEmbedMode = useMemo(() => isRunningInIframe(), []);
+
+  const [chatbotContext, setChatbotContext] = useState<ChatbotCustomerContext | null>(initialChatbotCtx);
+  const chatbotContextRef = useRef<ChatbotCustomerContext | null>(initialChatbotCtx);
+  chatbotContextRef.current = chatbotContext;
+  const [isChatbotModalOpen, setIsChatbotModalOpen] = useState(false);
+  const [associatedFeedback, setAssociatedFeedback] = useState(false);
 
   const [filters, setFilters] = useState<DeviceFiltersValue>(() => ({
-    organizationId: initialUserPrefs.organizationId,
-    status: initialUserPrefs.status,
-    search: initialUserPrefs.search,
+    organizationId: initialChatbotCtx ? '' : initialUserPrefs.organizationId,
+    status: initialChatbotCtx ? '' : initialUserPrefs.status,
+    search: initialChatbotCtx ? initialChatbotCtx.cnpj : initialUserPrefs.search,
   }));
   const [selected, setSelected] = useState<DeviceView>();
   const [connectionEvents, setConnectionEvents] = useState<Record<string, ConnectionLogEvent[]>>({});
@@ -109,10 +126,14 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   // Estados do TeamViewer (Persistidos por Usuário)
   const [activeTab, setActiveTab] = useState<TeamViewerTab>('devices');
   const [viewMode, setViewMode] = useState<'teamviewer' | 'table'>(() => initialUserPrefs.viewMode);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => initialUserPrefs.sidebarCollapsed);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() =>
+    isEmbedMode ? true : initialUserPrefs.sidebarCollapsed,
+  );
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
-  const [cnpjModalFilter, setCnpjModalFilter] = useState<string | null | undefined>(undefined);
+  const [cnpjModalFilter, setCnpjModalFilter] = useState<string | null | undefined>(() =>
+    initialChatbotCtx?.openCnpjModal ? initialChatbotCtx.cnpj : undefined,
+  );
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(() => getActiveSessionDraft());
   const searchInputRef = useRef<HTMLInputElement>(null);
   const loadedUserRef = useRef<string | null>(initialUserId);
@@ -131,25 +152,28 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   const activeUserId = resolvedUserId || initialUserId;
 
   // Quando o perfil do usuário autenticado é carregado (ou trocado), restaura os filtros que esse usuário deixou
+  // (mas preserva o filtro do CNPJ caso tenha vindo do Chatbot/Iframe)
   useEffect(() => {
     if (!resolvedUserId) return;
     setLastActiveUserId(resolvedUserId);
     if (loadedUserRef.current !== resolvedUserId) {
       loadedUserRef.current = resolvedUserId;
       const userPrefs = getUserViewPreferences(resolvedUserId);
+      const activeBotCtx = chatbotContextRef.current;
       setFilters({
-        organizationId: userPrefs.organizationId,
-        status: userPrefs.status,
-        search: userPrefs.search,
+        organizationId: activeBotCtx ? '' : userPrefs.organizationId,
+        status: activeBotCtx ? '' : userPrefs.status,
+        search: activeBotCtx ? activeBotCtx.cnpj : userPrefs.search,
       });
       setViewMode(userPrefs.viewMode);
-      setSidebarCollapsed(userPrefs.sidebarCollapsed);
+      setSidebarCollapsed(isEmbedMode ? true : userPrefs.sidebarCollapsed);
     }
-  }, [resolvedUserId]);
+  }, [resolvedUserId, isEmbedMode]);
 
   // Salva automaticamente os filtros e preferências de visualização do usuário sempre que alterados
+  // (exceto quando o filtro temporário veio do Chatbot para não sobrescrever a preferência padrão do técnico)
   useEffect(() => {
-    if (!activeUserId || loadedUserRef.current !== activeUserId) return;
+    if (!activeUserId || loadedUserRef.current !== activeUserId || chatbotContext) return;
     saveUserViewPreferences(activeUserId, {
       organizationId: filters.organizationId,
       status: filters.status,
@@ -157,11 +181,123 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       viewMode,
       sidebarCollapsed,
     });
-  }, [activeUserId, filters.organizationId, filters.status, filters.search, viewMode, sidebarCollapsed]);
+  }, [activeUserId, chatbotContext, filters.organizationId, filters.status, filters.search, viewMode, sidebarCollapsed]);
 
   const displayedDevices = useMemo(() => {
     return isLocalCategory ? filterDevicesByCategory(query.rows, filters.organizationId) : query.rows;
   }, [isLocalCategory, filters.organizationId, query.rows]);
+
+  // Notifica o Chatbot Host que o AppRemoto está pronto para receber eventos
+  useEffect(() => {
+    emitToChatbotHost({
+      type: 'XPOINT_REMOTE_READY',
+      version: 'v1.4.8',
+      embedded: isEmbedMode,
+      authenticated: true,
+      activeCnpj: chatbotContextRef.current?.cnpj ?? null,
+      timestamp: new Date().toISOString(),
+    });
+  }, [isEmbedMode]);
+
+  // Escuta eventos postMessage em tempo real vindos do Chatbot (ex.: troca de conversa/CNPJ)
+  useEffect(() => {
+    return subscribeToChatbotEvents((action) => {
+      if (action.action === 'PING') {
+        emitToChatbotHost({
+          type: 'XPOINT_REMOTE_PONG',
+          version: 'v1.4.8',
+          authenticated: true,
+          activeCnpj: chatbotContextRef.current?.cnpj ?? null,
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+      if (action.action === 'CLEAR_CONTEXT') {
+        setChatbotContext(null);
+        setFilters((prev) => ({ ...prev, organizationId: '', status: '', search: '' }));
+        return;
+      }
+      if (action.action === 'OPEN_CNPJ_MODAL') {
+        if (service.getCnpjGroups) {
+          setCnpjModalFilter(action.cnpj);
+        }
+        return;
+      }
+      if (action.action === 'SET_CONTEXT') {
+        setChatbotContext(action.context);
+        setActiveTab('devices');
+        setFilters({
+          organizationId: '',
+          status: '',
+          search: action.context.cnpj,
+        });
+        if (action.context.openCnpjModal && service.getCnpjGroups) {
+          setCnpjModalFilter(action.context.cnpj);
+        }
+      }
+    });
+  }, [service.getCnpjGroups]);
+
+  // Sempre que um CNPJ do Chatbot estiver ativo e os dispositivos carregarem, devolve o resumo ao Chatbot
+  useEffect(() => {
+    if (!chatbotContext || query.isPageLoading || query.isOrganizationLoading) return;
+    const onlineDevices = displayedDevices.filter((d) => d.status === 'ONLINE').length;
+    const firstDev = displayedDevices[0];
+    const companyName =
+      chatbotContext.contactName ||
+      firstDev?.datadivas?.nomeFantasia ||
+      firstDev?.datadivas?.razaoSocial ||
+      firstDev?.organizationName ||
+      null;
+
+    emitToChatbotHost({
+      type: 'XPOINT_REMOTE_CNPJ_RESOLVED',
+      cnpj: chatbotContext.cnpj,
+      formattedCnpj: chatbotContext.formattedCnpj,
+      ...(chatbotContext.contactName ? { contactName: chatbotContext.contactName } : {}),
+      ...(chatbotContext.contactId ? { contactId: chatbotContext.contactId } : {}),
+      ...(chatbotContext.conversationId ? { conversationId: chatbotContext.conversationId } : {}),
+      companyName,
+      totalDevices: displayedDevices.length,
+      onlineDevices,
+      offlineDevices: Math.max(0, displayedDevices.length - onlineDevices),
+      devices: displayedDevices.map(toChatbotDeviceSummary),
+      timestamp: new Date().toISOString(),
+    });
+  }, [chatbotContext, displayedDevices, query.isPageLoading, query.isOrganizationLoading]);
+
+  function handleClearChatbotCnpj() {
+    setChatbotContext(null);
+    setFilters((prev) => ({ ...prev, organizationId: '', status: '', search: '' }));
+  }
+
+  function handleAssociateContactToChatbot(targetDevice?: DeviceView) {
+    if (!chatbotContext) return;
+    const firstDev = targetDevice ?? displayedDevices[0];
+    const companyName =
+      chatbotContext.contactName ||
+      firstDev?.datadivas?.nomeFantasia ||
+      firstDev?.datadivas?.razaoSocial ||
+      firstDev?.organizationName ||
+      `CNPJ ${chatbotContext.formattedCnpj}`;
+
+    emitToChatbotHost({
+      type: 'XPOINT_REMOTE_CONTACT_ASSOCIATED',
+      cnpj: chatbotContext.cnpj,
+      formattedCnpj: chatbotContext.formattedCnpj,
+      ...(chatbotContext.contactName ? { contactName: chatbotContext.contactName } : {}),
+      ...(chatbotContext.contactPhone ? { contactPhone: chatbotContext.contactPhone } : {}),
+      ...(chatbotContext.contactId ? { contactId: chatbotContext.contactId } : {}),
+      ...(chatbotContext.conversationId ? { conversationId: chatbotContext.conversationId } : {}),
+      companyName,
+      ...(firstDev ? { device: toChatbotDeviceSummary(firstDev) } : {}),
+      devicesCount: displayedDevices.length,
+      timestamp: new Date().toISOString(),
+    });
+    setAssociatedFeedback(true);
+    setTimeout(() => setAssociatedFeedback(false), 3000);
+  }
+
   useEffect(() => onSessionClear(queryClient, () => { setSelected(undefined); setDeviceToDelete(null); setConnectionEvents({}); saveActiveSessionDraft(null); setActiveSession(null); }), [queryClient]);
   const addEvent = (deviceId: string, event: ConnectionLogEvent) => {
     if (sessionEpoch(queryClient) !== epoch) return;
@@ -248,6 +384,20 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     };
     saveActiveSessionDraft(nextSession);
     setActiveSession(nextSession);
+
+    emitToChatbotHost({
+      type: 'XPOINT_REMOTE_SESSION_STARTED',
+      protocolNumber,
+      deviceId: device.id,
+      displayName: device.displayName,
+      hostname: device.hostname,
+      rustdeskId: device.rustdeskId,
+      organizationName: device.organizationName,
+      ...(device.datadivas?.cnpj || chatbotContext?.cnpj ? { cnpj: device.datadivas?.cnpj || chatbotContext?.cnpj } : {}),
+      ...(chatbotContext?.contactId ? { contactId: chatbotContext.contactId } : {}),
+      ...(chatbotContext?.conversationId ? { conversationId: chatbotContext.conversationId } : {}),
+      startedAt,
+    });
   }
 
   function handleConnectAgainFromHistory(rec: RecentConnectionRecord) {
@@ -357,21 +507,32 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={() => setIsChangelogOpen(true)}
-                title="Clique para ver todas as novidades da versão v1.4.6"
-                aria-label="Ver novidades da versão v1.4.6 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.4.8"
+                aria-label="Ver novidades da versão v1.4.8 (mobile)"
               >
-                v1.4.6
+                v1.4.8
               </button>
             </div>
           </div>
           <div className="tv-mobile-top-actions">
+            {activeTab === 'devices' && (
+              <button
+                type="button"
+                className="tv-mobile-logout-btn"
+                title="Integração Nativa com o Chatbot (Iframe & Eventos CNPJ)"
+                aria-label="Integração Chatbot (mobile)"
+                onClick={() => setIsChatbotModalOpen(true)}
+              >
+                <MessageSquare size={17} className="text-emerald-400" />
+              </button>
+            )}
             {activeTab === 'devices' && service.getCnpjGroups && (
               <button
                 type="button"
                 className="tv-mobile-logout-btn"
                 title="Gestão Inteligente de Computadores por CNPJ"
                 aria-label="Gestão por CNPJ (mobile)"
-                onClick={() => setCnpjModalFilter(null)}
+                onClick={() => setCnpjModalFilter(chatbotContext?.cnpj ?? null)}
               >
                 <Building2 size={17} className="text-cyan-400" />
               </button>
@@ -417,10 +578,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.4.6"
-              aria-label="Ver novidades da versão v1.4.6"
+              title="Clique para ver todas as novidades da versão v1.4.8"
+              aria-label="Ver novidades da versão v1.4.8"
             >
-              v1.4.6
+              v1.4.8
             </button>
           </div>
 
@@ -441,7 +602,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                   className="tv-search-clear-btn"
                   title="Limpar pesquisa"
                   aria-label="Limpar pesquisa"
-                  onClick={() => setFilters((prev) => ({ ...prev, search: '' }))}
+                  onClick={() => {
+                    if (chatbotContext) setChatbotContext(null);
+                    setFilters((prev) => ({ ...prev, search: '' }));
+                  }}
                 >
                   <X size={14} />
                 </button>
@@ -452,11 +616,24 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
           )}
 
           <div className="tv-toolbar-actions">
+            {activeTab === 'devices' && (
+              <button
+                type="button"
+                className="tv-btn-refresh-status"
+                onClick={() => setIsChatbotModalOpen(true)}
+                title="Abrir Central de Integração com o Chatbot (Iframe, postMessage e Simulador de CNPJ)"
+                aria-label="Integração com o Chatbot"
+              >
+                <MessageSquare size={14} className="text-emerald-400" />
+                <span>Chatbot / Iframe</span>
+              </button>
+            )}
+
             {activeTab === 'devices' && service.getCnpjGroups && (
               <button
                 type="button"
                 className="tv-btn-refresh-status"
-                onClick={() => setCnpjModalFilter(null)}
+                onClick={() => setCnpjModalFilter(chatbotContext?.cnpj ?? null)}
                 title="Gerenciar empresas por CNPJ, funções de computadores, sugestão de nomes e renomeação Windows"
                 aria-label="Gestão de Computadores por CNPJ"
               >
@@ -517,6 +694,108 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
         </header>
 
         {logoutError && <p className="logout-error" role="alert">Nao foi possivel sair. Tente novamente.</p>}
+
+        {/* Banner de Contexto do Atendimento Chatbot (Exibido quando o Chatbot envia um CNPJ via URL ou postMessage) */}
+        {activeTab === 'devices' && chatbotContext && (
+          <section
+            aria-label="Contexto do cliente recebido do Chatbot"
+            style={{
+              margin: '0 0 14px 0',
+              padding: '14px 18px',
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, rgba(6, 78, 59, 0.38) 0%, rgba(15, 23, 42, 0.85) 100%)',
+              border: '1px solid rgba(16, 185, 129, 0.45)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '14px',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    padding: '2px 9px',
+                    borderRadius: 999,
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    background: 'rgba(16, 185, 129, 0.2)',
+                    color: '#6ee7b7',
+                    border: '1px solid rgba(16, 185, 129, 0.4)',
+                  }}
+                >
+                  <MessageSquare size={12} />
+                  CLIENTE RECEBIDO DO CHATBOT
+                </span>
+                <strong style={{ fontSize: '0.98rem' }}>
+                  {chatbotContext.contactName ||
+                    displayedDevices[0]?.datadivas?.nomeFantasia ||
+                    displayedDevices[0]?.datadivas?.razaoSocial ||
+                    displayedDevices[0]?.organizationName ||
+                    'Grupo Empresarial'}
+                </strong>
+                <span
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.82rem',
+                    padding: '2px 8px',
+                    borderRadius: 6,
+                    background: 'rgba(15, 23, 42, 0.7)',
+                    color: '#38bdf8',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                  }}
+                >
+                  CNPJ: {chatbotContext.formattedCnpj}
+                </span>
+                {chatbotContext.contactPhone && (
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    WhatsApp: {chatbotContext.contactPhone}
+                  </span>
+                )}
+              </div>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                Exibindo automaticamente as conexões vinculadas a este CNPJ ({displayedDevices.filter((d) => d.status === 'ONLINE').length} online de {displayedDevices.length} computador{displayedDevices.length === 1 ? '' : 'es'}).
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {service.getCnpjGroups && (
+                <button
+                  type="button"
+                  className="command-button"
+                  onClick={() => setCnpjModalFilter(chatbotContext.cnpj)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', padding: '7px 12px' }}
+                >
+                  <Building2 size={14} className="text-cyan-400" />
+                  Ficha & Funções do CNPJ
+                </button>
+              )}
+              <button
+                type="button"
+                className="command-button"
+                onClick={() => handleAssociateContactToChatbot()}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', padding: '7px 12px' }}
+                title="Envia os dados deste CNPJ e computador para o Chatbot salvar no cadastro do contato"
+              >
+                {associatedFeedback ? <Check size={14} className="text-emerald-400" /> : <Link2 size={14} />}
+                {associatedFeedback ? 'Vínculo enviado ao Chatbot!' : 'Associar ao Contato'}
+              </button>
+              <button
+                type="button"
+                className="command-button"
+                onClick={handleClearChatbotCnpj}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.8rem', padding: '7px 12px' }}
+              >
+                <X size={14} />
+                Ver Todos os Clientes
+              </button>
+            </div>
+          </section>
+        )}
 
         {activeTab === 'history' ? (
           <ConnectionHistoryView onConnectAgain={handleConnectAgainFromHistory} />
@@ -605,6 +884,13 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
             />
           )}
 
+        {/* Modal de Integração Nativa com o Chatbot (Iframe + postMessage + Simulador) */}
+        <ChatbotIntegrationModal
+          isOpen={isChatbotModalOpen}
+          onClose={() => setIsChatbotModalOpen(false)}
+          devices={query.rows}
+        />
+
         {/* Modal de Adicionar Conexão Rápida / Criar Grupo */}
         <AddConnectionDialog
           isOpen={isAddOpen}
@@ -623,6 +909,21 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
         <ActiveSessionTracker
           session={activeSession}
           onClose={() => {
+            if (activeSession) {
+              emitToChatbotHost({
+                type: 'XPOINT_REMOTE_SESSION_ENDED',
+                protocolNumber: activeSession.protocolNumber || '',
+                deviceId: activeSession.deviceId,
+                displayName: activeSession.displayName,
+                rustdeskId: activeSession.rustdeskId,
+                ...(activeSession.datadivas?.cnpj || chatbotContext?.cnpj
+                  ? { cnpj: activeSession.datadivas?.cnpj || chatbotContext?.cnpj }
+                  : {}),
+                ...(chatbotContext?.contactId ? { contactId: chatbotContext.contactId } : {}),
+                ...(chatbotContext?.conversationId ? { conversationId: chatbotContext.conversationId } : {}),
+                endedAt: new Date().toISOString(),
+              });
+            }
             saveActiveSessionDraft(null);
             setActiveSession(null);
           }}

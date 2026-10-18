@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 
 import { LoginForm } from '../../features/auth/login-form';
 import { createLoginService } from '../../features/auth/session';
+import { buildPreservedRoute } from '../../features/embed/chatbot-bridge';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,7 +17,7 @@ export default function LoginPage() {
         <p className="product-name">XPoint Remote</p>
         <h1 id="login-title">Acesso tecnico</h1>
         <p className="login-context">Entre com sua conta de operacao.</p>
-        <LoginForm service={service} onAuthenticated={() => router.replace('/devices')} />
+        <LoginForm service={service} onAuthenticated={() => router.replace(buildPreservedRoute('/devices'))} />
       </section>
     </main>
   );

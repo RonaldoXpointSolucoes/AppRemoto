@@ -114,6 +114,7 @@ export async function listDevices(technician: AuthenticatedTechnician, query: De
     ? decodeCursor(query.cursor, cursorSecret, expectedFingerprint, batches.length, now)
     : { v: 1, t: now.toISOString(), b: 0, k: null, f: expectedFingerprint };
   const search = query.search?.toLocaleLowerCase();
+  const searchDigits = query.search ? query.search.replace(/\D+/g, '') : '';
   const devices: DeviceView[] = [];
   let scanned = 0;
   let queries = 0;
@@ -133,22 +134,31 @@ export async function listDevices(technician: AuthenticatedTechnician, query: De
       state.k = record.id;
       scanned++;
       const view = viewOf(record, visible.get(record.organizationId)!.name, state.t, now);
-      if ((!query.status || view.status === query.status) &&
-          (!search || [
-            view.displayName,
-            view.hostname,
-            view.rustdeskId,
-            view.datadivas?.nomeFantasia,
-            view.datadivas?.razaoSocial,
-            view.datadivas?.cnpj,
-            view.datadivas?.serial,
-            view.datadivas?.ie,
-            view.datadivas?.endereco,
-            view.datadivas?.cidade,
-            view.datadivas?.ipMaq,
-            view.datadivas?.ipDataDivas,
-            view.datadivas?.nomeMaq,
-          ].some((value) => value && value.toLocaleLowerCase().includes(search)))) devices.push(view);
+      const searchableValues = [
+        view.displayName,
+        view.organizationName,
+        view.hostname,
+        view.rustdeskId,
+        view.datadivas?.nomeFantasia,
+        view.datadivas?.razaoSocial,
+        view.datadivas?.cnpj,
+        view.datadivas?.serial,
+        view.datadivas?.ie,
+        view.datadivas?.endereco,
+        view.datadivas?.cidade,
+        view.datadivas?.ipMaq,
+        view.datadivas?.ipDataDivas,
+        view.datadivas?.nomeMaq,
+        view.datadivas?.funcao,
+        view.datadivas?.windowsHostnameDesejado,
+      ];
+      const matchesText = !search || searchableValues.some(
+        (value) => value && (
+          value.toLocaleLowerCase().includes(search) ||
+          (searchDigits.length >= 6 && value.replace(/\D+/g, '').includes(searchDigits))
+        ),
+      );
+      if ((!query.status || view.status === query.status) && matchesText) devices.push(view);
       if (devices.length === query.limit) {
         if (index + 1 < page.records.length || page.hasMore) {
           return { devices, nextCursor: encodeCursor(state, cursorSecret) };

@@ -32,11 +32,31 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.4.8',
+    date: 'Outubro 2026',
+    title: 'Integração Nativa com XPoint Chatbot (Iframe / Rota /embed & Eventos postMessage por CNPJ)',
+    highlight: 'Rota dedicada /embed com cabeçalhos frame-ancestors liberados, Bridge bidirecional via window.postMessage e filtragem automática de conexões pelo CNPJ do contato em conversa no Chatbot.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Rota Dedicada /embed, Bridge Bidirecional postMessage e Filtro Automático por CNPJ',
+        description:
+          'Permite embutir o XPoint Remote dentro do XPoint Chatbot via Iframe ou Drawer lateral, recebendo o CNPJ do contato por URL (?embed=1&cnpj=...) ou em tempo real via window.postMessage (XPOINT_REMOTE_SET_CNPJ) para filtrar os computadores do cliente instantaneamente.',
+        tag: 'Novo',
+      },
+      {
+        title: 'Central Interativa "Chatbot / Iframe" com Simulador Ao Vivo e Kit React Pronto',
+        description:
+          'Novo modal interativo na barra de ferramentas com simulador de eventos de CNPJ em tempo real, inspetor de eventos de retorno (sessão iniciada/encerrada com laudo) e código React completo (<XPointRemoteChatDrawer />) pronto para copiar no projeto do Chatbot.',
+        tag: 'Infra & Cockpit',
+      },
+    ],
+  },
+  {
     version: 'v1.4.7',
     date: 'Outubro 2026',
     title: 'Setup do Instalador Windows v1.3.1 — Interface Enterprise Moderna, Alta Confiança & UX sem Cortes',
     highlight: 'Redesign completo da janela de setup e progresso no Windows com banner de segurança verificado, cards estruturados sem caixas cinzas legadas, área útil exata e dropdowns expandidos.',
-    isCurrent: true,
     items: [
       {
         title: 'Interface Enterprise de Última Geração no Setup Windows (EXE v1.3.1)',
