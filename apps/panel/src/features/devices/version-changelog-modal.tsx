@@ -32,11 +32,31 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.4.7',
+    date: 'Outubro 2026',
+    title: 'Setup do Instalador Windows v1.3.1 — Interface Enterprise Moderna, Alta Confiança & UX sem Cortes',
+    highlight: 'Redesign completo da janela de setup e progresso no Windows com banner de segurança verificado, cards estruturados sem caixas cinzas legadas, área útil exata e dropdowns expandidos.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Interface Enterprise de Última Geração no Setup Windows (EXE v1.3.1)',
+        description:
+          'Cabeçalho escuro moderno com selo "Instalação Verificada & Criptografada (TLS 1.3)", cards arredondados para Dados do C:\\DataDivas\\config.ini, Grupo do CNPJ e Classificação da Máquina, eliminando fundos cinzas legados do Win32 e textos truncados.',
+        tag: 'UI/UX',
+      },
+      {
+        title: 'Botões Owner-Draw, Callout de Sugestão Inteligente & Compatibilidade PDV 1366x768',
+        description:
+          'Cálculo exato de área útil (AdjustWindowRectEx + SPI_GETWORKAREA), largura expandida em dropdowns (CB_SETDROPPEDWIDTH), destaque em esmeralda para a sugestão automática de nome e garantia explícita de não reinicialização forçada.',
+        tag: 'Novo',
+      },
+    ],
+  },
+  {
     version: 'v1.4.6',
     date: 'Outubro 2026',
     title: 'Gestão Inteligente de Computadores por CNPJ, Nomenclatura Sequencial & Renomeação Real do Windows (EXE v1.3.0)',
     highlight: 'Agrupamento automático por CNPJ (14 dígitos), catálogo padronizado de funções (SERVIDOR, CAIXA-01, BALANCA-01...), reserva atômica contra colisão e renomeação real do Windows.',
-    isCurrent: true,
     items: [
       {
         title: 'Instalador Windows v1.3.0 com Tela "Identificação do Computador" e Renomeação Real do Windows',

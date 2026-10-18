@@ -3,7 +3,7 @@ WORKDIR /agent
 COPY services/agent/go.mod services/agent/go.sum ./
 RUN go mod download
 COPY services/agent/ ./
-RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags='-s -w -H=windowsgui' -o /out/xpoint-setup-1.3.0.exe ./cmd/remote-setup
+RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags='-s -w -H=windowsgui' -o /out/xpoint-setup-1.3.1.exe ./cmd/remote-setup
 
 FROM node:24-alpine AS base
 ENV PNPM_HOME=/pnpm
@@ -26,7 +26,7 @@ ENV NEXT_PUBLIC_APPWRITE_ENDPOINT=$NEXT_PUBLIC_APPWRITE_ENDPOINT
 ENV NEXT_PUBLIC_APPWRITE_PROJECT_ID=$NEXT_PUBLIC_APPWRITE_PROJECT_ID
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 COPY . .
-COPY --from=windows-installer /out/xpoint-setup-1.3.0.exe ./apps/panel/public/installers/xpoint-setup-1.3.0.exe
+COPY --from=windows-installer /out/xpoint-setup-1.3.1.exe ./apps/panel/public/installers/xpoint-setup-1.3.1.exe
 RUN node apps/panel/scripts/package-installer.mjs
 RUN pnpm --config.verify-deps-before-run=false --filter @appremoto/panel build && rm -rf /app/apps/panel/.next/cache
 
