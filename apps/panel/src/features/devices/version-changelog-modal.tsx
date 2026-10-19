@@ -32,11 +32,31 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.4.9',
+    date: 'Outubro 2026',
+    title: 'Lista Simplificada Ultra-Limpa & Expansão sob Demanda ("Detalhes")',
+    highlight: 'Padronização visual de cada computador em 2 linhas enxutas na lista principal, ocultando metadados técnicos e ficha DataDivas até que o técnico clique em "Detalhes".',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Lista Simplificada Uniforme em 2 Linhas (Mobile & Desktop)',
+        description:
+          'Exibe na listagem apenas o essencial para conexão rápida (Nome, Função, ID RustDesk, Status e Pasta), eliminando o empilhamento de 10+ linhas por computador no celular.',
+        tag: 'UI/UX',
+      },
+      {
+        title: 'Gaveta Expansível "Detalhes ▾" sob Demanda em Cada Máquina',
+        description:
+          'Ao tocar em "Detalhes" (ou no nome da máquina), expande suavemente o painel completo com Sistema, IP, Ficha Cadastral DataDivas (CNPJ, Serial, Endereço, IP DataDivas) e atalhos para Diagnóstico e Edição.',
+        tag: 'Mobilidade',
+      },
+    ],
+  },
+  {
     version: 'v1.4.8',
     date: 'Outubro 2026',
     title: 'Integração Nativa com XPoint Chatbot (Iframe / Rota /embed & Eventos postMessage por CNPJ)',
     highlight: 'Rota dedicada /embed com cabeçalhos frame-ancestors liberados, Bridge bidirecional via window.postMessage e filtragem automática de conexões pelo CNPJ do contato em conversa no Chatbot.',
-    isCurrent: true,
     items: [
       {
         title: 'Rota Dedicada /embed, Bridge Bidirecional postMessage e Filtro Automático por CNPJ',

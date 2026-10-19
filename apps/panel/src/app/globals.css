@@ -7805,3 +7805,175 @@ button, a, input, select { outline-offset: 3px; }
   font-weight: 500;
 }
 
+/* =========================================================
+   LISTA SIMPLIFICADA & GAVETA EXPANSÍVEL SOB DEMANDA (v1.4.9)
+   ========================================================= */
+.tv-row.is-expanded {
+  align-items: flex-start;
+  background: linear-gradient(180deg, rgba(14, 165, 233, 0.05) 0%, transparent 100%);
+}
+
+.tv-compact-role-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: rgba(16, 185, 129, 0.14);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  flex-shrink: 0;
+}
+
+[data-theme="light"] .tv-compact-role-tag {
+  background: rgba(16, 185, 129, 0.1);
+  color: #047857;
+  border-color: rgba(16, 185, 129, 0.28);
+}
+
+.tv-compact-folder-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-muted);
+  opacity: 0.9;
+}
+
+.tv-details-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  background: rgba(14, 165, 233, 0.1);
+  color: #38bdf8;
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+[data-theme="light"] .tv-details-expand-btn {
+  background: rgba(2, 132, 199, 0.08);
+  border-color: rgba(2, 132, 199, 0.25);
+  color: #0284c7;
+}
+
+.tv-details-expand-btn:hover {
+  background: rgba(14, 165, 233, 0.2);
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.tv-details-expand-btn.expanded {
+  background: rgba(56, 189, 248, 0.22);
+  border-color: rgba(56, 189, 248, 0.55);
+  color: #7dd3fc;
+}
+
+[data-theme="light"] .tv-details-expand-btn.expanded {
+  background: rgba(2, 132, 199, 0.16);
+  color: #0369a1;
+}
+
+.tv-details-expand-btn:active {
+  transform: scale(0.95);
+}
+
+.tv-row-expanded-drawer {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: tvDrawerExpand 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme="light"] .tv-row-expanded-drawer {
+  background: rgba(248, 250, 252, 0.92);
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+@keyframes tvDrawerExpand {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tv-expanded-quick-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.tv-expanded-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tv-expanded-action-btn:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #38bdf8;
+}
+
+.tv-expanded-action-btn.primary {
+  background: rgba(14, 165, 233, 0.15);
+  border-color: rgba(56, 189, 248, 0.38);
+  color: #38bdf8;
+}
+
+[data-theme="light"] .tv-expanded-action-btn.primary {
+  background: rgba(2, 132, 199, 0.1);
+  border-color: rgba(2, 132, 199, 0.3);
+  color: #0284c7;
+}
+
+.tv-expanded-action-btn:active {
+  transform: scale(0.95);
+}
+
+@media (max-width: 768px) {
+  .tv-row {
+    align-items: flex-start;
+    padding: 11px 12px;
+    min-height: 62px;
+  }
+
+  .tv-col-actions {
+    margin-top: 2px;
+  }
+}
+
+

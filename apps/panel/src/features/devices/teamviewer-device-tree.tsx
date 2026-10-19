@@ -24,6 +24,8 @@ import {
   ArrowUpDown,
   Zap,
   Layers,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { ConnectDevice } from './connect-device';
 import type { ConnectionLogEvent } from './connection-log';
@@ -109,6 +111,14 @@ export function TeamViewerDeviceTree({
   const [sortBy, setSortBy] = useState<'smart' | 'name' | 'recent'>(() => initialTreePrefs.sortBy);
   const [compactMode, setCompactMode] = useState<boolean>(() => initialTreePrefs.compactMode);
   const [actionSheetDevice, setActionSheetDevice] = useState<DeviceView | null>(null);
+  const [expandedDeviceIds, setExpandedDeviceIds] = useState<string[]>([]);
+
+  function toggleDeviceDetails(deviceId: string, e?: React.MouseEvent) {
+    e?.stopPropagation();
+    setExpandedDeviceIds((prev) =>
+      prev.includes(deviceId) ? prev.filter((id) => id !== deviceId) : [...prev, deviceId]
+    );
+  }
 
   // Restaura preferências rápidas e favoritos quando o usuário autenticado muda ou é resolvido
   useEffect(() => {
@@ -793,6 +803,7 @@ export function TeamViewerDeviceTree({
             const seenAgeMs = dev.lastSeenAt ? Date.now() - new Date(dev.lastSeenAt).getTime() : Infinity;
             const isOnline = isDeviceOnline(dev);
             const isFavorite = favoriteIds.includes(dev.id);
+            const isExpanded = expandedDeviceIds.includes(dev.id);
             const isMenuOpen = menuOpenForDevice === dev.id;
             const sys = parseSystemInfo(dev.operatingSystem, dev.osVersion);
             const rawNotes = getDeviceNotes(dev, customMetaMap);
@@ -803,7 +814,7 @@ export function TeamViewerDeviceTree({
             return (
               <div
                 key={dev.id}
-                className={`tv-row ${isOnline ? 'is-online' : 'is-offline'} ${isFavorite ? 'is-favorite' : ''}`}
+                className={`tv-row ${isOnline ? 'is-online' : 'is-offline'} ${isFavorite ? 'is-favorite' : ''} ${isExpanded ? 'is-expanded' : ''}`}
               >
                 <div className="tv-col-name">
                   {/* Avatar Circular TeamViewer com Indicador de Status Acoplado */}
@@ -812,7 +823,7 @@ export function TeamViewerDeviceTree({
                     <span className={`tv-status-dot ${isOnline ? 'online' : 'offline'}`} />
                   </div>
                   <div className="tv-name-info">
-                    {/* Título Principal: Nome Completo do Cliente / Computador */}
+                    {/* Linha 1 Simplificada: Estrela + Nome Principal + Função Compacta */}
                     <div className="tv-name-header">
                       <button
                         type="button"
@@ -825,11 +836,16 @@ export function TeamViewerDeviceTree({
                       </button>
                       <strong
                         className="tv-display-name clickable"
-                        title="Clique para editar o nome e dados deste computador"
-                        onClick={() => void handleOpenEditDevice(dev)}
+                        title="Clique para expandir ou recolher os detalhes deste computador"
+                        onClick={(e) => toggleDeviceDetails(dev.id, e)}
                       >
                         {dev.displayName}
                       </strong>
+                      {dev.datadivas?.funcao && (
+                        <span className="tv-compact-role-tag" title={`Função: ${dev.datadivas.funcao}`}>
+                          {dev.datadivas.funcao}
+                        </span>
+                      )}
                       <button
                         type="button"
                         className="tv-inline-edit-btn"
@@ -844,7 +860,7 @@ export function TeamViewerDeviceTree({
                       {isFavorite && <span className="tv-badge-pinned">Fixado</span>}
                     </div>
 
-                    {/* Subtítulo Linha 1: ID RustDesk + Status Online + Selo OS no Mobile */}
+                    {/* Linha 2 Simplificada: ID RustDesk + Status + Pasta + Botão "Detalhes" */}
                     <div className="tv-subtext-primary">
                       <span
                         className="tv-id-subtext"
@@ -878,189 +894,236 @@ export function TeamViewerDeviceTree({
                       <span className={`tv-mobile-inline-status ${isOnline ? 'online' : 'offline'}`}>
                         {isOnline ? '● Online' : `Visto: ${formatLastSeen(dev.lastSeenAt)}`}
                       </span>
-                      <span className={`tv-badge-os tv-badge-os-mobile ${sys.badge.toLowerCase().replace(/\s+/g, '')}`}>
-                        {sys.badge}
-                      </span>
-                    </div>
-
-                    {/* Subtítulo Linha 2: Riqueza de detalhes com tipografia menor */}
-                    <div className="tv-subtext-secondary">
-                      <span className="tv-subtext-host">{dev.hostname}</span>
-                      <span className="tv-subtext-sep">·</span>
-                      <span className="tv-subtext-os">{sys.osName} {sys.versionLabel}</span>
-                      {(sys.ip || dev.datadivas?.ipMaq) && (
-                        <>
-                          <span className="tv-subtext-sep">·</span>
-                          <span className="tv-subtext-ip" title="IP Local na rede (ipmaq)">
-                            <Globe size={11} className="tv-ip-icon" /> {sys.ip || dev.datadivas?.ipMaq}
-                          </span>
-                        </>
-                      )}
-                      <span className="tv-subtext-sep">·</span>
-                      <span className="tv-subtext-folder" title={`Pasta: ${folderName}`}>
+                      <span className="tv-compact-folder-tag" title={`Pasta: ${folderName}`}>
                         📁 {folderName}
                       </span>
-                      {rec?.technicianName && (
-                        <>
-                          <span className="tv-subtext-sep">·</span>
-                          <span className="tv-subtext-tech">Técnico: {rec.technicianName}</span>
-                        </>
-                      )}
-                      {dev.organizationName && dev.organizationName !== folderName && (
-                        <>
-                          <span className="tv-subtext-sep">·</span>
-                          <span className="tv-subtext-org">{dev.organizationName}</span>
-                        </>
-                      )}
-                      {parsedNotes.notes && (
-                        <>
-                          <span className="tv-subtext-sep">·</span>
-                          <span className="tv-subtext-notes" title={parsedNotes.notes}>
-                            <FileText size={11} className="inline mr-1" />
-                            {parsedNotes.notes.slice(0, 30)}
-                            {parsedNotes.notes.length > 30 ? '...' : ''}
-                          </span>
-                        </>
-                      )}
+                      <button
+                        type="button"
+                        className={`tv-details-expand-btn ${isExpanded ? 'expanded' : ''}`}
+                        aria-expanded={isExpanded}
+                        aria-label={isExpanded ? `Ocultar detalhes de ${dev.displayName}` : `Ver detalhes de ${dev.displayName}`}
+                        onClick={(e) => toggleDeviceDetails(dev.id, e)}
+                      >
+                        <span>{isExpanded ? 'Ocultar' : 'Detalhes'}</span>
+                        {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      </button>
                     </div>
 
-                    {/* Linha 3: Dados Cadastrais DataDivas (C:\DataDivas\config.ini) */}
-                    {dev.datadivas && (
-                      <div className="tv-datadivas-strip" aria-label="Dados DataDivas do cliente">
-                        {(dev.datadivas.nomeFantasia || dev.datadivas.razaoSocial) && (
-                          <span
-                            className="tv-dd-pill tv-dd-pill-company"
-                            title={`Fantasia: ${dev.datadivas.nomeFantasia || '—'} | Razão Social: ${dev.datadivas.razaoSocial || '—'}`}
-                          >
-                            🏢 {dev.datadivas.nomeFantasia || dev.datadivas.razaoSocial}
-                            {dev.datadivas.razaoSocial &&
-                              dev.datadivas.nomeFantasia &&
-                              dev.datadivas.razaoSocial.toLowerCase() !== dev.datadivas.nomeFantasia.toLowerCase() && (
-                                <span className="tv-dd-pill-sub"> · {dev.datadivas.razaoSocial}</span>
-                              )}
+                    {/* Gaveta Expansível: Exibida APENAS quando o usuário clica em "Detalhes" */}
+                    {isExpanded && (
+                      <div className="tv-row-expanded-drawer" role="region" aria-label={`Detalhes de ${dev.displayName}`}>
+                        {/* Bloco 1: Especificações de Sistema, Rede e Organização */}
+                        <div className="tv-subtext-secondary">
+                          <span className={`tv-badge-os ${sys.badge.toLowerCase().replace(/\s+/g, '')}`}>
+                            {sys.badge}
                           </span>
-                        )}
-                        {dev.datadivas.funcao && (
-                          <span
-                            className="tv-dd-pill tv-dd-pill-role"
-                            title={`Função da máquina no CNPJ: ${dev.datadivas.funcao}`}
-                          >
-                            🏷️ {dev.datadivas.funcao}
-                          </span>
-                        )}
-                        {dev.datadivas.statusRenomeacao &&
-                          dev.datadivas.statusRenomeacao !== 'NOT_REQUESTED' &&
-                          dev.datadivas.statusRenomeacao !== 'NAO_SOLICITADO' && (
-                            <span
-                              className={`tv-dd-pill tv-dd-pill-rename-${dev.datadivas.statusRenomeacao.toLowerCase()}`}
-                              title={
-                                dev.datadivas.statusRenomeacao === 'PENDING_REBOOT' ||
-                                dev.datadivas.statusRenomeacao === 'APLICADO_AGUARDANDO_REBOOT'
-                                  ? `Renomeação Windows pendente de reinicialização para ${dev.datadivas.windowsHostnameDesejado || ''}`
-                                  : dev.datadivas.statusRenomeacao === 'COMPLETED' ||
-                                      dev.datadivas.statusRenomeacao === 'CONFIRMADO'
-                                    ? `Hostname Windows sincronizado (${dev.datadivas.windowsHostnameDesejado || dev.hostname})`
-                                    : dev.datadivas.statusRenomeacao === 'BLOCKED_DOMAIN'
-                                      ? 'Computador em domínio Active Directory — renomeação Windows bloqueada'
-                                      : 'Falha ou divergência ao renomear computador no Windows'
-                              }
-                            >
-                              {dev.datadivas.statusRenomeacao === 'PENDING_REBOOT' ||
-                              dev.datadivas.statusRenomeacao === 'APLICADO_AGUARDANDO_REBOOT'
-                                ? `⏳ Reinício Pendente (${dev.datadivas.windowsHostnameDesejado || 'Windows'})`
-                                : dev.datadivas.statusRenomeacao === 'COMPLETED' ||
-                                    dev.datadivas.statusRenomeacao === 'CONFIRMADO'
-                                  ? '✅ Hostname OK'
-                                  : dev.datadivas.statusRenomeacao === 'BLOCKED_DOMAIN'
-                                    ? '🔒 Domínio AD'
-                                    : '⚠️ Erro Renomeação'}
-                            </span>
+                          <span className="tv-subtext-host">{dev.hostname}</span>
+                          <span className="tv-subtext-sep">·</span>
+                          <span className="tv-subtext-os">{sys.osName} {sys.versionLabel}</span>
+                          {(sys.ip || dev.datadivas?.ipMaq) && (
+                            <>
+                              <span className="tv-subtext-sep">·</span>
+                              <span className="tv-subtext-ip" title="IP Local na rede (ipmaq)">
+                                <Globe size={11} className="tv-ip-icon" /> {sys.ip || dev.datadivas?.ipMaq}
+                              </span>
+                            </>
                           )}
-                        {dev.datadivas.cnpj && (
+                          {rec?.technicianName && (
+                            <>
+                              <span className="tv-subtext-sep">·</span>
+                              <span className="tv-subtext-tech">Técnico: {rec.technicianName}</span>
+                            </>
+                          )}
+                          {dev.organizationName && dev.organizationName !== folderName && (
+                            <>
+                              <span className="tv-subtext-sep">·</span>
+                              <span className="tv-subtext-org">{dev.organizationName}</span>
+                            </>
+                          )}
+                          {parsedNotes.notes && (
+                            <>
+                              <span className="tv-subtext-sep">·</span>
+                              <span className="tv-subtext-notes" title={parsedNotes.notes}>
+                                <FileText size={11} className="inline mr-1" />
+                                {parsedNotes.notes}
+                              </span>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Bloco 2: Dados Cadastrais DataDivas (C:\DataDivas\config.ini) */}
+                        {dev.datadivas && (
+                          <div className="tv-datadivas-strip" aria-label="Dados DataDivas do cliente">
+                            {(dev.datadivas.nomeFantasia || dev.datadivas.razaoSocial) && (
+                              <span
+                                className="tv-dd-pill tv-dd-pill-company"
+                                title={`Fantasia: ${dev.datadivas.nomeFantasia || '—'} | Razão Social: ${dev.datadivas.razaoSocial || '—'}`}
+                              >
+                                🏢 {dev.datadivas.nomeFantasia || dev.datadivas.razaoSocial}
+                                {dev.datadivas.razaoSocial &&
+                                  dev.datadivas.nomeFantasia &&
+                                  dev.datadivas.razaoSocial.toLowerCase() !== dev.datadivas.nomeFantasia.toLowerCase() && (
+                                    <span className="tv-dd-pill-sub"> · {dev.datadivas.razaoSocial}</span>
+                                  )}
+                              </span>
+                            )}
+                            {dev.datadivas.funcao && (
+                              <span
+                                className="tv-dd-pill tv-dd-pill-role"
+                                title={`Função da máquina no CNPJ: ${dev.datadivas.funcao}`}
+                              >
+                                🏷️ {dev.datadivas.funcao}
+                              </span>
+                            )}
+                            {dev.datadivas.statusRenomeacao &&
+                              dev.datadivas.statusRenomeacao !== 'NOT_REQUESTED' &&
+                              dev.datadivas.statusRenomeacao !== 'NAO_SOLICITADO' && (
+                                <span
+                                  className={`tv-dd-pill tv-dd-pill-rename-${dev.datadivas.statusRenomeacao.toLowerCase()}`}
+                                  title={
+                                    dev.datadivas.statusRenomeacao === 'PENDING_REBOOT' ||
+                                    dev.datadivas.statusRenomeacao === 'APLICADO_AGUARDANDO_REBOOT'
+                                      ? `Renomeação Windows pendente de reinicialização para ${dev.datadivas.windowsHostnameDesejado || ''}`
+                                      : dev.datadivas.statusRenomeacao === 'COMPLETED' ||
+                                          dev.datadivas.statusRenomeacao === 'CONFIRMADO'
+                                        ? `Hostname Windows sincronizado (${dev.datadivas.windowsHostnameDesejado || dev.hostname})`
+                                        : dev.datadivas.statusRenomeacao === 'BLOCKED_DOMAIN'
+                                          ? 'Computador em domínio Active Directory — renomeação Windows bloqueada'
+                                          : 'Falha ou divergência ao renomear computador no Windows'
+                                  }
+                                >
+                                  {dev.datadivas.statusRenomeacao === 'PENDING_REBOOT' ||
+                                  dev.datadivas.statusRenomeacao === 'APLICADO_AGUARDANDO_REBOOT'
+                                    ? `⏳ Reinício Pendente (${dev.datadivas.windowsHostnameDesejado || 'Windows'})`
+                                    : dev.datadivas.statusRenomeacao === 'COMPLETED' ||
+                                        dev.datadivas.statusRenomeacao === 'CONFIRMADO'
+                                      ? '✅ Hostname OK'
+                                      : dev.datadivas.statusRenomeacao === 'BLOCKED_DOMAIN'
+                                        ? '🔒 Domínio AD'
+                                        : '⚠️ Erro Renomeação'}
+                                </span>
+                              )}
+                            {dev.datadivas.cnpj && (
+                              <button
+                                type="button"
+                                className="tv-dd-pill tv-dd-pill-copyable"
+                                title="CNPJ / CPF no config.ini (clique para copiar)"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void navigator.clipboard.writeText(dev.datadivas!.cnpj!).then(() => {
+                                    showToast(`CNPJ/CPF ${dev.datadivas!.cnpj} copiado!`);
+                                  });
+                                }}
+                              >
+                                <span>CNPJ: {dev.datadivas.cnpj}</span>
+                                <Copy size={10} />
+                              </button>
+                            )}
+                            {dev.datadivas.cnpj && onOpenCnpjGroup && (
+                              <button
+                                type="button"
+                                className="tv-dd-pill tv-dd-pill-copyable"
+                                title="Abrir Gestão Inteligente de Computadores deste CNPJ"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onOpenCnpjGroup(dev.datadivas!.cnpj!);
+                                }}
+                              >
+                                <span>⚙️ Gerir CNPJ</span>
+                              </button>
+                            )}
+                            {dev.datadivas.serial && (
+                              <button
+                                type="button"
+                                className="tv-dd-pill tv-dd-pill-serial tv-dd-pill-copyable"
+                                title="Serial DataDivas no config.ini (clique para copiar)"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void navigator.clipboard.writeText(dev.datadivas!.serial!).then(() => {
+                                    showToast(`Serial ${dev.datadivas!.serial} copiado!`);
+                                  });
+                                }}
+                              >
+                                <span>Serial: {dev.datadivas.serial}</span>
+                                <Copy size={10} />
+                              </button>
+                            )}
+                            {dev.datadivas.ie && (
+                              <span className="tv-dd-pill" title="Inscrição Estadual (IE)">
+                                IE: {dev.datadivas.ie}
+                              </span>
+                            )}
+                            {dev.datadivas.ipDataDivas && (
+                              <button
+                                type="button"
+                                className="tv-dd-pill tv-dd-pill-copyable"
+                                title={`IP DataDivas: ${dev.datadivas.ipDataDivas}${dev.datadivas.banco ? ` (${dev.datadivas.banco})` : ''} — clique para copiar`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void navigator.clipboard.writeText(dev.datadivas!.ipDataDivas!).then(() => {
+                                    showToast(`IP DataDivas ${dev.datadivas!.ipDataDivas} copiado!`);
+                                  });
+                                }}
+                              >
+                                <span>IP DataDivas: {dev.datadivas.ipDataDivas}</span>
+                                <Copy size={10} />
+                              </button>
+                            )}
+                            {(dev.datadivas.endereco || dev.datadivas.cidade || dev.datadivas.uf) && (
+                              <span
+                                className="tv-dd-pill tv-dd-pill-address"
+                                title={[
+                                  dev.datadivas.endereco,
+                                  [dev.datadivas.cidade, dev.datadivas.uf].filter(Boolean).join('/'),
+                                ]
+                                  .filter(Boolean)
+                                  .join(' — ')}
+                              >
+                                📍{' '}
+                                {[
+                                  dev.datadivas.endereco,
+                                  [dev.datadivas.cidade, dev.datadivas.uf].filter(Boolean).join('/'),
+                                ]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Bloco 3: Barra de Ações Rápidas da Gaveta de Detalhes */}
+                        <div className="tv-expanded-quick-actions">
                           <button
                             type="button"
-                            className="tv-dd-pill tv-dd-pill-copyable"
-                            title="CNPJ / CPF no config.ini (clique para copiar)"
+                            className="tv-expanded-action-btn primary"
                             onClick={(e) => {
                               e.stopPropagation();
-                              void navigator.clipboard.writeText(dev.datadivas!.cnpj!).then(() => {
-                                showToast(`CNPJ/CPF ${dev.datadivas!.cnpj} copiado!`);
-                              });
+                              onDetails(dev);
                             }}
                           >
-                            <span>CNPJ: {dev.datadivas.cnpj}</span>
-                            <Copy size={10} />
+                            <Sliders size={12} />
+                            <span>Diagnóstico & Histórico</span>
                           </button>
-                        )}
-                        {dev.datadivas.cnpj && onOpenCnpjGroup && (
                           <button
                             type="button"
-                            className="tv-dd-pill tv-dd-pill-copyable"
-                            title="Abrir Gestão Inteligente de Computadores deste CNPJ"
+                            className="tv-expanded-action-btn"
                             onClick={(e) => {
                               e.stopPropagation();
-                              onOpenCnpjGroup(dev.datadivas!.cnpj!);
+                              void handleOpenEditDevice(dev);
                             }}
                           >
-                            <span>⚙️ Gerir CNPJ</span>
+                            <Pencil size={12} />
+                            <span>Editar Nome / Pasta</span>
                           </button>
-                        )}
-                        {dev.datadivas.serial && (
                           <button
                             type="button"
-                            className="tv-dd-pill tv-dd-pill-serial tv-dd-pill-copyable"
-                            title="Serial DataDivas no config.ini (clique para copiar)"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void navigator.clipboard.writeText(dev.datadivas!.serial!).then(() => {
-                                showToast(`Serial ${dev.datadivas!.serial} copiado!`);
-                              });
-                            }}
+                            className="tv-expanded-action-btn"
+                            onClick={(e) => void handleShareDeviceCard(dev, e)}
                           >
-                            <span>Serial: {dev.datadivas.serial}</span>
-                            <Copy size={10} />
+                            <Share2 size={12} />
+                            <span>Compartilhar Ficha</span>
                           </button>
-                        )}
-                        {dev.datadivas.ie && (
-                          <span className="tv-dd-pill" title="Inscrição Estadual (IE)">
-                            IE: {dev.datadivas.ie}
-                          </span>
-                        )}
-                        {dev.datadivas.ipDataDivas && (
-                          <button
-                            type="button"
-                            className="tv-dd-pill tv-dd-pill-copyable"
-                            title={`IP DataDivas: ${dev.datadivas.ipDataDivas}${dev.datadivas.banco ? ` (${dev.datadivas.banco})` : ''} — clique para copiar`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void navigator.clipboard.writeText(dev.datadivas!.ipDataDivas!).then(() => {
-                                showToast(`IP DataDivas ${dev.datadivas!.ipDataDivas} copiado!`);
-                              });
-                            }}
-                          >
-                            <span>IP DataDivas: {dev.datadivas.ipDataDivas}</span>
-                            <Copy size={10} />
-                          </button>
-                        )}
-                        {(dev.datadivas.endereco || dev.datadivas.cidade || dev.datadivas.uf) && (
-                          <span
-                            className="tv-dd-pill tv-dd-pill-address"
-                            title={[
-                              dev.datadivas.endereco,
-                              [dev.datadivas.cidade, dev.datadivas.uf].filter(Boolean).join('/'),
-                            ]
-                              .filter(Boolean)
-                              .join(' — ')}
-                          >
-                            📍{' '}
-                            {[
-                              dev.datadivas.endereco,
-                              [dev.datadivas.cidade, dev.datadivas.uf].filter(Boolean).join('/'),
-                            ]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </span>
-                        )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1155,7 +1218,7 @@ export function TeamViewerDeviceTree({
                       <button
                         type="button"
                         className="tv-icon-action-btn"
-                        title="Detalhes técnicos e histórico"
+                        title="Diagnóstico técnico e histórico completo"
                         onClick={() => onDetails(dev)}
                       >
                         <Sliders size={14} />
@@ -1190,6 +1253,28 @@ export function TeamViewerDeviceTree({
                         {isMenuOpen && (
                           <div className="tv-dropdown-menu">
                             <p className="tv-dropdown-title">Ações rápidas:</p>
+                            <button
+                              type="button"
+                              className="tv-dropdown-item"
+                              onClick={(e) => {
+                                setMenuOpenForDevice(null);
+                                toggleDeviceDetails(dev.id, e);
+                              }}
+                            >
+                              {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                              <span>{isExpanded ? 'Ocultar Detalhes' : 'Expandir Detalhes'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="tv-dropdown-item"
+                              onClick={() => {
+                                setMenuOpenForDevice(null);
+                                onDetails(dev);
+                              }}
+                            >
+                              <Sliders size={14} />
+                              <span>Diagnóstico & Histórico</span>
+                            </button>
                             <button
                               type="button"
                               className="tv-dropdown-item"
