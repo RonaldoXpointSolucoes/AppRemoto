@@ -124,24 +124,6 @@ const CANONICAL_DEFAULT_TECHNICIANS: ReadonlyArray<{
     displayName: 'David Clemente',
     role: 'super_admin',
   },
-  {
-    email: 'remote.admin@xpointsolucoes.com.br',
-    displayName: 'Remote Administrator',
-    role: 'super_admin',
-    preferredUserId: 'remote-bootstrap-admin',
-  },
-  {
-    email: 'tecnico@xpointsolucoes.com.br',
-    displayName: 'Técnico XPoint',
-    role: 'technician',
-    preferredUserId: '6ac0373631f7bd6b3620',
-  },
-  {
-    email: 'tecnico2@xpointsolucoes.com.br',
-    displayName: 'Técnico 2 (Operação)',
-    role: 'technician',
-    preferredUserId: '6ac0390b5f28d28b525a',
-  },
 ];
 
 function generateInitialPassword(): string {
@@ -360,6 +342,16 @@ export function createTechnicianManagementService(options: {
         const email = (user.email || '').toLowerCase();
         if (!email) continue;
 
+        const existingPrefs = (user.prefs ?? {}) as UserPrefs;
+        if (existingPrefs.deletedFromPanel) {
+          try {
+            await databases.deleteDocument(DATABASE_ID, PROFILES_COLLECTION, profile.$id);
+          } catch {
+            // Ignore cleanup race
+          }
+          continue;
+        }
+
         const role: ManagedRole =
           profile.global_role === 'super_admin' ? 'super_admin' : 'technician';
         const { prefs, invite } = await ensureUserInvitePrefs(
@@ -507,15 +499,45 @@ export function createTechnicianManagementService(options: {
         }
       }
 
-      if (profile.user_id === 'remote-bootstrap-admin') {
-        throw new TechnicianAuthActionError(400, 'PROTECTED_TECHNICIAN', 'Este administrador padrão não pode ser removido.');
+      const targetUserId = profile.user_id;
+      if (targetUserId === '6ac0542e002986e82f85') {
+        throw new TechnicianAuthActionError(400, 'PROTECTED_TECHNICIAN', 'A conta principal do proprietário não pode ser removida.');
       }
 
-      await databases.deleteDocument(DATABASE_ID, PROFILES_COLLECTION, profile.$id);
+      // Delete all profile documents for this user_id
       try {
-        const user = await users.get(profile.user_id);
+        const allProfiles = await databases.listDocuments<ProfileDoc>(DATABASE_ID, PROFILES_COLLECTION, [
+          Query.equal('user_id', [targetUserId]),
+          Query.limit(20),
+        ]);
+        for (const doc of allProfiles.documents) {
+          await databases.deleteDocument(DATABASE_ID, PROFILES_COLLECTION, doc.$id);
+        }
+      } catch {
+        try {
+          await databases.deleteDocument(DATABASE_ID, PROFILES_COLLECTION, profile.$id);
+        } catch {
+          // Ignore if already deleted
+        }
+      }
+
+      // Delete organization memberships for this user_id
+      try {
+        const memberships = await databases.listDocuments<MemberDoc>(DATABASE_ID, MEMBERS_COLLECTION, [
+          Query.equal('user_id', [targetUserId]),
+          Query.limit(100),
+        ]);
+        for (const m of memberships.documents) {
+          await databases.deleteDocument(DATABASE_ID, MEMBERS_COLLECTION, m.$id);
+        }
+      } catch {
+        // Ignore membership cleanup error
+      }
+
+      try {
+        const user = await users.get(targetUserId);
         const rawPrefs = (user.prefs ?? {}) as UserPrefs;
-        await users.updatePrefs(profile.user_id, {
+        await users.updatePrefs(targetUserId, {
           ...rawPrefs,
           deletedFromPanel: true,
         });

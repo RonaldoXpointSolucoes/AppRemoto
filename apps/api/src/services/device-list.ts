@@ -39,7 +39,7 @@ function viewOf(record: DeviceRecord, organizationName: string, snapshotTime: st
     (seen > snapshotAt ? currentAge <= 90_000 : snapshotAge >= 0 && snapshotAge <= 90_000);
   const { datadivas } = extractDataDivasFromNotes(record.notes);
   return DeviceViewSchema.parse({
-    id: record.id, organizationId: record.organizationId, organizationName,
+    id: record.id, ...(record.createdAt ? { createdAt: record.createdAt } : {}), organizationId: record.organizationId, organizationName,
     deviceUuid: record.deviceUuid, displayName: record.displayName, hostname: record.hostname,
     operatingSystem: record.operatingSystem, osVersion: record.osVersion,
     rustdeskId: record.rustdeskId, agentVersion: record.agentVersion,

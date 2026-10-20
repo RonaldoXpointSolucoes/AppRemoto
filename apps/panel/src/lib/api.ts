@@ -195,7 +195,7 @@ export function createApiClient(options: ApiClientOptions) {
       if (query.status) params.set('status', query.status);
       if (query.search) params.set('search', query.search);
       if (query.cursor) params.set('cursor', query.cursor);
-      params.set('limit', String(query.limit));
+      params.set('limit', String(query.cursor ? query.limit : Math.max(query.limit ?? 50, 100)));
       return request(`/v1/devices?${params.toString()}`, DevicePageSchema);
     },
     getCnpjGroups: (cnpj?: string) => {

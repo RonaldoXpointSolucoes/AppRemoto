@@ -17,6 +17,7 @@ export const DeviceListQuerySchema = z.object({
 
 export const DeviceViewSchema = z.object({
   id: shortId,
+  createdAt: z.iso.datetime({ offset: true }).optional(),
   organizationId: shortId,
   organizationName: z.string().min(1).max(128),
   deviceUuid: z.uuid(),

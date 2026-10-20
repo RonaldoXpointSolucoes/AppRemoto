@@ -193,7 +193,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   useEffect(() => {
     emitToChatbotHost({
       type: 'XPOINT_REMOTE_READY',
-      version: 'v1.5.3',
+      version: 'v1.5.4',
       embedded: isEmbedMode,
       authenticated: true,
       activeCnpj: chatbotContextRef.current?.cnpj ?? null,
@@ -207,7 +207,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       if (action.action === 'PING') {
         emitToChatbotHost({
           type: 'XPOINT_REMOTE_PONG',
-          version: 'v1.5.3',
+          version: 'v1.5.4',
           authenticated: true,
           activeCnpj: chatbotContextRef.current?.cnpj ?? null,
           timestamp: new Date().toISOString(),
@@ -509,10 +509,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={() => setIsChangelogOpen(true)}
-                title="Clique para ver todas as novidades da versão v1.5.3"
-                aria-label="Ver novidades da versão v1.5.3 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.5.4"
+                aria-label="Ver novidades da versão v1.5.4 (mobile)"
               >
-                v1.5.3
+                v1.5.4
               </button>
             </div>
           </div>
@@ -580,10 +580,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.5.3"
-              aria-label="Ver novidades da versão v1.5.3"
+              title="Clique para ver todas as novidades da versão v1.5.4"
+              aria-label="Ver novidades da versão v1.5.4"
             >
-              v1.5.3
+              v1.5.4
             </button>
           </div>
 
@@ -595,7 +595,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="search"
                 placeholder="Pesquisar fantasia, razão, CNPJ, serial, IP ou ID..."
                 value={filters.search}
-                onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
+                onChange={(e) => setFilters((prev) => ({ ...prev, status: '', search: e.target.value }))}
                 aria-label="Pesquisar e conectar dispositivo"
               />
               {filters.search ? (
@@ -862,6 +862,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                             allDevices={query.rows}
                             currentUserId={activeUserId}
                             onOpenCnpjGroup={service.getCnpjGroups ? (cnpj) => setCnpjModalFilter(cnpj) : undefined}
+                            searchQuery={filters.search}
                           />
                           {/* Tabela mantida acessível no DOM para leitores e testes de conformidade */}
                           <div style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>

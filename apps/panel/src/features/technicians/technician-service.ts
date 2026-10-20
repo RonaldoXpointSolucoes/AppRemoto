@@ -29,35 +29,6 @@ const INITIAL_TECHNICIANS: TechnicianProfileView[] = [
     createdAt: '2026-10-02T22:00:00.000Z',
     lastLoginAt: new Date().toISOString(),
   },
-  {
-    id: 'tech_1',
-    userId: 'remote-bootstrap-admin',
-    displayName: 'Remote Administrator',
-    email: 'remote.admin@xpointsolucoes.com.br',
-    globalRole: 'super_admin',
-    active: true,
-    createdAt: '2026-09-29T10:00:00.000Z',
-    lastLoginAt: '2026-10-02T21:00:00.000Z',
-  },
-  {
-    id: 'tech_2',
-    userId: '6ac0373631f7bd6b3620',
-    displayName: 'Técnico XPoint',
-    email: 'tecnico@xpointsolucoes.com.br',
-    globalRole: 'technician',
-    active: true,
-    createdAt: '2026-09-30T14:30:00.000Z',
-    lastLoginAt: '2026-10-02T18:00:00.000Z',
-  },
-  {
-    id: 'tech_3',
-    userId: '6ac0390b5f28d28b525a',
-    displayName: 'Técnico 2 (Operação)',
-    email: 'tecnico2@xpointsolucoes.com.br',
-    globalRole: 'technician',
-    active: true,
-    createdAt: '2026-10-01T09:15:00.000Z',
-  },
 ];
 
 async function authorizedTechnicianFetch<T>(
@@ -87,21 +58,13 @@ export function getTechnicians(): TechnicianProfileView[] {
   if (typeof window === 'undefined') return INITIAL_TECHNICIANS;
   try {
     const raw = localStorage.getItem(STORAGE_KEY_TECHS);
-    let list: TechnicianProfileView[] = INITIAL_TECHNICIANS;
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        list = parsed;
+      if (Array.isArray(parsed)) {
+        return parsed;
       }
     }
-    // Garante que os membros canônicos essenciais (especialmente o Ronaldo) estejam presentes
-    for (const initTech of INITIAL_TECHNICIANS) {
-      if (!list.some((t) => t.email.toLowerCase() === initTech.email.toLowerCase())) {
-        list.unshift(initTech);
-      }
-    }
-    localStorage.setItem(STORAGE_KEY_TECHS, JSON.stringify(list));
-    return list;
+    return INITIAL_TECHNICIANS;
   } catch {
     return INITIAL_TECHNICIANS;
   }
@@ -188,10 +151,26 @@ export function toggleTechnicianActive(id: string): TechnicianProfileView[] {
   return updated;
 }
 
-export function deleteTechnician(id: string): TechnicianProfileView[] {
+export function deleteTechnician(target: string | TechnicianProfileView): TechnicianProfileView[] {
   const current = getTechnicians();
-  const updated = current.filter((t) => t.id !== id);
+  const targetId = typeof target === 'string' ? target : target.id;
+  const targetUserId = typeof target === 'string' ? target : target.userId;
+  const targetEmail = (typeof target === 'string' ? target : target.email || '').toLowerCase();
+
+  const updated = current.filter(
+    (t) =>
+      t.id !== targetId &&
+      t.userId !== targetUserId &&
+      t.email.toLowerCase() !== targetEmail
+  );
   saveTechnicians(updated);
+
+  const currentInvites = getInvites();
+  const updatedInvites = currentInvites.filter(
+    (i) => i.id !== targetId && i.email.toLowerCase() !== targetEmail
+  );
+  saveInvites(updatedInvites);
+
   return updated;
 }
 
@@ -204,46 +183,17 @@ export async function syncTechniciansWithServer(): Promise<{
   technicians: TechnicianProfileView[];
   invites: TechnicianInvite[];
 }> {
-  const localTechs = getTechnicians();
-  const localInvites = getInvites();
-
   try {
-    let remote = await authorizedTechnicianFetch<{
+    const remote = await authorizedTechnicianFetch<{
       technicians: TechnicianProfileView[];
       invites: TechnicianInvite[];
     }>('/v1/technicians');
-
-    const remoteEmails = new Set(remote.technicians.map((t) => t.email.toLowerCase()));
-    const missingLocalTechs = localTechs.filter(
-      (t) => t.email && !remoteEmails.has(t.email.toLowerCase())
-    );
-
-    if (missingLocalTechs.length > 0) {
-      for (const localTech of missingLocalTechs) {
-        try {
-          await authorizedTechnicianFetch('/v1/technicians', {
-            method: 'POST',
-            body: {
-              displayName: localTech.displayName,
-              email: localTech.email,
-              role: localTech.globalRole,
-            },
-          });
-        } catch {
-          // Ignore individual sync error
-        }
-      }
-      remote = await authorizedTechnicianFetch<{
-        technicians: TechnicianProfileView[];
-        invites: TechnicianInvite[];
-      }>('/v1/technicians');
-    }
 
     saveTechnicians(remote.technicians);
     saveInvites(remote.invites);
     return remote;
   } catch {
-    return { technicians: localTechs, invites: localInvites };
+    return { technicians: getTechnicians(), invites: getInvites() };
   }
 }
 
@@ -309,7 +259,7 @@ export async function toggleTechnicianActiveOnServer(
 export async function deleteTechnicianOnServer(
   tech: TechnicianProfileView
 ): Promise<TechnicianProfileView[]> {
-  const localUpdated = deleteTechnician(tech.id);
+  const localUpdated = deleteTechnician(tech);
   try {
     const remote = await authorizedTechnicianFetch<{
       technicians: TechnicianProfileView[];

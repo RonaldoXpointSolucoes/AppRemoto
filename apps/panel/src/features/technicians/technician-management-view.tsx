@@ -109,6 +109,7 @@ export function TechnicianManagementView({
       setMenuOpenForId(null);
       const updated = await deleteTechnicianOnServer(tech);
       setTechnicians(updated);
+      setInvites(getInvites());
       showToast(`Técnico ${tech.displayName} removido.`);
     }
   }

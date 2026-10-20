@@ -251,6 +251,25 @@ describe('teamviewer-storage', () => {
     saveActiveSessionDraft(null);
     expect(getActiveSessionDraft()).toBeNull();
   });
+
+  it('ativa por padrao o filtro de computadores online e nao ressuscita tecnicos deletados ao voltar para a tela', async () => {
+    const { DEFAULT_USER_VIEW_PREFERENCES, getUserViewPreferences } = await import('./teamviewer-storage');
+    const { getTechnicians, deleteTechnician } = await import('../technicians/technician-service');
+
+    expect(DEFAULT_USER_VIEW_PREFERENCES.onlyOnlineQuickFilter).toBe(true);
+    expect(getUserViewPreferences('new-user').onlyOnlineQuickFilter).toBe(true);
+
+    const initial = getTechnicians();
+    const david = initial.find((t) => t.email === 'david_ladivas@hotmail.com')!;
+    expect(david).toBeDefined();
+
+    const afterDelete = deleteTechnician(david);
+    expect(afterDelete.some((t) => t.email === 'david_ladivas@hotmail.com')).toBe(false);
+
+    // Quando o usuario retorna para a tela de tecnicos, o tecnico deletado nao reaparece
+    const reloaded = getTechnicians();
+    expect(reloaded.some((t) => t.email === 'david_ladivas@hotmail.com')).toBe(false);
+  });
 });
 
 

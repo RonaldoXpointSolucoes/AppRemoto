@@ -453,6 +453,7 @@ export function TeamViewerDeviceTree({
   allDevices = devices,
   currentUserId = null,
   onOpenCnpjGroup,
+  searchQuery = '',
 }: {
   devices: DeviceView[];
   statusState: DeviceStatusState;
@@ -470,6 +471,7 @@ export function TeamViewerDeviceTree({
   allDevices?: DeviceView[];
   currentUserId?: string | null;
   onOpenCnpjGroup?(cnpj: string): void;
+  searchQuery?: string;
 }) {
   const initialTreePrefs = useMemo(() => getUserViewPreferences(currentUserId), [currentUserId]);
   const loadedTreeUserRef = useRef<string | null>(currentUserId);
@@ -946,12 +948,28 @@ export function TeamViewerDeviceTree({
     return devices.filter((d) => favoriteIds.includes(d.id)).length;
   }, [devices, favoriteIds]);
 
+  const hasActiveSearch = Boolean(searchQuery && searchQuery.trim().length > 0);
+
+  const getRegistrationTimestamp = (d: DeviceView): number => {
+    const rawCreated = d.createdAt || d.datadivas?.ultimaSincronizacao;
+    if (rawCreated) {
+      const parsed = Date.parse(rawCreated);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    if (d.lastSeenAt) {
+      const seen = Date.parse(d.lastSeenAt);
+      if (Number.isFinite(seen)) return seen;
+    }
+    return 0;
+  };
+
   const processedDevices = useMemo(() => {
     let list = [...devices];
-    if (onlyOnlineQuickFilter) {
+    // Por padrão exibe os online; porém quando há texto na caixa de pesquisa, exibe tanto online quanto offline
+    if (onlyOnlineQuickFilter && !hasActiveSearch) {
       list = list.filter(isDeviceOnline);
     }
-    if (onlyFavoritesQuickFilter) {
+    if (onlyFavoritesQuickFilter && !hasActiveSearch) {
       list = list.filter((d) => favoriteIds.includes(d.id));
     }
 
@@ -964,6 +982,11 @@ export function TeamViewerDeviceTree({
         const onA = isDeviceOnline(a) ? 1 : 0;
         const onB = isDeviceOnline(b) ? 1 : 0;
         if (onA !== onB) return onB - onA;
+
+        const regA = getRegistrationTimestamp(a);
+        const regB = getRegistrationTimestamp(b);
+        if (regA !== regB) return regB - regA;
+
         const ddA = a.datadivas ? 1 : 0;
         const ddB = b.datadivas ? 1 : 0;
         if (ddA !== ddB) return ddB - ddA;
@@ -976,6 +999,9 @@ export function TeamViewerDeviceTree({
         );
       }
       if (sortBy === 'recent') {
+        const regA = getRegistrationTimestamp(a);
+        const regB = getRegistrationTimestamp(b);
+        if (regA !== regB) return regB - regA;
         const tA = a.lastSeenAt ? new Date(a.lastSeenAt).getTime() : 0;
         const tB = b.lastSeenAt ? new Date(b.lastSeenAt).getTime() : 0;
         return tB - tA;
@@ -984,7 +1010,7 @@ export function TeamViewerDeviceTree({
     });
 
     return list;
-  }, [devices, onlyOnlineQuickFilter, onlyFavoritesQuickFilter, favoriteIds, sortBy]);
+  }, [devices, onlyOnlineQuickFilter, onlyFavoritesQuickFilter, favoriteIds, sortBy, hasActiveSearch]);
 
   const categoryCounts = useMemo(() => {
     let clients = 0;
@@ -1130,9 +1156,9 @@ export function TeamViewerDeviceTree({
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as 'smart' | 'name' | 'recent')}
             >
-              <option value="smart">Prioridade: Online & Fixados</option>
+              <option value="smart">Mais Recentes Cadastrados & Online</option>
               <option value="name">Ordem Alfabética (A-Z)</option>
-              <option value="recent">Atividade Mais Recente</option>
+              <option value="recent">Cadastro / Atividade Mais Recente</option>
             </select>
           </div>
 

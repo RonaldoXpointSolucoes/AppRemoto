@@ -32,11 +32,31 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.5.4',
+    date: 'Outubro 2026',
+    title: 'Prioridade Padrão Recentes & Online, Busca Completa (Online/Offline) e Exclusão Definitiva de Técnicos',
+    highlight: 'Exibe por padrão os computadores mais recentes cadastrados e online (carregando todos os dispositivos da base), mostra tanto os online quanto os offline ao pesquisar na caixa de busca e garante a exclusão definitiva de técnicos sem recriá-los ao retornar à tela.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Lista Padrão Ordenada pelos Mais Recentes Cadastrados & Online',
+        description:
+          'Ao abrir a tela de dispositivos sem busca ativa, prioriza automaticamente as máquinas online ordenadas pela data de cadastro mais recente ($createdAt).',
+        tag: 'TeamViewer',
+      },
+      {
+        title: 'Caixa de Pesquisa Unificada (Online + Offline) & Exclusão Definitiva de Técnicos',
+        description:
+          'Ao digitar na caixa de pesquisa, exibe tanto computadores online quanto offline. Na gestão de técnicos, a exclusão remove definitivamente o registro no Appwrite e no cache local.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.5.3',
     date: 'Outubro 2026',
     title: 'Apelido Coerente nas Abas do RustDesk (Nome Fantasia + Nome da Máquina)',
     highlight: 'Envia automaticamente o apelido concatenado (ex: PANAMBY - SERVIDOR, Arthur X-Point) na URI de conexão rustdesk://connect/... e grava o alias no perfil do peer para que cada aba aberta no RustDesk exiba o nome real do cliente em vez do ID numérico + IP.',
-    isCurrent: true,
     items: [
       {
         title: 'Handoff Automático de Apelido (&alias=...) na URI do RustDesk',
@@ -478,7 +498,7 @@ export function VersionChangelogModal({
             <div className="changelog-title-group">
               <div className="changelog-title-row">
                 <h2 id="changelog-modal-title">Novidades da Plataforma</h2>
-                <span className="changelog-current-pill">v1.5.3 · ATUAL</span>
+                <span className="changelog-current-pill">v1.5.4 · ATUAL</span>
               </div>
               <p className="changelog-subtitle">
                 Histórico de atualizações, recursos de mobilidade e melhorias de UI/UX do XPoint Remote
@@ -567,7 +587,7 @@ export function VersionChangelogModal({
         <div className="changelog-modal-footer">
           <div className="changelog-footer-info">
             <ShieldCheck size={15} className="text-emerald-400" />
-            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.5.3)</span>
+            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.5.4)</span>
           </div>
           <button type="button" className="tv-btn-primary" onClick={onClose}>
             Entendi, voltar ao painel

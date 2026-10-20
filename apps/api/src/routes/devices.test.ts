@@ -55,7 +55,7 @@ test('lists only authorized organizations and returns safe device views', async 
   assert.equal(response.statusCode, 200);
   assert.deepEqual(calls, ['a']);
   assert.deepEqual(response.json(), { devices: [{
-    id: '1', organizationId: 'a', organizationName: 'Alpha',
+    id: '1', createdAt: '2026-09-29T12:00:00.000Z', organizationId: 'a', organizationName: 'Alpha',
     deviceUuid: '00000000-0000-4000-8000-000000000001', displayName: 'Device 1',
     hostname: 'host-1', operatingSystem: 'Windows', osVersion: '11', rustdeskId: 'rd-1',
     agentVersion: null, rustdeskVersion: null, lastSeenAt: '2026-09-30T11:59:00.000Z',
