@@ -15,15 +15,16 @@ it.each(['https://example.test', 'rustdesk://connect/123456789@other:21116?key=p
   expect(() => manualRustDeskUri(uri, 'synthetic')).toThrow();
 });
 
-it('builds an Android intent:// URI with browser_fallback_url on Android to prevent ERR_UNKNOWN_URL_SCHEME page crash', () => {
+it('builds an Android intent:// URI without browser_fallback_url so Samsung Internet does not trigger a failing background reload when switching to RustDesk', () => {
   const rawUri = 'rustdesk://connect/1546924957@179.199.142.157:21116?key=public%2Bkey&password=synthetic-pass';
   const androidUa = 'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/25.0 Chrome/121.0.0.0 Mobile Safari/537.36';
   const fallback = 'https://remoto.xpointsolucoes.com.br/devices';
 
   const result = buildPlatformLaunchUri(rawUri, androidUa, fallback);
   expect(result).toBe(
-    `intent://connect/1546924957@179.199.142.157:21116?key=public%2Bkey&password=synthetic-pass#Intent;scheme=rustdesk;package=com.carriez.flutter_hbb;S.browser_fallback_url=${encodeURIComponent(fallback)};end`
+    'intent://connect/1546924957@179.199.142.157:21116?key=public%2Bkey&password=synthetic-pass#Intent;scheme=rustdesk;package=com.carriez.flutter_hbb;end'
   );
+  expect(result).not.toContain('browser_fallback_url');
 });
 
 it('preserves standard rustdesk:// scheme on desktop platforms', () => {
@@ -32,13 +33,21 @@ it('preserves standard rustdesk:// scheme on desktop platforms', () => {
   expect(buildPlatformLaunchUri(rawUri, desktopUa, 'https://remoto.xpointsolucoes.com.br/devices')).toBe(rawUri);
 });
 
-it('launches via an ephemeral anchor click without leaving credentials in the DOM', () => {
+it('launches via an ephemeral anchor click without leaving credentials in the DOM and cancels pending navigation when tab becomes hidden', () => {
   const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  const stopSpy = vi.spyOn(window, 'stop').mockImplementation(() => {});
   const rawUri = 'rustdesk://connect/1546924957@179.199.142.157:21116?key=public&password=ephemeral-secret';
   launchRustDesk(rawUri);
   expect(clickSpy).toHaveBeenCalledTimes(1);
   expect(document.body.innerHTML).not.toContain('ephemeral-secret');
   expect(document.querySelector('a')).toBeNull();
+
+  Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+  document.dispatchEvent(new Event('visibilitychange'));
+  expect(stopSpy).toHaveBeenCalledTimes(1);
+
+  Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
   clickSpy.mockRestore();
+  stopSpy.mockRestore();
 });
 

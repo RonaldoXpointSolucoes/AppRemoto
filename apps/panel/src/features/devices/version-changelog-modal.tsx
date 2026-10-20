@@ -32,11 +32,31 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.5.1',
+    date: 'Outubro 2026',
+    title: 'Blindagem de Retorno do App RustDesk no Android (Anti "This page couldn’t load")',
+    highlight: 'Elimina o erro "This page couldn’t load" ao encerrar uma conexão remota no app do RustDesk no Android/Samsung Internet e retornar para o painel XPoint Remote.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Intent Android Direto sem Recarregamento em Background (Samsung Internet & Chrome)',
+        description:
+          'Remove o redirecionamento S.browser_fallback_url do intent de conexão e aplica bloqueio automático de navegação pendente (window.stop) ao alternar para o RustDesk, impedindo que o navegador tente recarregar a aba com a rede suspensa em segundo plano.',
+        tag: 'Mobilidade',
+      },
+      {
+        title: 'Service Worker v3 com Resiliência de Navegação e Retomada Instantânea',
+        description:
+          'Protege a rota /devices com estratégia Network-First + fallback instantâneo de App Shell em caso de suspensão de socket pelo Android durante o uso do RustDesk.',
+        tag: 'Infra & Cockpit',
+      },
+    ],
+  },
+  {
     version: 'v1.5.0',
     date: 'Outubro 2026',
     title: 'Lista Simplificada de 2 Linhas, Nomenclatura Coerente (Marca + Máquina) & Opção "Ver detalhes"',
     highlight: 'Concatenação inteligente do nome principal da marca no Nome Fantasia/Razão Social com o nome da máquina (ex: PANAMBY - SERVIDOR), hierarquia limpa de 2 linhas (título maior + subtítulo menor) e gaveta expansível sob demanda ao clicar em "Ver detalhes".',
-    isCurrent: true,
     items: [
       {
         title: 'Concatenação Coerente de Marca Principal + Nome da Máquina (ex: PANAMBY - SERVIDOR)',

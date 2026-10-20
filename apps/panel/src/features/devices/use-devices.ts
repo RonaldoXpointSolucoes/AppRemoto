@@ -131,7 +131,10 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
   useEffect(() => {
-    const timer = setInterval(() => refreshRef.current(), 30_000);
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      refreshRef.current();
+    }, 30_000);
     function handleVisibilityOrFocus() {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         refreshRef.current();
