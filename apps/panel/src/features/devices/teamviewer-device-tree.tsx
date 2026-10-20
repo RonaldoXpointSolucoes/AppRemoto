@@ -175,6 +175,7 @@ const GENERIC_ORGS = new Set([
   'SERVIDORES E INFRA',
   'OPERACAO NORTE',
   'OPERACAO SUL',
+  'REMOTE PLATFORM E2E',
   'PADRAO',
   'DEFAULT',
 ]);
@@ -338,10 +339,30 @@ export function resolveCoherentDevicePresentation(
   let mainTitle = rawDisplay;
   let companyFromDisplay: string | null = null;
 
-  if (rawDisplay.includes(' - ')) {
-    const parts = rawDisplay.split(/\s+-\s+/);
-    const leftPart = parts[0]?.trim() || '';
-    const rightPart = parts.slice(1).join(' - ').trim();
+  const hyphenRoleMatch =
+    !rawDisplay.includes(' - ') &&
+    /^(.+?)\s*-\s*(SERVIDOR.*|SERVER.*|CAIXA.*|PDV.*|BALAN.*|GAR.*|ESCRIT.*|COZINHA.*|ESTOQUE.*|RETAGUARDA.*|TOTEM.*|TERMINAL.*|DELIVERY.*)$/i.exec(
+      rawDisplay
+    );
+  const spaceRoleMatch =
+    !rawDisplay.includes(' - ') &&
+    !hyphenRoleMatch &&
+    /^(.+?)\s+(SERVIDOR|SERVER|CAIXA|PDV|BALANCA|BALANÇA|TOTEM|TERMINAL|DELIVERY)$/i.exec(rawDisplay);
+
+  if (rawDisplay.includes(' - ') || hyphenRoleMatch || spaceRoleMatch) {
+    let leftPart = '';
+    let rightPart = '';
+    if (rawDisplay.includes(' - ')) {
+      const parts = rawDisplay.split(/\s+-\s+/);
+      leftPart = parts[0]?.trim() || '';
+      rightPart = parts.slice(1).join(' - ').trim();
+    } else if (hyphenRoleMatch) {
+      leftPart = hyphenRoleMatch[1]?.trim() || '';
+      rightPart = hyphenRoleMatch[2]?.trim() || '';
+    } else if (spaceRoleMatch) {
+      leftPart = spaceRoleMatch[1]?.trim() || '';
+      rightPart = spaceRoleMatch[2]?.trim() || '';
+    }
     companyFromDisplay = leftPart;
 
     const leftNorm = stripAccents(leftPart).toUpperCase();
@@ -377,27 +398,33 @@ export function resolveCoherentDevicePresentation(
   }
 
   // 3. Construção do Subtítulo Menor Abaixo (Contexto da Empresa + Host/Pasta)
-  let subtitlePrimary = folderName;
-  if (fantasia) {
+  const titleNorm = stripAccents(mainTitle).toUpperCase();
+  const hostClean = (dev.hostname || '').trim();
+  const hostDiffers = Boolean(
+    hostClean && stripAccents(hostClean).toUpperCase() !== titleNorm
+  );
+
+  let subtitlePrimary = folderName ? `Pasta: ${folderName}` : 'Computador Remoto';
+  if (fantasia && stripAccents(fantasia).toUpperCase() !== stripAccents(anchorBrand || '').toUpperCase()) {
     subtitlePrimary = toTitleCasePtBr(fantasia);
-  } else if (effectiveRazao) {
+  } else if (effectiveRazao && !titleNorm.startsWith(stripAccents(effectiveRazao).toUpperCase())) {
     subtitlePrimary = toTitleCasePtBr(effectiveRazao);
-  } else if (companyFromDisplay) {
-    subtitlePrimary = toTitleCasePtBr(companyFromDisplay);
-  } else if (org) {
+  } else if (fantasia) {
+    subtitlePrimary = toTitleCasePtBr(fantasia);
+  } else if (hostDiffers) {
+    subtitlePrimary = `Host: ${hostClean}`;
+  } else if (!GENERIC_ORGS.has(orgNorm) && org) {
     subtitlePrimary = org;
   }
 
-  const hostClean = (dev.hostname || '').trim();
   const subtitleSecondary =
-    hostClean && stripAccents(hostClean).toUpperCase() !== stripAccents(mainTitle).toUpperCase()
+    hostDiffers && !subtitlePrimary.startsWith('Host:')
       ? `Host: ${hostClean}`
-      : folderName
+      : folderName && !subtitlePrimary.startsWith('Pasta:')
         ? `Pasta: ${folderName}`
         : null;
 
   const roleNorm = dev.datadivas?.funcao ? stripAccents(dev.datadivas.funcao).toUpperCase() : '';
-  const titleNorm = stripAccents(mainTitle).toUpperCase();
   const roleIncludedInTitle = Boolean(roleNorm && titleNorm.includes(roleNorm));
 
   return {
@@ -937,6 +964,9 @@ export function TeamViewerDeviceTree({
         const onA = isDeviceOnline(a) ? 1 : 0;
         const onB = isDeviceOnline(b) ? 1 : 0;
         if (onA !== onB) return onB - onA;
+        const ddA = a.datadivas ? 1 : 0;
+        const ddB = b.datadivas ? 1 : 0;
+        if (ddA !== ddB) return ddB - ddA;
         return 0;
       }
       if (sortBy === 'name') {

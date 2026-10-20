@@ -7806,7 +7806,7 @@ button, a, input, select { outline-offset: 3px; }
 }
 
 /* =========================================================
-   LISTA SIMPLIFICADA & GAVETA EXPANSÍVEL SOB DEMANDA (v1.4.9)
+   LISTA SIMPLIFICADA & GAVETA EXPANSÍVEL SOB DEMANDA (v1.5.0)
    ========================================================= */
 .tv-row {
   padding: 13px 18px 13px 28px;
@@ -8017,18 +8017,73 @@ button, a, input, select { outline-offset: 3px; }
 }
 
 @media (max-width: 768px) {
+  .tv-toolbar-actions {
+    display: none !important;
+  }
+
+  .tv-top-toolbar {
+    margin-bottom: 10px;
+  }
+
+  .tv-tree-header-bar {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .tv-btn-new-folder {
+    display: none;
+  }
+
+  .tv-mobility-strip {
+    padding: 7px 12px;
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
   .tv-row {
+    align-items: center;
+    padding: 10px 12px;
+    min-height: 60px;
+  }
+
+  .tv-row.is-expanded {
     align-items: flex-start;
-    padding: 11px 12px;
-    min-height: 62px;
+  }
+
+  .tv-name-header {
+    align-items: flex-start;
+    gap: 5px;
+    flex-wrap: nowrap;
+  }
+
+  .tv-display-name {
+    font-size: 0.88rem;
+    font-weight: 800;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+    flex: 1 1 0%;
+  }
+
+  .tv-subtext-primary {
+    font-size: 0.74rem;
+    gap: 5px;
+  }
+
+  .tv-subtitle-meta {
+    display: none;
   }
 
   .tv-mobile-id-group {
     display: inline-flex;
   }
 
+  .tv-mobile-id-group .tv-copy-id-btn {
+    display: none;
+  }
+
   .tv-col-actions {
-    margin-top: 2px;
+    margin-top: 0;
   }
 }
 

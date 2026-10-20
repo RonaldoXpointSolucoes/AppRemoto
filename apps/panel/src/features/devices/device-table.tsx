@@ -191,7 +191,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   useEffect(() => {
     emitToChatbotHost({
       type: 'XPOINT_REMOTE_READY',
-      version: 'v1.4.9',
+      version: 'v1.5.0',
       embedded: isEmbedMode,
       authenticated: true,
       activeCnpj: chatbotContextRef.current?.cnpj ?? null,
@@ -205,7 +205,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       if (action.action === 'PING') {
         emitToChatbotHost({
           type: 'XPOINT_REMOTE_PONG',
-          version: 'v1.4.9',
+          version: 'v1.5.0',
           authenticated: true,
           activeCnpj: chatbotContextRef.current?.cnpj ?? null,
           timestamp: new Date().toISOString(),
@@ -507,10 +507,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={() => setIsChangelogOpen(true)}
-                title="Clique para ver todas as novidades da versão v1.4.9"
-                aria-label="Ver novidades da versão v1.4.9 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.5.0"
+                aria-label="Ver novidades da versão v1.5.0 (mobile)"
               >
-                v1.4.9
+                v1.5.0
               </button>
             </div>
           </div>
@@ -816,7 +816,25 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
             </section>}
             {!query.isOrganizationLoading && !query.error && organizations.length === 0 && <section className="device-state">Nenhuma organizacao autorizada.</section>}
             {!query.isOrganizationLoading && !query.error && !unauthorized && organizations.length > 0 && <>
-              <DeviceFilters organizations={organizations} value={filters} refreshing={query.isRefreshing} onChange={setFilters} onRefresh={() => void query.refresh()} />
+              <div
+                style={
+                  viewMode === 'teamviewer'
+                    ? {
+                        position: 'absolute',
+                        width: 1,
+                        height: 1,
+                        padding: 0,
+                        margin: -1,
+                        overflow: 'hidden',
+                        clip: 'rect(0, 0, 0, 0)',
+                        whiteSpace: 'nowrap',
+                        border: 0,
+                      }
+                    : undefined
+                }
+              >
+                <DeviceFilters organizations={organizations} value={filters} refreshing={query.isRefreshing} onChange={setFilters} onRefresh={() => void query.refresh()} />
+              </div>
               {query.backgroundError && <p className="refresh-error" role="alert">Nao foi possivel atualizar os dispositivos. Os status estao indisponiveis.</p>}
               {query.isPageLoading ? <section className="device-state" role="status">Carregando dispositivos...</section>
                 : (query.rows.length === 0 || (isLocalCategory && displayedDevices.length === 0)) ? <section className="device-state">{emptyMessage}</section>
