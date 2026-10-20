@@ -1,4 +1,4 @@
-import { Account, AppwriteException, Client, Databases } from 'node-appwrite';
+import { Account, AppwriteException, Client, Databases, Users } from 'node-appwrite';
 import { hkdfSync } from 'node:crypto';
 
 import type { ApiConfig } from '../config.ts';
@@ -16,11 +16,13 @@ import { createGenericInstallerRepository } from '../repositories/generic-instal
 import { createGenericInstallerService } from '../services/generic-installers.ts';
 import { createCnpjNamingRepository } from '../repositories/cnpj-naming.ts';
 import { createCnpjNamingService } from '../services/cnpj-naming.ts';
+import { createTechnicianManagementService } from '../services/technician-management.ts';
 
 export function createAppwriteServices(config: ApiConfig): TechnicianServices {
   const dataClient = new Client().setEndpoint(config.appwriteEndpoint)
     .setProject(config.appwriteProjectId).setKey(config.appwriteApiKey);
   const databases = new Databases(dataClient);
+  const users = new Users(dataClient);
 
   const enrollmentRepository = createEnrollmentRepository(databases);
   const auditRepository = createAuditRepository(databases);
@@ -33,9 +35,14 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
     installers: genericInstallerRepository,
     encryptionKey: config.masterEncryptionKey,
   });
+  const technicianManagement = createTechnicianManagementService({
+    databases,
+    users,
+  });
   return {
     genericInstallers,
     cnpjNaming,
+    technicianManagement,
     projectId: config.appwriteProjectId,
     jwtVerifier: {
       async verify(jwt) {

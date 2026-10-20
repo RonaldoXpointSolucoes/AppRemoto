@@ -32,11 +32,31 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.5.2',
+    date: 'Outubro 2026',
+    title: 'Login Automático com Google & Sincronização Real de Técnicos e Convites no Appwrite',
+    highlight: 'Persiste todos os membros da aba "Técnicos & Convites" diretamente no banco Appwrite (incluindo David Clemente e equipe técnica), habilita login imediato em 1 clique pelo botão "Continuar com o Google" para todos os e-mails liberados e permite cadastro/ativação direta de senha pelo link de convite.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Login Automático com o Google para E-mails Liberados na Lista de Técnicos',
+        description:
+          'Qualquer técnico com status Ativo na lista "Técnicos & Convites" pode autenticar instantaneamente clicando em "Continuar com o Google" sem erro 412 de provedor.',
+        tag: 'Novo',
+      },
+      {
+        title: 'Ativação de Convite & Cadastro de Senha no Servidor Appwrite (/v1/technicians)',
+        description:
+          'O link enviado por WhatsApp/Copiar Convite preenche automaticamente o e-mail do técnico, permitindo entrar com 1 clique pelo Google ou cadastrar sua própria senha diretamente no Appwrite.',
+        tag: 'Infra & Cockpit',
+      },
+    ],
+  },
+  {
     version: 'v1.5.1',
     date: 'Outubro 2026',
     title: 'Blindagem de Retorno do App RustDesk no Android (Anti "This page couldn’t load")',
     highlight: 'Elimina o erro "This page couldn’t load" ao encerrar uma conexão remota no app do RustDesk no Android/Samsung Internet e retornar para o painel XPoint Remote.',
-    isCurrent: true,
     items: [
       {
         title: 'Intent Android Direto sem Recarregamento em Background (Samsung Internet & Chrome)',

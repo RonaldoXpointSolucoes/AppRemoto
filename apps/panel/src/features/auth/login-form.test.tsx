@@ -163,4 +163,38 @@ describe('LoginForm', () => {
     expect(auth.verifyProfile).toHaveBeenCalledTimes(2);
     expect(auth.removeSession).toHaveBeenCalledTimes(1);
   });
+
+  it('authenticates an authorized technician automatically via Continuar com o Google', async () => {
+    const onAuthenticated = vi.fn();
+    const createGoogleSession = vi.fn().mockResolvedValue(undefined);
+    const auth = service({ createGoogleSession });
+    render(<LoginForm service={auth} onAuthenticated={onAuthenticated} />);
+
+    await userEvent.type(screen.getByLabelText('E-mail'), 'david_ladivas@hotmail.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Continuar com o Google' }));
+
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledTimes(1));
+    expect(createGoogleSession).toHaveBeenCalledWith('david_ladivas@hotmail.com', undefined);
+    expect(auth.verifyProfile).toHaveBeenCalledTimes(1);
+  });
+
+  it('pre-fills email from invite link and allows registering a password or signing in with Google', async () => {
+    window.history.replaceState({}, '', '/login?invite=inv_david_123&email=david_ladivas%40hotmail.com');
+    const onAuthenticated = vi.fn();
+    const activateInviteSession = vi.fn().mockResolvedValue(undefined);
+    const auth = service({ activateInviteSession, createGoogleSession: vi.fn().mockResolvedValue(undefined) });
+    render(<LoginForm service={auth} onAuthenticated={onAuthenticated} />);
+
+    expect(screen.getByLabelText('E-mail')).toHaveValue('david_ladivas@hotmail.com');
+    await userEvent.type(screen.getByLabelText('Senha'), 'NovaSenhaSegura123');
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar' }));
+
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledTimes(1));
+    expect(activateInviteSession).toHaveBeenCalledWith({
+      email: 'david_ladivas@hotmail.com',
+      password: 'NovaSenhaSegura123',
+      inviteToken: 'inv_david_123',
+    });
+    window.history.replaceState({}, '', '/login');
+  });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Users,
   UserPlus,
@@ -22,11 +22,12 @@ import {
 } from 'lucide-react';
 import {
   buildWhatsAppInviteUrl,
-  createTechnicianWithInvite,
-  deleteTechnician,
+  createTechnicianWithInviteOnServer,
+  deleteTechnicianOnServer,
   getInvites,
   getTechnicians,
-  toggleTechnicianActive,
+  syncTechniciansWithServer,
+  toggleTechnicianActiveOnServer,
 } from './technician-service';
 import type {
   CreateTechnicianInput,
@@ -60,20 +61,32 @@ export function TechnicianManagementView({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [menuOpenForId, setMenuOpenForId] = useState<string | null>(null);
 
+  useEffect(() => {
+    let mounted = true;
+    void syncTechniciansWithServer().then((res) => {
+      if (!mounted) return;
+      setTechnicians(res.technicians);
+      setInvites(res.invites);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   function showToast(msg: string) {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   }
 
-  function handleCreate(e: React.FormEvent) {
+  async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!formData.displayName.trim() || !formData.email.trim()) return;
 
-    const result = createTechnicianWithInvite(formData, currentTechnicianName);
-    setTechnicians(getTechnicians());
-    setInvites(getInvites());
+    const result = await createTechnicianWithInviteOnServer(formData, currentTechnicianName);
+    setTechnicians(result.technicians);
+    setInvites(result.invites);
     setCreatedInvite(result.invite);
-    showToast(`Convite gerado com sucesso para ${result.technician.displayName}!`);
+    showToast(`Acesso liberado no servidor e convite gerado para ${result.technician.displayName}!`);
   }
 
   function handleCopyInvite(invite: TechnicianInvite) {
@@ -84,18 +97,18 @@ export function TechnicianManagementView({
     });
   }
 
-  function handleToggleActive(tech: TechnicianProfileView) {
-    const updated = toggleTechnicianActive(tech.id);
-    setTechnicians(updated);
+  async function handleToggleActive(tech: TechnicianProfileView) {
     setMenuOpenForId(null);
+    const updated = await toggleTechnicianActiveOnServer(tech);
+    setTechnicians(updated);
     showToast(`Técnico ${tech.displayName} agora está ${tech.active ? 'desativado' : 'ativo'}.`);
   }
 
-  function handleDelete(tech: TechnicianProfileView) {
+  async function handleDelete(tech: TechnicianProfileView) {
     if (confirm(`Tem certeza de que deseja remover o técnico "${tech.displayName}"?`)) {
-      const updated = deleteTechnician(tech.id);
-      setTechnicians(updated);
       setMenuOpenForId(null);
+      const updated = await deleteTechnicianOnServer(tech);
+      setTechnicians(updated);
       showToast(`Técnico ${tech.displayName} removido.`);
     }
   }
@@ -378,12 +391,14 @@ export function TechnicianManagementView({
                             className="tv-action-btn-generate"
                             title="Gerar novo link de convite para este técnico"
                             onClick={() => {
-                              const res = createTechnicianWithInvite(
+                              void createTechnicianWithInviteOnServer(
                                 { displayName: tech.displayName, email: tech.email, role: tech.globalRole },
                                 currentTechnicianName
-                              );
-                              setInvites(getInvites());
-                              handleCopyInvite(res.invite);
+                              ).then((res) => {
+                                setTechnicians(res.technicians);
+                                setInvites(res.invites);
+                                handleCopyInvite(res.invite);
+                              });
                             }}
                           >
                             <Copy size={14} />

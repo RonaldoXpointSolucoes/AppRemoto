@@ -11,7 +11,13 @@ import { expireSession, sessionEpoch } from './session-cache';
 
 export interface LoginService {
   createSession(email: string, password: string): Promise<void>;
-  createGoogleSession?(): void;
+  createGoogleSession?(email?: string, inviteToken?: string): Promise<void>;
+  activateInviteSession?(input: {
+    email: string;
+    password: string;
+    displayName?: string;
+    inviteToken?: string;
+  }): Promise<void>;
   verifyProfile(): Promise<void>;
   removeSession(): Promise<void>;
 }
@@ -32,11 +38,50 @@ function isTerminalSession(error: unknown): boolean {
 }
 
 export function isInvalidCredentials(error: unknown): boolean {
-  return error instanceof AppwriteException && error.code === 401;
+  return (error instanceof AppwriteException && error.code === 401)
+    || (error instanceof ApiClientError && error.status === 401 && error.code === 'INVALID_CREDENTIALS');
 }
 
 export function isDisabledProfile(error: unknown): boolean {
-  return error instanceof ApiClientError && error.status === 403 && error.code === 'TECHNICIAN_DISABLED';
+  return error instanceof ApiClientError && error.status === 403 && (
+    error.code === 'TECHNICIAN_DISABLED' || error.code === 'TECHNICIAN_NOT_AUTHORIZED'
+  );
+}
+
+async function postPublicAuthEndpoint(
+  baseUrl: string,
+  path: string,
+  payload: Record<string, unknown>
+): Promise<{ userId: string; secret: string }> {
+  const cleanBase = baseUrl.replace(/\/+$/, '');
+  let response: Response;
+  try {
+    response = await fetch(`${cleanBase}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new ApiClientError({
+      code: 'NETWORK_ERROR',
+      message: 'Não foi possível conectar ao servidor de autenticação.',
+      status: 0,
+    });
+  }
+
+  const data = (await response.json().catch(() => null)) as
+    | { userId?: string; secret?: string; error?: { code?: string; message?: string } }
+    | null;
+
+  if (!response.ok || !data?.userId || !data?.secret) {
+    throw new ApiClientError({
+      code: data?.error?.code || 'AUTH_FAILED',
+      message: data?.error?.message || 'Não foi possível autenticar este acesso.',
+      status: response.status || 500,
+    });
+  }
+
+  return { userId: data.userId, secret: data.secret };
 }
 
 export function createLoginService(): LoginService {
@@ -48,18 +93,64 @@ export function createLoginService(): LoginService {
   });
 
   return {
-    createSession: async (email, password) => { await account.createEmailPasswordSession(email, password); },
-    createGoogleSession: () => {
-      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://remoto.xpointsolucoes.com.br';
+    createSession: async (email, password) => {
       try {
-        account.createOAuth2Session(
-          'google' as any,
-          `${origin}/devices`,
-          `${origin}/login?error=oauth_failed`
-        );
+        await account.createEmailPasswordSession(email, password);
       } catch (err) {
-        console.error('Google OAuth init failed:', err);
+        if (err instanceof AppwriteException && err.code === 401 && password.length >= 8) {
+          try {
+            const token = await postPublicAuthEndpoint(config.apiBaseUrl, '/v1/auth/activate-invite', {
+              email,
+              password,
+              requireUnconfiguredOrToken: true,
+            });
+            try {
+              await account.deleteSession('current');
+            } catch {
+              // Ignore if no previous session exists
+            }
+            await account.createSession(token.userId, token.secret);
+            return;
+          } catch {
+            throw err;
+          }
+        }
+        throw err;
       }
+    },
+    createGoogleSession: async (email, inviteToken) => {
+      const normalized = (email || '').trim().toLowerCase();
+      if (!normalized) {
+        throw new ApiClientError({
+          code: 'INVALID_EMAIL',
+          message: 'Informe seu e-mail liberado na lista de Técnicos para continuar com o Google.',
+          status: 400,
+        });
+      }
+      const token = await postPublicAuthEndpoint(config.apiBaseUrl, '/v1/auth/google-session', {
+        email: normalized,
+        ...(inviteToken ? { inviteToken } : {}),
+      });
+      try {
+        await account.deleteSession('current');
+      } catch {
+        // Ignore if no previous session exists
+      }
+      await account.createSession(token.userId, token.secret);
+    },
+    activateInviteSession: async ({ email, password, displayName, inviteToken }) => {
+      const token = await postPublicAuthEndpoint(config.apiBaseUrl, '/v1/auth/activate-invite', {
+        email: email.trim().toLowerCase(),
+        password,
+        ...(displayName ? { displayName } : {}),
+        ...(inviteToken ? { inviteToken } : {}),
+      });
+      try {
+        await account.deleteSession('current');
+      } catch {
+        // Ignore if no previous session exists
+      }
+      await account.createSession(token.userId, token.secret);
     },
     verifyProfile: async () => { await api.getMe(); },
     removeSession: async () => { await account.deleteSession('current'); },

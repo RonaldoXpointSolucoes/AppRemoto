@@ -191,7 +191,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   useEffect(() => {
     emitToChatbotHost({
       type: 'XPOINT_REMOTE_READY',
-      version: 'v1.5.1',
+      version: 'v1.5.2',
       embedded: isEmbedMode,
       authenticated: true,
       activeCnpj: chatbotContextRef.current?.cnpj ?? null,
@@ -205,7 +205,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       if (action.action === 'PING') {
         emitToChatbotHost({
           type: 'XPOINT_REMOTE_PONG',
-          version: 'v1.5.1',
+          version: 'v1.5.2',
           authenticated: true,
           activeCnpj: chatbotContextRef.current?.cnpj ?? null,
           timestamp: new Date().toISOString(),
@@ -507,10 +507,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={() => setIsChangelogOpen(true)}
-                title="Clique para ver todas as novidades da versão v1.5.1"
-                aria-label="Ver novidades da versão v1.5.1 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.5.2"
+                aria-label="Ver novidades da versão v1.5.2 (mobile)"
               >
-                v1.5.1
+                v1.5.2
               </button>
             </div>
           </div>
@@ -578,10 +578,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.5.1"
-              aria-label="Ver novidades da versão v1.5.1"
+              title="Clique para ver todas as novidades da versão v1.5.2"
+              aria-label="Ver novidades da versão v1.5.2"
             >
-              v1.5.1
+              v1.5.2
             </button>
           </div>
 

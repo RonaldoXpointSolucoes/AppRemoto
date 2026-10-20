@@ -1,8 +1,9 @@
 'use client';
 
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { ApiClientError } from '../../lib/api';
 import { isDisabledProfile, isExpiredSession, isInvalidCredentials, type LoginService } from './session';
 import { beginSession, expireSession, sessionEpoch } from './session-cache';
 
@@ -23,6 +24,8 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
   const epoch = useRef(sessionEpoch(queryClient));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [inviteToken, setInviteToken] = useState<string | undefined>(undefined);
+  const [googlePromptMode, setGooglePromptMode] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string>();
   const [pending, setPending] = useState(false);
@@ -30,14 +33,81 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const invitedEmail = params.get('email')?.trim();
+      const invitedToken = params.get('invite')?.trim();
+      if (invitedEmail) {
+        setEmail(invitedEmail);
+      }
+      if (invitedToken) {
+        setInviteToken(invitedToken);
+      }
+    } catch {
+      // Ignore malformed search params
+    }
+  }, []);
+
+  async function handleGoogleLogin() {
+    if (pending || !service.createGoogleSession) return;
+    const cleanEmail = email.trim();
+    if (!/^\S+@\S+\.\S+$/.test(cleanEmail)) {
+      setGooglePromptMode(true);
+      setErrors({ email: 'Informe seu e-mail liberado na lista de Técnicos para entrar com o Google.' });
+      setFormError(undefined);
+      emailRef.current?.focus();
+      return;
+    }
+
+    setErrors({});
+    setFormError(undefined);
+    setPending(true);
+    let sessionEstablished = false;
+    try {
+      epoch.current = await beginSession(queryClient);
+      await service.createGoogleSession(cleanEmail, inviteToken);
+      sessionEstablished = true;
+      setStep('profile-retry');
+      setPassword('');
+      await service.verifyProfile();
+      onAuthenticated();
+    } catch (error) {
+      if (isDisabledProfile(error) || (sessionEstablished && isExpiredSession(error))) {
+        if (sessionEstablished) {
+          await expireSession(queryClient, epoch.current, () => service.removeSession());
+        }
+        setStep('credentials');
+        setFormError(
+          error instanceof ApiClientError && error.code === 'TECHNICIAN_NOT_AUTHORIZED'
+            ? 'Este e-mail não consta na lista de técnicos liberados. Solicite liberação ao administrador.'
+            : 'Seu acesso esta desabilitado.'
+        );
+      } else if (sessionEstablished) {
+        setFormError('Nao foi possivel verificar seu acesso.');
+      } else {
+        setFormError('Nao foi possivel entrar com o Google agora. Verifique seu e-mail liberado e tente novamente.');
+      }
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
+
+    if (step === 'credentials' && googlePromptMode && !password && service.createGoogleSession) {
+      await handleGoogleLogin();
+      return;
+    }
 
     const nextErrors: FieldErrors = {};
     if (step === 'credentials') {
       if (!/^\S+@\S+\.\S+$/.test(email.trim())) nextErrors.email = 'Informe um e-mail valido.';
       if (!password) nextErrors.password = 'Informe sua senha.';
+      else if (inviteToken && password.length < 8) nextErrors.password = 'A senha do convite deve ter no mínimo 8 caracteres.';
       setErrors(nextErrors);
     }
     setFormError(undefined);
@@ -51,7 +121,15 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
     try {
       if (!sessionEstablished) {
         epoch.current = await beginSession(queryClient);
-        await service.createSession(email.trim(), password);
+        if (inviteToken && service.activateInviteSession) {
+          await service.activateInviteSession({
+            email: email.trim(),
+            password,
+            inviteToken,
+          });
+        } else {
+          await service.createSession(email.trim(), password);
+        }
         sessionEstablished = true;
         setStep('profile-retry');
         setPassword('');
@@ -77,6 +155,40 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
 
   return (
     <form className="login-form" noValidate onSubmit={submit}>
+      {inviteToken && (
+        <div
+          style={{
+            padding: '10px 14px',
+            borderRadius: '10px',
+            background: 'rgba(16, 185, 129, 0.12)',
+            border: '1px solid rgba(16, 185, 129, 0.35)',
+            color: '#6ee7b7',
+            fontSize: '0.82rem',
+            lineHeight: 1.45,
+            marginBottom: '6px',
+          }}
+        >
+          <strong>Convite de Equipe Ativo:</strong> clique em{' '}
+          <strong>Continuar com o Google</strong> para acesso imediato ou defina sua senha abaixo (mín. 8 caracteres) para concluir o cadastro.
+        </div>
+      )}
+      {googlePromptMode && !inviteToken && (
+        <div
+          style={{
+            padding: '10px 14px',
+            borderRadius: '10px',
+            background: 'rgba(56, 189, 248, 0.12)',
+            border: '1px solid rgba(56, 189, 248, 0.35)',
+            color: '#7dd3fc',
+            fontSize: '0.82rem',
+            lineHeight: 1.45,
+            marginBottom: '6px',
+          }}
+        >
+          Digite abaixo o seu <strong>e-mail liberado na lista de Técnicos</strong> e clique em{' '}
+          <strong>Continuar com o Google</strong> para entrar automaticamente.
+        </div>
+      )}
       <div className="field">
         <label htmlFor="email">E-mail</label>
         <input
@@ -89,7 +201,10 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
           value={email}
           aria-invalid={Boolean(errors.email)}
           aria-errormessage={errors.email ? 'email-error' : undefined}
-          onChange={(event) => setEmail(event.target.value)}
+          onChange={(event) => {
+            setEmail(event.target.value);
+            if (errors.email) setErrors((prev) => ({ ...prev, email: undefined }));
+          }}
         />
         {errors.email && <span className="field-error" id="email-error">{errors.email}</span>}
       </div>
@@ -100,12 +215,16 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
           id="password"
           name="password"
           type="password"
-          autoComplete="current-password"
+          autoComplete={inviteToken ? 'new-password' : 'current-password'}
+          placeholder={inviteToken ? 'Crie sua senha (mín. 8 caracteres) ou use o botão Google abaixo' : undefined}
           disabled={pending || step === 'profile-retry'}
           value={password}
           aria-invalid={Boolean(errors.password)}
           aria-errormessage={errors.password ? 'password-error' : undefined}
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={(event) => {
+            setPassword(event.target.value);
+            if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }));
+          }}
         />
         {errors.password && <span className="field-error" id="password-error">{errors.password}</span>}
       </div>
@@ -124,10 +243,7 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
             type="button"
             className="google-login-button"
             disabled={pending}
-            onClick={() => {
-              setPending(true);
-              service.createGoogleSession?.();
-            }}
+            onClick={() => void handleGoogleLogin()}
           >
             <svg className="google-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>

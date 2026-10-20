@@ -8,6 +8,7 @@ import type { RecordHeartbeat } from '../services/record-heartbeat.ts';
 import type { OperatorSetupService } from '../services/operator-setup.ts';
 import type { GenericInstallerService } from '../services/generic-installers.ts';
 import type { CnpjNamingService } from '../services/cnpj-naming.ts';
+import type { TechnicianManagementService } from '../services/technician-management.ts';
 
 export interface JwtVerifier {
   verify(jwt: string): Promise<{ userId: string } | null>;
@@ -26,6 +27,7 @@ export interface TechnicianServices {
   operatorSetup?: OperatorSetupService;
   genericInstallers?: GenericInstallerService;
   cnpjNaming?: CnpjNamingService;
+  technicianManagement?: TechnicianManagementService;
 }
 
 export interface OrganizationAuthorization {
