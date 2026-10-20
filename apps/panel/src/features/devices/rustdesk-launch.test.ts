@@ -1,12 +1,35 @@
 // @vitest-environment jsdom
 import { expect, it, vi } from 'vitest';
-import { buildPlatformLaunchUri, launchRustDesk, manualRustDeskUri } from './rustdesk-launch';
+import {
+  buildPlatformLaunchUri,
+  buildRustDeskPeerAliasPowerShellCommand,
+  launchRustDesk,
+  manualRustDeskUri,
+  withRustDeskPeerAlias,
+} from './rustdesk-launch';
 
 it('adds exactly one encoded password to the authorized passwordless RustDesk target', () => {
   const value = new URL(manualRustDeskUri('rustdesk://connect/123456789@179.199.142.157:21116?key=public%2Bkey', 'one&two+#@'));
   expect(value.searchParams.get('key')).toBe('public+key');
   expect(value.searchParams.get('password')).toBe('one&two+#@');
   expect([...value.searchParams.keys()]).toEqual(['key', 'password']);
+});
+
+it('attaches the concatenated nickname (alias) to the RustDesk launch URI', () => {
+  const rawUri = 'rustdesk://connect/246221500@179.199.142.157:21116?key=public%2Bkey&password=ephemeral-secret';
+  const withAlias = new URL(withRustDeskPeerAlias(rawUri, 'PANAMBY - SERVIDOR'));
+  expect(withAlias.searchParams.get('alias')).toBe('PANAMBY - SERVIDOR');
+  expect(withAlias.searchParams.get('key')).toBe('public+key');
+  expect(withAlias.searchParams.get('password')).toBe('ephemeral-secret');
+});
+
+it('builds a PowerShell command that writes the alias to all 3 RustDesk peer TOML files including the ?key= tab peer file', () => {
+  const cmd = buildRustDeskPeerAliasPowerShellCommand('246221500', 'PANAMBY - SERVIDOR');
+  expect(cmd).toContain("id='246221500'");
+  expect(cmd).toContain("name='PANAMBY - SERVIDOR'");
+  expect(cmd).toContain('"$id@$srv?key=$key"');
+  expect(cmd).toContain('"$id@$srv"');
+  expect(cmd).toContain("alias = '$name'");
 });
 
 it.each(['https://example.test', 'rustdesk://connect/123456789@other:21116?key=public',
@@ -37,7 +60,7 @@ it('launches via an ephemeral anchor click without leaving credentials in the DO
   const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
   const stopSpy = vi.spyOn(window, 'stop').mockImplementation(() => {});
   const rawUri = 'rustdesk://connect/1546924957@179.199.142.157:21116?key=public&password=ephemeral-secret';
-  launchRustDesk(rawUri);
+  launchRustDesk(rawUri, 'PANAMBY - SERVIDOR');
   expect(clickSpy).toHaveBeenCalledTimes(1);
   expect(document.body.innerHTML).not.toContain('ephemeral-secret');
   expect(document.querySelector('a')).toBeNull();
@@ -50,4 +73,3 @@ it('launches via an ephemeral anchor click without leaving credentials in the DO
   clickSpy.mockRestore();
   stopSpy.mockRestore();
 });
-

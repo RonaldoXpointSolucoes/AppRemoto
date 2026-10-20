@@ -1,20 +1,56 @@
+const RUSTDESK_SERVER_HOST = '179.199.142.157:21116';
+const RUSTDESK_PUBLIC_KEY = '6qc86QUPst9+H4QjXyQvSLPbGU6ef25iO+ESoi3figk=';
+
+export function sanitizePeerAlias(raw?: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
+}
+
 function validatedUri(uri: string): URL {
   const parsed = new URL(uri);
-  if (parsed.protocol !== 'rustdesk:' || parsed.hostname !== 'connect'
-    || !/^\/[0-9]{6,16}@179\.199\.142\.157:21116$/.test(parsed.pathname)
-    || parsed.hash || !parsed.searchParams.get('key')
-    || [...parsed.searchParams.keys()].some((key) => key !== 'key' && key !== 'password')) {
+  if (
+    parsed.protocol !== 'rustdesk:' ||
+    parsed.hostname !== 'connect' ||
+    !/^\/[0-9]{6,16}@179\.199\.142\.157:21116$/.test(parsed.pathname) ||
+    parsed.hash ||
+    !parsed.searchParams.get('key') ||
+    [...parsed.searchParams.keys()].some(
+      (key) => key !== 'key' && key !== 'password' && key !== 'alias'
+    )
+  ) {
     throw new Error('Invalid connection protocol');
   }
   return parsed;
 }
 
-export function manualRustDeskUri(baseUri: string, password: string): string {
+export function withRustDeskPeerAlias(uri: string, alias?: string): string {
+  const parsed = validatedUri(uri);
+  const cleanAlias = sanitizePeerAlias(alias);
+  if (cleanAlias) {
+    parsed.searchParams.set('alias', cleanAlias);
+  }
+  return parsed.toString();
+}
+
+export function manualRustDeskUri(baseUri: string, password: string, alias?: string): string {
   const parsed = validatedUri(baseUri);
-  if (parsed.searchParams.has('password') || !password || password.length > 256 || /[\u0000-\u001f\u007f]/.test(password)) {
+  if (
+    parsed.searchParams.has('password') ||
+    !password ||
+    password.length > 256 ||
+    /[\u0000-\u001f\u007f]/.test(password)
+  ) {
     throw new Error('Invalid manual handoff');
   }
   parsed.searchParams.set('password', password);
+  const cleanAlias = sanitizePeerAlias(alias);
+  if (cleanAlias) {
+    parsed.searchParams.set('alias', cleanAlias);
+  }
   return parsed.toString();
 }
 
@@ -96,8 +132,9 @@ function triggerEphemeralAnchor(targetUri: string): void {
   }
 }
 
-export function launchRustDesk(uri: string): void {
-  const targetUri = buildPlatformLaunchUri(uri);
+export function launchRustDesk(uri: string, peerAlias?: string): void {
+  const uriWithAlias = peerAlias ? withRustDeskPeerAlias(uri, peerAlias) : uri;
+  const targetUri = buildPlatformLaunchUri(uriWithAlias);
   // Handoff only: credentials never remain in rendered DOM, cache entry or stored value.
   triggerEphemeralAnchor(targetUri);
 }
@@ -113,3 +150,50 @@ export function probeRustDeskApp(): void {
   triggerEphemeralAnchor('rustdesk://');
 }
 
+export function buildRustDeskPeerAliasPowerShellCommand(rustdeskId: string, alias: string): string {
+  const cleanId = rustdeskId.replace(/\s+/g, '').trim();
+  const cleanAlias = (sanitizePeerAlias(alias) || 'SERVIDOR').replace(/'/g, "''");
+  return buildRustDeskBulkAliasSyncPowerShellCommand([{ rustdeskId: cleanId, alias: cleanAlias }]);
+}
+
+export function buildRustDeskBulkAliasSyncPowerShellCommand(
+  peers: Array<{ rustdeskId: string; alias: string }>
+): string {
+  const entries = peers
+    .map((p) => ({
+      id: p.rustdeskId.replace(/\s+/g, '').trim(),
+      alias: (sanitizePeerAlias(p.alias) || 'SERVIDOR').replace(/'/g, "''"),
+    }))
+    .filter((p) => /^[0-9]{6,16}$/.test(p.id))
+    .map((p) => `@{id='${p.id}';name='${p.alias}'}`)
+    .join(',');
+
+  const srv = RUSTDESK_SERVER_HOST;
+  const key = RUSTDESK_PUBLIC_KEY;
+
+  return [
+    `$srv='${srv}'; $key='${key}'; $utf8=[Text.UTF8Encoding]::new($false);`,
+    `$dir="$env:APPDATA\\RustDesk\\config\\peers"; New-Item -Force -ItemType Directory -Path $dir | Out-Null;`,
+    `$peers=@(${entries});`,
+    `foreach($item in $peers){`,
+    `  $id=$item.id; $name=$item.name;`,
+    `  foreach($pk in @("$id@$srv?key=$key","$id@$srv","$id")){`,
+    `    $b=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($pk));`,
+    `    $files=@("$dir\\base64_$b.toml"); if($pk -eq $id){$files+="$dir\\$id.toml"};`,
+    `    foreach($f in $files){`,
+    `      New-Item -Force -ItemType Directory -Path ([IO.Path]::GetDirectoryName($f)) | Out-Null;`,
+    `      if(Test-Path $f){`,
+    `        $c=[IO.File]::ReadAllText($f, $utf8).TrimStart([char]0xFEFF);`,
+    `        if($c -match '(?m)^alias\\s*='){ $c=[regex]::Replace($c,'(?m)^alias\\s*=.*$',"alias = '$name'") }`,
+    `        elseif($c -match '\\[options\\]'){ $c=$c -replace '\\[options\\]',"[options]\`r\`nalias = '$name'" }`,
+    `        else { $c+="\r\n[options]\r\nalias = '$name'\r\n" };`,
+    `        if($pk -like '*?key=*'){ $c=[regex]::Replace($c,'(?m)^hostname\\s*=.*$',"hostname = ''") };`,
+    `        [IO.File]::WriteAllText($f, $c, $utf8)`,
+    `      } else {`,
+    `        [IO.File]::WriteAllText($f, "[options]\`r\`nother-server-key = '$key'\`r\`nalias = '$name'\`r\`n\`r\`n[info]\`r\`nhostname = ''\`r\`n", $utf8)`,
+    `      }`,
+    `    }`,
+    `  }`,
+    `}`,
+  ].join(' ');
+}

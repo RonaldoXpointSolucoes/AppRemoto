@@ -16,6 +16,7 @@ import { isUnauthorized, useDevices, type DeviceDirectoryService, type DeviceFil
 import { ThemeToggle } from '../../components/theme-toggle';
 import { TeamViewerSidebar, type TeamViewerTab } from './teamviewer-sidebar';
 import { TeamViewerDeviceTree } from './teamviewer-device-tree';
+import { resolveCoherentDevicePresentation } from './device-presentation';
 import { ConnectionHistoryView } from './connection-history-view';
 import { ActiveSessionTracker, type ActiveSession } from './active-session-tracker';
 import { AddConnectionDialog } from './add-connection-dialog';
@@ -63,6 +64,7 @@ function DeviceRows({ devices, statusState, service, canConnect, canManage, onDe
     {service.connectDevice && canConnect(device.organizationId) && (
       <ConnectDevice
         deviceId={device.id}
+        peerAlias={resolveCoherentDevicePresentation(device, getDeviceFolderName(device)).mainTitle}
         enabled={device.enabled && device.status === 'ONLINE' && statusState === 'current'}
         service={{ connectDevice: service.connectDevice, recordConnectionEvent: service.recordConnectionEvent }}
         onEvent={(event) => onEvent(device.id, event)}
@@ -191,7 +193,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   useEffect(() => {
     emitToChatbotHost({
       type: 'XPOINT_REMOTE_READY',
-      version: 'v1.5.2',
+      version: 'v1.5.3',
       embedded: isEmbedMode,
       authenticated: true,
       activeCnpj: chatbotContextRef.current?.cnpj ?? null,
@@ -205,7 +207,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       if (action.action === 'PING') {
         emitToChatbotHost({
           type: 'XPOINT_REMOTE_PONG',
-          version: 'v1.5.2',
+          version: 'v1.5.3',
           authenticated: true,
           activeCnpj: chatbotContextRef.current?.cnpj ?? null,
           timestamp: new Date().toISOString(),
@@ -507,10 +509,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={() => setIsChangelogOpen(true)}
-                title="Clique para ver todas as novidades da versão v1.5.2"
-                aria-label="Ver novidades da versão v1.5.2 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.5.3"
+                aria-label="Ver novidades da versão v1.5.3 (mobile)"
               >
-                v1.5.2
+                v1.5.3
               </button>
             </div>
           </div>
@@ -578,10 +580,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.5.2"
-              aria-label="Ver novidades da versão v1.5.2"
+              title="Clique para ver todas as novidades da versão v1.5.3"
+              aria-label="Ver novidades da versão v1.5.3"
             >
-              v1.5.2
+              v1.5.3
             </button>
           </div>
 

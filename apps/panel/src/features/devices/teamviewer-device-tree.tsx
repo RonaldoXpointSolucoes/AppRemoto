@@ -1566,6 +1566,7 @@ export function TeamViewerDeviceTree({
                     {service.connectDevice && canConnect(dev.organizationId) && (
                       <ConnectDevice
                         deviceId={dev.id}
+                        peerAlias={presentation.mainTitle}
                         enabled={dev.enabled && isOnline && statusState === 'current'}
                         service={{
                           connectDevice: service.connectDevice,

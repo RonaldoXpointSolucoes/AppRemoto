@@ -15,8 +15,8 @@ export interface ConnectionService {
 }
 interface Attempt { attemptId: string; mode: ConnectionMode }
 const handoffLifetimeMs = 30_000;
-export function ConnectDevice({ deviceId, enabled, service, manual = false, rustdeskId, onEvent, onHelp, onSessionExpired, onConnectStarted, trigger }: {
-  deviceId: string; enabled: boolean; service: ConnectionService; manual?: boolean; rustdeskId?: string;
+export function ConnectDevice({ deviceId, enabled, service, manual = false, rustdeskId, peerAlias, onEvent, onHelp, onSessionExpired, onConnectStarted, trigger }: {
+  deviceId: string; enabled: boolean; service: ConnectionService; manual?: boolean; rustdeskId?: string; peerAlias?: string;
   onEvent?(event: ConnectionLogEvent): void; onHelp?(): void; onSessionExpired?(): void;
   onConnectStarted?(): void;
   trigger?: (props: { connect: () => void; pending: boolean; enabled: boolean }) => React.ReactNode;
@@ -80,7 +80,7 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
   function launch(current: Attempt, uri: string) {
     if (!valid() || !currentEnabled.current) return;
     try {
-      launchRustDesk(uri); report(current, 'launch_requested');
+      launchRustDesk(uri, peerAlias); report(current, 'launch_requested');
       setIsErrorFeedback(false);
       onConnectStarted?.();
       setMessage('Tentamos abrir o RustDesk neste computador do técnico. Confirme a abertura no navegador. A sessão ainda não foi confirmada.');
@@ -111,7 +111,7 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
       try {
         if (!valid() || scope.current !== expected || !currentEnabled.current) return;
         if ((result.attemptId && result.attemptId !== current.attemptId) || (result.mode && result.mode !== current.mode)) throw new Error('Invalid attempt');
-        let uri = manual ? manualRustDeskUri(result.launchUri, passwordInput.current?.value ?? '') : result.launchUri;
+        let uri = manual ? manualRustDeskUri(result.launchUri, passwordInput.current?.value ?? '', peerAlias) : result.launchUri;
         clearPassword(); setAttempt(current);
         handoff.current = { uri, until: Date.now() + handoffLifetimeMs, attempt: current };
         setRetryAvailable(true); timer.current = setTimeout(clearHandoff, handoffLifetimeMs);

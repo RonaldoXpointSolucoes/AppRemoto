@@ -32,11 +32,31 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.5.3',
+    date: 'Outubro 2026',
+    title: 'Apelido Coerente nas Abas do RustDesk (Nome Fantasia + Nome da Máquina)',
+    highlight: 'Envia automaticamente o apelido concatenado (ex: PANAMBY - SERVIDOR, Arthur X-Point) na URI de conexão rustdesk://connect/... e grava o alias no perfil do peer para que cada aba aberta no RustDesk exiba o nome real do cliente em vez do ID numérico + IP.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Handoff Automático de Apelido (&alias=...) na URI do RustDesk',
+        description:
+          'Toda conexão em 1 clique ou manual inclui o título coerente (Nome Fantasia + Nome da Máquina) para identificação imediata nas abas do RustDesk Desktop.',
+        tag: 'TeamViewer',
+      },
+      {
+        title: 'Sincronização de Peers RustDesk sem Sufixo @IP nas Abas',
+        description:
+          'Configura os arquivos base64 do peer (incluindo a chave ?key=... da aba de conexão por link) em UTF-8 sem BOM para exibir somente o apelido amigável na aba do RustDesk.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.5.2',
     date: 'Outubro 2026',
     title: 'Login Automático com Google & Sincronização Real de Técnicos e Convites no Appwrite',
     highlight: 'Persiste todos os membros da aba "Técnicos & Convites" diretamente no banco Appwrite (incluindo David Clemente e equipe técnica), habilita login imediato em 1 clique pelo botão "Continuar com o Google" para todos os e-mails liberados e permite cadastro/ativação direta de senha pelo link de convite.',
-    isCurrent: true,
     items: [
       {
         title: 'Login Automático com o Google para E-mails Liberados na Lista de Técnicos',
@@ -458,7 +478,7 @@ export function VersionChangelogModal({
             <div className="changelog-title-group">
               <div className="changelog-title-row">
                 <h2 id="changelog-modal-title">Novidades da Plataforma</h2>
-                <span className="changelog-current-pill">v1.4.4 · ATUAL</span>
+                <span className="changelog-current-pill">v1.5.3 · ATUAL</span>
               </div>
               <p className="changelog-subtitle">
                 Histórico de atualizações, recursos de mobilidade e melhorias de UI/UX do XPoint Remote
@@ -547,7 +567,7 @@ export function VersionChangelogModal({
         <div className="changelog-modal-footer">
           <div className="changelog-footer-info">
             <ShieldCheck size={15} className="text-emerald-400" />
-            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.4.4)</span>
+            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.5.3)</span>
           </div>
           <button type="button" className="tv-btn-primary" onClick={onClose}>
             Entendi, voltar ao painel

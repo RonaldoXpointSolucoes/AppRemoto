@@ -2,17 +2,18 @@
 
 import type { DeviceDetailsResponse, DeviceView, ConnectionHistoryEvent } from '@appremoto/contracts';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Check, Copy, Trash2, Globe, Cpu, Laptop } from 'lucide-react';
+import { Check, Copy, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { onSessionClear, sessionEpoch } from '../auth/session-cache';
 import { ApiClientError } from '../../lib/api';
 import { RustDeskServerConfig } from '../setup/rustdesk-server-config';
 import { ConnectDevice } from './connect-device';
-import { probeRustDeskApp } from './rustdesk-launch';
+import { buildRustDeskPeerAliasPowerShellCommand, probeRustDeskApp } from './rustdesk-launch';
 import { downloadConnectionLog, localEvent, stageLabels, type ConnectionLogEvent } from './connection-log';
 import type { DeviceDirectoryService } from './use-devices';
 import { formatLastSeen } from './device-record';
 import { parseSystemInfo } from './system-info';
+import { resolveCoherentDevicePresentation } from './device-presentation';
 
 export function DeviceTools({ device, service, canConnect, canManage, events, onEvent, onClose, onSaved, onSessionExpired }: {
   device: DeviceView; service: DeviceDirectoryService; canConnect: boolean; canManage: boolean;
@@ -81,8 +82,12 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
     try { probeRustDeskApp(); setProbe('Tentamos abrir o RustDesk neste computador do técnico. Confirme a abertura no navegador. Este teste não acessa o cliente.'); }
     catch { setProbe('O navegador não conseguiu abrir o RustDesk. Confira a instalação neste computador e a permissão do navegador.'); }
   }
-  const targetAlias = device.hostname || device.displayName || 'SERVER';
-  const rustdeskAliasCommand = `$id="${device.rustdeskId}"; $name="${targetAlias.replace(/"/g, '`"')}"; $b=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($id)); $p="$env:APPDATA\\RustDesk\\config\\peers\\base64_$b.toml"; New-Item -Force -Path (Split-Path $p) -ItemType Directory | Out-Null; "[options]\`ralias = '$name'" | Set-Content -Encoding utf8 $p`;
+
+  const currentDev = details?.device ?? device;
+  const coherentPresentation = resolveCoherentDevicePresentation(currentDev);
+  const targetAlias = coherentPresentation.mainTitle || currentDev.displayName || currentDev.hostname || 'SERVIDOR';
+  const rustdeskAliasCommand = buildRustDeskPeerAliasPowerShellCommand(currentDev.rustdeskId, targetAlias);
+
   function copyAliasCommand() {
     void navigator.clipboard.writeText(rustdeskAliasCommand).then(() => {
       setCopiedCommand(true);
@@ -136,7 +141,6 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
     });
   }
 
-  const currentDev = details?.device ?? device;
   const sys = parseSystemInfo(currentDev.operatingSystem, currentDev.osVersion);
   const dd = currentDev.datadivas ?? device.datadivas;
   const hasDataDivas = Boolean(
@@ -386,13 +390,13 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
         {probe && <p role="status">{probe}</p>}
 
         <div className="rustdesk-alias-box">
-          <h4>Exibição do nome no topo da janela ({targetAlias})</h4>
+          <h4>Exibição do apelido nas abas do RustDesk ({targetAlias})</h4>
           <p>
-            O RustDesk exibe o ID ou servidor no topo por padrão. Para mostrar o nome correto <strong>{targetAlias}</strong> no topo da sua aba de sessão:
+            O painel envia automaticamente o apelido concatenado <strong>{targetAlias}</strong> no link de conexão. Para gravar este nome diretamente na configuração local das abas do RustDesk neste computador:
           </p>
           <ol className="connection-checklist" style={{ margin: '4px 0', paddingLeft: '20px' }}>
-            <li>No RustDesk deste seu computador, clique nos <strong>...</strong> (três pontinhos) da conexão recente e escolha <strong>Renomear</strong>.</li>
-            <li>Ou execute este comando rápido no PowerShell do seu Windows para definir o apelido automaticamente:</li>
+            <li>Com a ponte de protocolo ativa no Windows, o apelido <strong>{targetAlias}</strong> já aparece automaticamente na aba da sessão ao clicar em Conectar.</li>
+            <li>Ou execute este comando rápido no PowerShell para gravar o apelido desta máquina imediatamente:</li>
           </ol>
           <div className="rustdesk-alias-code-wrap">
             <code className="rustdesk-alias-code">{rustdeskAliasCommand}</code>
@@ -409,7 +413,7 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
       </section>
       <section className="device-tools-section"><h3>Conectar com senha</h3>
         {device.status !== 'ONLINE' && <p>O agente está offline no painel. Você ainda pode tentar a senha manual se o RustDesk do cliente estiver aberto e pronto.</p>}
-        {service.connectDevice && canConnect ? <ConnectDevice deviceId={device.id} rustdeskId={device.rustdeskId} manual enabled={device.enabled}
+        {service.connectDevice && canConnect ? <ConnectDevice deviceId={device.id} rustdeskId={device.rustdeskId} peerAlias={targetAlias} manual enabled={device.enabled}
           service={{ connectDevice: service.connectDevice, recordConnectionEvent: service.recordConnectionEvent }} onEvent={onEvent} onSessionExpired={onSessionExpired} />
           : <p>Seu perfil não tem permissão para iniciar conexões neste cliente.</p>}
       </section>
