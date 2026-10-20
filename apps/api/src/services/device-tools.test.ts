@@ -273,3 +273,45 @@ test('details and update project DataDivas metadata from notes while keeping ope
   assert.deepEqual(updated.device.datadivas, sampleDataDivas);
   assert.ok(String(f.rows.get('devices/device')!.notes ?? '').includes('[datadivas_b64:'));
 });
+
+test('connection launch enforces per-device access password and admin-only access levels', async () => {
+  const { encodeDeviceAccessNotes, hashDeviceAccessPassword } = await import('@appremoto/contracts');
+  const f = fixture();
+  const pwHash = hashDeviceAccessPassword('Segredo123');
+  f.rows.get('devices/device')!.notes = encodeDeviceAccessNotes({
+    folderName: 'Servidores e infra',
+    adminOnlyAccess: true,
+    accessPasswordHash: pwHash,
+    notes: 'Servidor Financeiro',
+  });
+
+  const nonAdminTech = {
+    ...technician,
+    globalRole: null,
+    authorization: [{ organizationId: 'org', role: 'technician', canView: true, canConnect: true, canManageDevices: true }],
+  };
+  await assert.rejects(
+    f.service.connectWithOptions!(nonAdminTech, 'device', { mode: 'automatic', attemptId: randomUUID(), accessCode: 'Segredo123' }, '127.0.0.1'),
+    { code: 'ACCESS_DENIED' },
+  );
+
+  const adminTech = { ...technician, globalRole: 'super_admin' };
+  await assert.rejects(
+    f.service.connectWithOptions!(adminTech, 'device', { mode: 'automatic', attemptId: randomUUID() }, '127.0.0.1'),
+    { code: 'ACCESS_DENIED' },
+  );
+  await assert.rejects(
+    f.service.connectWithOptions!(adminTech, 'device', { mode: 'automatic', attemptId: randomUUID(), accessCode: 'Errada999' }, '127.0.0.1'),
+    { code: 'ACCESS_DENIED' },
+  );
+
+  const okAttemptId = randomUUID();
+  const launch = await f.service.connectWithOptions!(
+    adminTech,
+    'device',
+    { mode: 'automatic', attemptId: okAttemptId, accessCode: 'Segredo123' },
+    '127.0.0.1',
+  );
+  assert.equal(launch.attemptId, okAttemptId);
+  assert.ok(launch.launchUri.startsWith('rustdesk://connect/'));
+});

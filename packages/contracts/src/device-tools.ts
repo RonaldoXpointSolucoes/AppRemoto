@@ -3,7 +3,7 @@ import { DeviceViewSchema } from './devices.ts';
 
 export const ConnectionModeSchema = z.enum(['automatic', 'manual']);
 export type ConnectionMode = z.infer<typeof ConnectionModeSchema>;
-export const ConnectDeviceRequestSchema = z.object({ mode: ConnectionModeSchema, attemptId: z.uuid() }).strict();
+export const ConnectDeviceRequestSchema = z.object({ mode: ConnectionModeSchema, attemptId: z.uuid(), accessCode: z.string().trim().min(1).max(128).optional() }).strict();
 // Both forms use the approved RustDesk server. Only automatic handoff carries a password.
 export const ConnectDeviceLaunchResponseSchema = z.object({
   launchUri: z.string().max(2048).regex(/^rustdesk:\/\/connect\/[0-9]{6,16}@179\.199\.142\.157:21116\?key=[A-Za-z0-9%]+(?:&password=[A-Za-z0-9_.!~*'()%+-]+)?$/),

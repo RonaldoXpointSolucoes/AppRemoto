@@ -164,6 +164,12 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
       || Boolean(profile.data?.authorization.some((permission) => permission.organizationId === organizationId && permission.canConnect))),
     canManage: (organizationId: string) => currentSession && !profile.isError && (profile.data?.globalRole === 'super_admin'
       || Boolean(profile.data?.authorization.some((permission) => permission.organizationId === organizationId && permission.canManageDevices))),
+    isAdmin: (organizationId?: string) => currentSession && !profile.isError && (
+      profile.data?.globalRole === 'super_admin' ||
+      Boolean(organizationId && profile.data?.authorization.some(
+        (permission) => permission.organizationId === organizationId && (permission.role === 'admin' || permission.role === 'super_admin')
+      ))
+    ),
     profile: profile.data,
     organizations,
     devices,

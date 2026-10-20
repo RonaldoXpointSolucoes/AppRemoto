@@ -1,4 +1,4 @@
-import { ConnectDeviceRequestSchema, ConnectDeviceLaunchResponseSchema, type ConnectDeviceRequest,
+import { ConnectDeviceRequestSchema, ConnectDeviceLaunchResponseSchema, extractDeviceAccessPolicy, verifyDeviceAccessPassword, type ConnectDeviceRequest,
   type ConnectDeviceLaunchResponse, type ConnectDeviceResponse } from '@appremoto/contracts';
 import type { AuthenticatedTechnician } from '../plugins/technician-auth.ts';
 import type { EnrollmentRepository } from '../repositories/enrollment.ts';
@@ -19,7 +19,7 @@ interface Dependencies {
 export function createConnectionLaunch(deps: Dependencies): ConnectWithOptions {
   const now = deps.now ?? (() => new Date());
   return async (technician, deviceId, input, sourceIp) => {
-    const request = ConnectDeviceRequestSchema.parse(input);
+    const { accessCode, ...request } = ConnectDeviceRequestSchema.parse(input);
     const device = await deps.repository.snapshot('devices', deviceId);
     const organization = technician.organizations.find((item) => item.id === device?.organization_id && item.active);
     const permission = technician.authorization.find((item) => item.organizationId === organization?.id);
@@ -31,6 +31,19 @@ export function createConnectionLaunch(deps: Dependencies): ConnectWithOptions {
     let response: ConnectDeviceLaunchResponse;
     try {
       if (!permission.canConnect || device.enabled !== true) throw new DeviceToolError('ACCESS_DENIED', 403);
+      const policy = extractDeviceAccessPolicy(typeof device.notes === 'string' ? device.notes : null);
+      if (policy.adminOnlyAccess) {
+        const isAdmin =
+          technician.globalRole === 'super_admin' ||
+          permission.role === 'admin' ||
+          permission.role === 'super_admin';
+        if (!isAdmin) throw new DeviceToolError('ACCESS_DENIED', 403);
+      }
+      if (policy.requiresAccessPassword) {
+        if (!accessCode || !verifyDeviceAccessPassword(accessCode, policy.accessPasswordHash)) {
+          throw new DeviceToolError('ACCESS_DENIED', 403);
+        }
+      }
       if (typeof device.rustdesk_id !== 'string' || !/^[0-9]{6,16}$/.test(device.rustdesk_id)) {
         throw new DeviceToolError('INVALID_RUSTDESK_ID', 409);
       }

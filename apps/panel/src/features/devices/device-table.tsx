@@ -36,6 +36,7 @@ import {
   saveRecentConnection,
   filterDevicesByCategory,
   getDeviceFolderName,
+  getDeviceProtectionState,
   getFavoriteDeviceIds,
   generateSessionProtocol,
   detectClientTelemetry,
@@ -53,33 +54,44 @@ import { TechnicianManagementView } from '../technicians/technician-management-v
 
 export type { DeviceDirectoryService } from './use-devices';
 
-function DeviceRows({ devices, statusState, service, canConnect, canManage, onDetails, onDeletePrompt, onEvent, onSessionExpired, onSessionStarted }: {
+function DeviceRows({ devices, statusState, service, canConnect, canManage, isAdmin, onDetails, onDeletePrompt, onEvent, onSessionExpired, onSessionStarted }: {
   devices: DeviceView[]; statusState: DeviceStatusState; service: DeviceDirectoryService;
   canConnect(organizationId: string): boolean; canManage(organizationId: string): boolean;
+  isAdmin?(organizationId: string): boolean;
   onDetails(device: DeviceView): void; onDeletePrompt(device: DeviceView): void;
   onEvent(deviceId: string, event: ConnectionLogEvent): void; onSessionExpired(): void;
   onSessionStarted?(device: DeviceView): void;
 }) {
-  const action = (device: DeviceView) => <div className="device-actions">
-    {service.connectDevice && canConnect(device.organizationId) && (
-      <ConnectDevice
-        deviceId={device.id}
-        peerAlias={resolveCoherentDevicePresentation(device, getDeviceFolderName(device)).mainTitle}
-        enabled={device.enabled && device.status === 'ONLINE' && statusState === 'current'}
-        service={{ connectDevice: service.connectDevice, recordConnectionEvent: service.recordConnectionEvent }}
-        onEvent={(event) => onEvent(device.id, event)}
-        onHelp={() => onDetails(device)}
-        onSessionExpired={onSessionExpired}
-        onConnectStarted={() => onSessionStarted?.(device)}
-      />
-    )}
-    <div className="device-action-row">
-      {service.getDeviceDetails && service.getConnectionHistory && <button type="button" className="text-button" onClick={() => onDetails(device)}>Detalhes e opções</button>}
-      {service.deleteDevice && canManage(device.organizationId) && <button type="button" className="danger-icon-button" title={`Excluir ${device.displayName}`} aria-label={`Excluir ${device.displayName}`} onClick={() => onDeletePrompt(device)}>
-        <Trash2 size={16} aria-hidden="true" />
-      </button>}
-    </div>
-  </div>;
+  const action = (device: DeviceView) => {
+    const protection = getDeviceProtectionState(device);
+    const userIsAdmin = isAdmin ? isAdmin(device.organizationId) : canManage(device.organizationId);
+    const adminOnlyBlocked = protection.adminOnlyAccess && !userIsAdmin;
+    const title = resolveCoherentDevicePresentation(device, getDeviceFolderName(device)).mainTitle;
+    return <div className="device-actions">
+      {service.connectDevice && canConnect(device.organizationId) && (
+        <ConnectDevice
+          deviceId={device.id}
+          peerAlias={title}
+          deviceDisplayName={title}
+          requiresAccessPassword={protection.requiresAccessPassword}
+          accessPasswordHash={protection.accessPasswordHash}
+          adminOnlyBlocked={adminOnlyBlocked}
+          enabled={device.enabled && device.status === 'ONLINE' && statusState === 'current'}
+          service={{ connectDevice: service.connectDevice, recordConnectionEvent: service.recordConnectionEvent }}
+          onEvent={(event) => onEvent(device.id, event)}
+          onHelp={() => onDetails(device)}
+          onSessionExpired={onSessionExpired}
+          onConnectStarted={() => onSessionStarted?.(device)}
+        />
+      )}
+      <div className="device-action-row">
+        {service.getDeviceDetails && service.getConnectionHistory && <button type="button" className="text-button" onClick={() => onDetails(device)}>Detalhes e opções</button>}
+        {service.deleteDevice && canManage(device.organizationId) && <button type="button" className="danger-icon-button" title={`Excluir ${device.displayName}`} aria-label={`Excluir ${device.displayName}`} onClick={() => onDeletePrompt(device)}>
+          <Trash2 size={16} aria-hidden="true" />
+        </button>}
+      </div>
+    </div>;
+  };
   return <>
     <div className="device-table-wrap">
       <table className="device-table" aria-label="Dispositivos remotos">
@@ -193,7 +205,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   useEffect(() => {
     emitToChatbotHost({
       type: 'XPOINT_REMOTE_READY',
-      version: 'v1.5.4',
+      version: 'v1.5.5',
       embedded: isEmbedMode,
       authenticated: true,
       activeCnpj: chatbotContextRef.current?.cnpj ?? null,
@@ -207,7 +219,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       if (action.action === 'PING') {
         emitToChatbotHost({
           type: 'XPOINT_REMOTE_PONG',
-          version: 'v1.5.4',
+          version: 'v1.5.5',
           authenticated: true,
           activeCnpj: chatbotContextRef.current?.cnpj ?? null,
           timestamp: new Date().toISOString(),
@@ -509,10 +521,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={() => setIsChangelogOpen(true)}
-                title="Clique para ver todas as novidades da versão v1.5.4"
-                aria-label="Ver novidades da versão v1.5.4 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.5.5"
+                aria-label="Ver novidades da versão v1.5.5 (mobile)"
               >
-                v1.5.4
+                v1.5.5
               </button>
             </div>
           </div>
@@ -580,10 +592,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.5.4"
-              aria-label="Ver novidades da versão v1.5.4"
+              title="Clique para ver todas as novidades da versão v1.5.5"
+              aria-label="Ver novidades da versão v1.5.5"
             >
-              v1.5.4
+              v1.5.5
             </button>
           </div>
 
@@ -863,14 +875,15 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                             currentUserId={activeUserId}
                             onOpenCnpjGroup={service.getCnpjGroups ? (cnpj) => setCnpjModalFilter(cnpj) : undefined}
                             searchQuery={filters.search}
+                            isAdmin={query.isAdmin}
                           />
                           {/* Tabela mantida acessível no DOM para leitores e testes de conformidade */}
                           <div style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
-                            <DeviceRows devices={displayedDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
+                            <DeviceRows devices={displayedDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} isAdmin={query.isAdmin} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
                           </div>
                         </>
                       ) : (
-                        <DeviceRows devices={displayedDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
+                        <DeviceRows devices={displayedDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} isAdmin={query.isAdmin} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
                       )}
                     </>
                   )}

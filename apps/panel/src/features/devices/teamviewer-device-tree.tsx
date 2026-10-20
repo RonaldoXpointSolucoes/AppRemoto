@@ -26,6 +26,9 @@ import {
   Layers,
   ChevronDown,
   ChevronUp,
+  KeyRound,
+  Lock,
+  ShieldAlert,
 } from 'lucide-react';
 import { ConnectDevice } from './connect-device';
 import type { ConnectionLogEvent } from './connection-log';
@@ -45,6 +48,8 @@ import {
   encodeDeviceNotes,
   saveDeviceCustomMetadata,
   getCustomMetadataMap,
+  getDeviceProtectionState,
+  hashDeviceAccessPassword,
   getDeviceFolderName,
   getFavoriteDeviceIds,
   toggleFavoriteDeviceId,
@@ -454,6 +459,7 @@ export function TeamViewerDeviceTree({
   currentUserId = null,
   onOpenCnpjGroup,
   searchQuery = '',
+  isAdmin,
 }: {
   devices: DeviceView[];
   statusState: DeviceStatusState;
@@ -472,6 +478,7 @@ export function TeamViewerDeviceTree({
   currentUserId?: string | null;
   onOpenCnpjGroup?(cnpj: string): void;
   searchQuery?: string;
+  isAdmin?(organizationId: string): boolean;
 }) {
   const initialTreePrefs = useMemo(() => getUserViewPreferences(currentUserId), [currentUserId]);
   const loadedTreeUserRef = useRef<string | null>(currentUserId);
@@ -525,6 +532,10 @@ export function TeamViewerDeviceTree({
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editFolderId, setEditFolderId] = useState('');
   const [editNotes, setEditNotes] = useState('');
+  const [editAdminOnlyAccess, setEditAdminOnlyAccess] = useState(false);
+  const [editAccessPasswordHash, setEditAccessPasswordHash] = useState<string | null>(null);
+  const [editNewAccessPassword, setEditNewAccessPassword] = useState('');
+  const [editClearAccessPassword, setEditClearAccessPassword] = useState(false);
   const [isSavingDevice, setIsSavingDevice] = useState(false);
   const [deviceSaveError, setDeviceSaveError] = useState('');
 
@@ -722,8 +733,11 @@ export function TeamViewerDeviceTree({
         const metaMap = getCustomMetadataMap();
         const currentRaw = getDeviceNotes(device, metaMap);
         const currentMeta = parseDeviceNotes(currentRaw);
+        const currentProtection = getDeviceProtectionState(device, metaMap);
         const encoded = encodeDeviceNotes({
           folderName: targetFolderName,
+          adminOnlyAccess: currentProtection.adminOnlyAccess,
+          accessPasswordHash: currentProtection.accessPasswordHash,
           notes: currentMeta.notes,
         });
         await service.updateDevice(device.id, {
@@ -747,7 +761,12 @@ export function TeamViewerDeviceTree({
     const metaMap = getCustomMetadataMap();
     const rawNotes = getDeviceNotes(device, metaMap);
     const parsedNotes = parseDeviceNotes(rawNotes);
+    const protection = getDeviceProtectionState(device, metaMap);
     setEditNotes(parsedNotes.notes || '');
+    setEditAdminOnlyAccess(protection.adminOnlyAccess);
+    setEditAccessPasswordHash(protection.accessPasswordHash);
+    setEditNewAccessPassword('');
+    setEditClearAccessPassword(false);
 
     if (parsedNotes.folderName) {
       const match = groups.find(
@@ -779,6 +798,8 @@ export function TeamViewerDeviceTree({
         if (details?.notes) {
           const freshMeta = parseDeviceNotes(details.notes);
           setEditNotes(freshMeta.notes || '');
+          setEditAdminOnlyAccess(freshMeta.adminOnlyAccess);
+          setEditAccessPasswordHash(freshMeta.accessPasswordHash);
           if (freshMeta.folderName) {
             const match = groups.find(
               (g) => g.name.toLowerCase() === freshMeta.folderName!.toLowerCase()
@@ -816,16 +837,26 @@ export function TeamViewerDeviceTree({
         hostname: editingDevice.hostname,
       });
 
+      const nextPasswordHash = editNewAccessPassword.trim()
+        ? hashDeviceAccessPassword(editNewAccessPassword.trim())
+        : editClearAccessPassword
+          ? null
+          : editAccessPasswordHash;
+
       saveDeviceCustomMetadata(editingDevice.id, {
         displayName: trimmedName,
         folderId: editFolderId,
         notes: editNotes.trim(),
+        adminOnlyAccess: editAdminOnlyAccess,
+        accessPasswordHash: nextPasswordHash,
       });
 
       // 2. Persiste na API / MariaDB
       if (service.updateDevice) {
         const encoded = encodeDeviceNotes({
           folderName: targetFolderName,
+          adminOnlyAccess: editAdminOnlyAccess,
+          accessPasswordHash: nextPasswordHash,
           notes: editNotes.trim(),
         });
 
@@ -881,8 +912,11 @@ export function TeamViewerDeviceTree({
         try {
           const raw = getDeviceNotes(dev, metaMap);
           const meta = parseDeviceNotes(raw);
+          const protection = getDeviceProtectionState(dev, metaMap);
           const encoded = encodeDeviceNotes({
             folderName: trimmed,
+            adminOnlyAccess: protection.adminOnlyAccess,
+            accessPasswordHash: protection.accessPasswordHash,
             notes: meta.notes,
           });
           await service.updateDevice(dev.id, {
@@ -1216,6 +1250,9 @@ export function TeamViewerDeviceTree({
             const folderName = getDeviceFolderName(dev, groups);
             const rec = recents.find((r) => r.deviceId === dev.id || r.rustdeskId === dev.rustdeskId);
             const presentation = resolveCoherentDevicePresentation(dev, folderName);
+            const protection = getDeviceProtectionState(dev, customMetaMap);
+            const userIsAdmin = isAdmin ? isAdmin(dev.organizationId) : canManage(dev.organizationId);
+            const adminOnlyBlocked = protection.adminOnlyAccess && !userIsAdmin;
 
             return (
               <div
@@ -1264,6 +1301,32 @@ export function TeamViewerDeviceTree({
                         <Pencil size={12} />
                       </button>
                       {isFavorite && <span className="tv-badge-pinned">Fixado</span>}
+                      {protection.adminOnlyAccess && (
+                        <span
+                          className="tv-badge-pinned"
+                          style={{
+                            background: 'rgba(244, 63, 94, 0.16)',
+                            color: '#fda4af',
+                            borderColor: 'rgba(244, 63, 94, 0.38)',
+                          }}
+                          title="Esta máquina só pode ser acessada por Administradores"
+                        >
+                          🛡️ Somente Admin
+                        </span>
+                      )}
+                      {protection.requiresAccessPassword && (
+                        <span
+                          className="tv-badge-pinned"
+                          style={{
+                            background: 'rgba(245, 158, 11, 0.16)',
+                            color: '#fcd34d',
+                            borderColor: 'rgba(245, 158, 11, 0.38)',
+                          }}
+                          title="Exige Senha de Acesso ao clicar em Conectar"
+                        >
+                          🔑 Senha
+                        </span>
+                      )}
                     </div>
 
                     {/* Linha 2 (Subtítulo Menor Abaixo): Contexto Fantasia/Empresa + Host/Pasta + Opção "Ver detalhes" */}
@@ -1593,6 +1656,10 @@ export function TeamViewerDeviceTree({
                       <ConnectDevice
                         deviceId={dev.id}
                         peerAlias={presentation.mainTitle}
+                        deviceDisplayName={presentation.mainTitle}
+                        requiresAccessPassword={protection.requiresAccessPassword}
+                        accessPasswordHash={protection.accessPasswordHash}
+                        adminOnlyBlocked={adminOnlyBlocked}
                         enabled={dev.enabled && isOnline && statusState === 'current'}
                         service={{
                           connectDevice: service.connectDevice,
@@ -1608,15 +1675,29 @@ export function TeamViewerDeviceTree({
                             className={`tv-btn-connect-tv ${isOnline ? 'online' : 'offline'}`}
                             disabled={!enabled || pending}
                             onClick={connect}
-                            title={!enabled ? 'Aguarde o dispositivo ficar online' : `Conectar a ${dev.displayName}`}
+                            title={
+                              adminOnlyBlocked
+                                ? 'Acesso restrito somente a Administradores'
+                                : !enabled
+                                  ? 'Aguarde o dispositivo ficar online'
+                                  : protection.requiresAccessPassword
+                                    ? `Conectar a ${dev.displayName} (exige Senha de Acesso)`
+                                    : `Conectar a ${dev.displayName}`
+                            }
                             aria-label={`Conectar a ${dev.displayName}`}
                           >
                             {pending ? (
                               <Loader2 size={18} className="animate-spin text-primary" />
+                            ) : adminOnlyBlocked ? (
+                              <ShieldAlert size={16} className="text-rose-400" />
+                            ) : protection.requiresAccessPassword ? (
+                              <KeyRound size={16} className="text-amber-400" />
                             ) : (
                               <ArrowLeftRight size={18} className="tv-connect-arrows" />
                             )}
-                            <span className="tv-connect-label">Conectar</span>
+                            <span className="tv-connect-label">
+                              {adminOnlyBlocked ? 'Só Admin' : 'Conectar'}
+                            </span>
                           </button>
                         )}
                       />
@@ -2044,6 +2125,112 @@ export function TeamViewerDeviceTree({
                 <span className="tv-field-hint">
                   Informações visíveis aos técnicos sobre esta estação de trabalho.
                 </span>
+              </div>
+
+              <div
+                style={{
+                  marginTop: 4,
+                  padding: '12px 14px',
+                  borderRadius: 10,
+                  background: 'rgba(15, 23, 42, 0.55)',
+                  border: '1px solid rgba(245, 158, 11, 0.28)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.84rem', fontWeight: 700, color: '#fcd34d' }}>
+                    <Lock size={14} />
+                    Controle de Acesso & Senha da Máquina
+                  </span>
+                  {editAccessPasswordHash && !editClearAccessPassword && (
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        background: 'rgba(16, 185, 129, 0.16)',
+                        color: '#6ee7b7',
+                        border: '1px solid rgba(16, 185, 129, 0.35)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      🔑 Senha Ativa
+                    </span>
+                  )}
+                </div>
+
+                <div className="tv-form-field" style={{ margin: 0 }}>
+                  <label htmlFor="edit-access-password-input" className="tv-field-label">
+                    Senha de Acesso (exigida ao clicar em Conectar):
+                  </label>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input
+                      id="edit-access-password-input"
+                      type="password"
+                      className="tv-text-input"
+                      value={editNewAccessPassword}
+                      onChange={(e) => {
+                        setEditNewAccessPassword(e.target.value);
+                        if (e.target.value.trim()) setEditClearAccessPassword(false);
+                      }}
+                      placeholder={
+                        editAccessPasswordHash && !editClearAccessPassword
+                          ? 'Digite nova senha para alterar (ou deixe em branco para manter)...'
+                          : 'Ex: definir senha de acesso para esta máquina (opcional)...'
+                      }
+                      autoComplete="new-password"
+                    />
+                    {editAccessPasswordHash && !editClearAccessPassword && (
+                      <button
+                        type="button"
+                        className="tv-btn-secondary"
+                        style={{ whiteSpace: 'nowrap', padding: '8px 10px', fontSize: '0.78rem' }}
+                        onClick={() => {
+                          setEditClearAccessPassword(true);
+                          setEditNewAccessPassword('');
+                        }}
+                        title="Remover exigência de senha de acesso desta máquina"
+                      >
+                        Remover Senha
+                      </button>
+                    )}
+                  </div>
+                  <span className="tv-field-hint">
+                    {editClearAccessPassword
+                      ? '⚠️ A senha de acesso será removida ao salvar (voltará para conexão direta em 1 clique).'
+                      : 'Se definida, o sistema exigirá esta senha antes de abrir a conexão remota (a senha interna automática do RustDesk permanece intacta).'}
+                  </span>
+                </div>
+
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 9,
+                    cursor: 'pointer',
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    background: editAdminOnlyAccess ? 'rgba(244, 63, 94, 0.12)' : 'rgba(30, 41, 59, 0.45)',
+                    border: editAdminOnlyAccess ? '1px solid rgba(244, 63, 94, 0.35)' : '1px solid rgba(148, 163, 184, 0.15)',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={editAdminOnlyAccess}
+                    onChange={(e) => setEditAdminOnlyAccess(e.target.checked)}
+                    style={{ marginTop: 3 }}
+                  />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ fontSize: '0.84rem', fontWeight: 600, color: editAdminOnlyAccess ? '#fda4af' : 'var(--text-primary)' }}>
+                      🛡️ Acesso restrito somente a Administrador
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.35 }}>
+                      Quando marcado, apenas usuários com perfil de Administrador podem iniciar conexão remota nesta máquina.
+                    </span>
+                  </div>
+                </label>
               </div>
 
               <div className="tv-modal-actions">

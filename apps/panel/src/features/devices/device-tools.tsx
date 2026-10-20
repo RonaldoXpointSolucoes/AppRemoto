@@ -14,6 +14,7 @@ import type { DeviceDirectoryService } from './use-devices';
 import { formatLastSeen } from './device-record';
 import { parseSystemInfo } from './system-info';
 import { resolveCoherentDevicePresentation } from './device-presentation';
+import { parseDeviceNotes, encodeDeviceNotes, hashDeviceAccessPassword, saveDeviceCustomMetadata } from './teamviewer-storage';
 
 export function DeviceTools({ device, service, canConnect, canManage, events, onEvent, onClose, onSaved, onSessionExpired }: {
   device: DeviceView; service: DeviceDirectoryService; canConnect: boolean; canManage: boolean;
@@ -28,6 +29,11 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
   const [editing, setEditing] = useState(false);
   const [displayName, setDisplayName] = useState(device.displayName);
   const [notes, setNotes] = useState('');
+  const [folderName, setFolderName] = useState<string | undefined>(undefined);
+  const [adminOnlyAccess, setAdminOnlyAccess] = useState(false);
+  const [accessPasswordHash, setAccessPasswordHash] = useState<string | null>(null);
+  const [newAccessPassword, setNewAccessPassword] = useState('');
+  const [clearAccessPassword, setClearAccessPassword] = useState(false);
   const [message, setMessage] = useState('');
   const [readError, setReadError] = useState(false);
   const [probe, setProbe] = useState('');
@@ -58,7 +64,17 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
     void Promise.allSettled([service.getDeviceDetails!(device.id), service.getConnectionHistory!(device.id)]).then(([detail, log]) => {
       if (cancelled || !active.current || epoch !== sessionEpoch(client)) return;
       if ([detail, log].some((result) => result.status === 'rejected' && result.reason instanceof ApiClientError && result.reason.status === 401) && expiredRef.current) { expiredRef.current(); return; }
-      if (detail.status === 'fulfilled') { setDetails(detail.value); setDisplayName(detail.value.device.displayName); setNotes(detail.value.notes); }
+      if (detail.status === 'fulfilled') {
+        const parsed = parseDeviceNotes(detail.value.notes);
+        setDetails(detail.value);
+        setDisplayName(detail.value.device.displayName);
+        setNotes(parsed.notes);
+        setFolderName(parsed.folderName);
+        setAdminOnlyAccess(parsed.adminOnlyAccess);
+        setAccessPasswordHash(parsed.accessPasswordHash);
+        setNewAccessPassword('');
+        setClearAccessPassword(false);
+      }
       else { setReadError(true); eventRef.current(localEvent(crypto.randomUUID(), 'automatic', 'details_unavailable', 'DETAILS_UNAVAILABLE')); }
       if (log.status === 'fulfilled') setHistory(log.value.events);
       else { setReadError(true); eventRef.current(localEvent(crypto.randomUUID(), 'automatic', 'history_unavailable', 'HISTORY_UNAVAILABLE')); }
@@ -71,8 +87,28 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
     if (!canManage || !service.updateDevice || busy || !current()) return;
     setBusy(true); setMessage('');
     try {
-      const result = await service.updateDevice(device.id, { displayName: displayName.trim(), notes: notes.trim() });
+      const nextPasswordHash = newAccessPassword.trim()
+        ? hashDeviceAccessPassword(newAccessPassword.trim())
+        : clearAccessPassword
+          ? null
+          : accessPasswordHash;
+      const encodedNotes = encodeDeviceNotes({
+        folderName,
+        adminOnlyAccess,
+        accessPasswordHash: nextPasswordHash,
+        notes: notes.trim(),
+      });
+      saveDeviceCustomMetadata(device.id, {
+        displayName: displayName.trim(),
+        notes: notes.trim(),
+        adminOnlyAccess,
+        accessPasswordHash: nextPasswordHash,
+      });
+      const result = await service.updateDevice(device.id, { displayName: displayName.trim(), notes: encodedNotes });
       if (!current()) return;
+      setAccessPasswordHash(nextPasswordHash);
+      setNewAccessPassword('');
+      setClearAccessPassword(false);
       setDetails((old) => old ? { ...old, ...result } : old); setEditing(false);
       setMessage('Dados do computador atualizados.'); onSaved();
     } catch (error) { if (current() && error instanceof ApiClientError && error.status === 401 && expiredRef.current) { expiredRef.current(); return; } if (current()) setMessage(error instanceof ApiClientError && error.code === 'DEVICE_BUSY' ? 'O computador está atualizando a comunicação com o painel. Aguarde alguns segundos e salve novamente.' : 'Não foi possível salvar. Confira a conexão e sua permissão antes de tentar novamente.'); }
@@ -423,9 +459,41 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
           <label className="field">Nome do computador<input value={displayName} required maxLength={128} disabled={busy} onChange={(event) => setDisplayName(event.target.value)} /></label>
           <label className="field">Observações<textarea value={notes} maxLength={2048} rows={4} disabled={busy} onChange={(event) => setNotes(event.target.value)} /></label>
           <p>Use para contato, localização e instruções de atendimento. Não inclua senhas.</p>
+          <label className="field">Senha de Acesso ao Conectar (opcional)
+            <input
+              type="password"
+              value={newAccessPassword}
+              disabled={busy}
+              placeholder={accessPasswordHash && !clearAccessPassword ? 'Digite nova senha para alterar (ou deixe em branco para manter)...' : 'Definir senha de acesso ao clicar em Conectar...'}
+              onChange={(event) => {
+                setNewAccessPassword(event.target.value);
+                if (event.target.value.trim()) setClearAccessPassword(false);
+              }}
+            />
+          </label>
+          {accessPasswordHash && !clearAccessPassword && (
+            <div>
+              <button type="button" className="command-button" disabled={busy} onClick={() => { setClearAccessPassword(true); setNewAccessPassword(''); }}>
+                Remover senha de acesso atual
+              </button>
+            </div>
+          )}
+          <label className="field" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <input type="checkbox" checked={adminOnlyAccess} disabled={busy} onChange={(event) => setAdminOnlyAccess(event.target.checked)} />
+            <span>Acesso restrito somente a Administrador</span>
+          </label>
           <div className="device-inline-actions"><button className="primary-button" disabled={busy || !canManage || !displayName.trim()} type="submit">Salvar alterações</button>
-          <button className="command-button" type="button" disabled={busy} onClick={() => { setEditing(false); setDisplayName(details?.device.displayName ?? device.displayName); setNotes(details?.notes ?? ''); }}>Cancelar edição</button></div>
-        </form> : <><p className="device-notes">{details?.notes || 'Nenhuma observação cadastrada.'}</p><p>Agente: {device.agentVersion ?? 'não informado'} · RustDesk: {device.rustdeskVersion ?? 'não informado'}</p></>}
+          <button className="command-button" type="button" disabled={busy} onClick={() => {
+            const parsed = parseDeviceNotes(details?.notes ?? '');
+            setEditing(false);
+            setDisplayName(details?.device.displayName ?? device.displayName);
+            setNotes(parsed.notes);
+            setAdminOnlyAccess(parsed.adminOnlyAccess);
+            setAccessPasswordHash(parsed.accessPasswordHash);
+            setNewAccessPassword('');
+            setClearAccessPassword(false);
+          }}>Cancelar edição</button></div>
+        </form> : <><p className="device-notes">{parseDeviceNotes(details?.notes).notes || 'Nenhuma observação cadastrada.'}</p><p>Agente: {device.agentVersion ?? 'não informado'} · RustDesk: {device.rustdeskVersion ?? 'não informado'}</p></>}
         {message && <p role="status">{message}</p>}
       </section>
       <section className="device-tools-section"><div className="device-section-heading"><h3>Diagnóstico e tentativas</h3>

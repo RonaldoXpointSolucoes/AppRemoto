@@ -1,5 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
-import { DeviceViewSchema, extractDataDivasFromNotes, type DeviceListQuery, type DeviceView } from '@appremoto/contracts';
+import { DeviceViewSchema, extractDataDivasFromNotes, extractDeviceAccessPolicy, type DeviceListQuery, type DeviceView } from '@appremoto/contracts';
 
 import type { AuthenticatedTechnician } from '../plugins/technician-auth.ts';
 import type { DeviceRecord, DeviceRepository } from '../repositories/devices.ts';
@@ -37,7 +37,8 @@ function viewOf(record: DeviceRecord, organizationName: string, snapshotTime: st
   const currentAge = currentRequestTime.getTime() - seen;
   const online = record.enabled && Number.isFinite(seen) && seen <= currentRequestTime.getTime() &&
     (seen > snapshotAt ? currentAge <= 90_000 : snapshotAge >= 0 && snapshotAge <= 90_000);
-  const { datadivas } = extractDataDivasFromNotes(record.notes);
+  const { datadivas, cleanNotes } = extractDataDivasFromNotes(record.notes);
+  const policy = extractDeviceAccessPolicy(cleanNotes);
   return DeviceViewSchema.parse({
     id: record.id, ...(record.createdAt ? { createdAt: record.createdAt } : {}), organizationId: record.organizationId, organizationName,
     deviceUuid: record.deviceUuid, displayName: record.displayName, hostname: record.hostname,
@@ -48,6 +49,9 @@ function viewOf(record: DeviceRecord, organizationName: string, snapshotTime: st
     enabled: record.enabled,
     status: online ? 'ONLINE' : 'OFFLINE',
     ...(datadivas ? { datadivas } : {}),
+    ...(cleanNotes ? { notes: cleanNotes } : {}),
+    ...(policy.requiresAccessPassword ? { requiresAccessPassword: true } : {}),
+    ...(policy.adminOnlyAccess ? { adminOnlyAccess: true } : {}),
   });
 }
 

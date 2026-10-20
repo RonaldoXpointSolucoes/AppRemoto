@@ -1,7 +1,7 @@
 'use client';
 
-import type { ConnectionEventInput, ConnectionMode } from '@appremoto/contracts';
-import { MonitorUp, X } from 'lucide-react';
+import { verifyDeviceAccessPassword, type ConnectionEventInput, type ConnectionMode } from '@appremoto/contracts';
+import { KeyRound, Lock, MonitorUp, ShieldAlert, X } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiClientError } from '../../lib/api';
@@ -10,14 +10,41 @@ import { launchRustDesk, manualRustDeskUri } from './rustdesk-launch';
 import { localEvent, safeConnectionCode, type ConnectionLogEvent } from './connection-log';
 
 export interface ConnectionService {
-  connectDevice(deviceId: string, options: { mode: ConnectionMode; attemptId: string }): Promise<{ launchUri: string; attemptId?: string; mode?: ConnectionMode }>;
+  connectDevice(deviceId: string, options: { mode: ConnectionMode; attemptId: string; accessCode?: string }): Promise<{ launchUri: string; attemptId?: string; mode?: ConnectionMode }>;
   recordConnectionEvent?(deviceId: string, input: ConnectionEventInput): Promise<{ recorded: boolean }>;
 }
 interface Attempt { attemptId: string; mode: ConnectionMode }
 const handoffLifetimeMs = 30_000;
-export function ConnectDevice({ deviceId, enabled, service, manual = false, rustdeskId, peerAlias, onEvent, onHelp, onSessionExpired, onConnectStarted, trigger }: {
-  deviceId: string; enabled: boolean; service: ConnectionService; manual?: boolean; rustdeskId?: string; peerAlias?: string;
-  onEvent?(event: ConnectionLogEvent): void; onHelp?(): void; onSessionExpired?(): void;
+export function ConnectDevice({
+  deviceId,
+  enabled,
+  service,
+  manual = false,
+  rustdeskId,
+  peerAlias,
+  requiresAccessPassword = false,
+  accessPasswordHash = null,
+  adminOnlyBlocked = false,
+  deviceDisplayName,
+  onEvent,
+  onHelp,
+  onSessionExpired,
+  onConnectStarted,
+  trigger,
+}: {
+  deviceId: string;
+  enabled: boolean;
+  service: ConnectionService;
+  manual?: boolean;
+  rustdeskId?: string;
+  peerAlias?: string;
+  requiresAccessPassword?: boolean;
+  accessPasswordHash?: string | null;
+  adminOnlyBlocked?: boolean;
+  deviceDisplayName?: string;
+  onEvent?(event: ConnectionLogEvent): void;
+  onHelp?(): void;
+  onSessionExpired?(): void;
   onConnectStarted?(): void;
   trigger?: (props: { connect: () => void; pending: boolean; enabled: boolean }) => React.ReactNode;
 }) {
@@ -28,6 +55,9 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
   const [attempt, setAttempt] = useState<Attempt>();
   const [dismissed, setDismissed] = useState(false);
   const [isErrorFeedback, setIsErrorFeedback] = useState(false);
+  const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
+  const [typedAccessPassword, setTypedAccessPassword] = useState('');
+  const [accessPasswordError, setAccessPasswordError] = useState('');
   const passwordInput = useRef<HTMLInputElement>(null);
   const lock = useRef(false);
   const active = useRef(false);
@@ -97,7 +127,7 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
       setMessage('O navegador não conseguiu abrir o RustDesk. Use as instruções abaixo.');
     }
   }
-  async function connect(event?: FormEvent) {
+  async function executeConnect(event?: FormEvent, verifiedAccessCode?: string) {
     event?.preventDefault();
     if (!enabled || lock.current || !valid()) return;
     if (manual && !passwordInput.current?.value) return;
@@ -107,7 +137,8 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
     const expected = scope.current;
     setAttempt(undefined); append(localEvent(current.attemptId, current.mode, 'authorization_requested', 'AUTHORIZATION_REQUESTED'));
     try {
-      const result = await service.connectDevice(deviceId, current);
+      const payload = verifiedAccessCode ? { ...current, accessCode: verifiedAccessCode } : current;
+      const result = await service.connectDevice(deviceId, payload);
       try {
         if (!valid() || scope.current !== expected || !currentEnabled.current) return;
         if ((result.attemptId && result.attemptId !== current.attemptId) || (result.mode && result.mode !== current.mode)) throw new Error('Invalid attempt');
@@ -122,9 +153,50 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
         if (error instanceof ApiClientError && error.status === 401 && onSessionExpired) { onSessionExpired(); return; }
         append(localEvent(current.attemptId, current.mode, 'rejected', safeConnectionCode(error)));
         setIsErrorFeedback(true);
-        setMessage('Não foi possível iniciar o acesso. Abra os detalhes e consulte o diagnóstico desta tentativa.');
+        if (error instanceof ApiClientError && error.status === 403) {
+          setMessage(
+            requiresAccessPassword
+              ? 'Senha de acesso incorreta ou permissão negada para este computador.'
+              : 'Acesso restrito: este computador só pode ser acessado por um Administrador.'
+          );
+        } else {
+          setMessage('Não foi possível iniciar o acesso. Abra os detalhes e consulte o diagnóstico desta tentativa.');
+        }
       }
     } finally { if (scope.current === expected) { clearPassword(); lock.current = false; if (valid()) setPending(false); } }
+  }
+  function connect(event?: FormEvent) {
+    event?.preventDefault();
+    if (!enabled || lock.current || !valid()) return;
+    if (adminOnlyBlocked) {
+      setDismissed(false);
+      setIsErrorFeedback(true);
+      setMessage('Acesso restrito: este computador está configurado para acesso somente por Administrador.');
+      return;
+    }
+    if (!manual && requiresAccessPassword) {
+      setTypedAccessPassword('');
+      setAccessPasswordError('');
+      setIsAccessModalOpen(true);
+      return;
+    }
+    void executeConnect(event);
+  }
+  function handleConfirmAccessPassword(e: FormEvent) {
+    e.preventDefault();
+    const trimmed = typedAccessPassword.trim();
+    if (!trimmed) {
+      setAccessPasswordError('Informe a senha de acesso para continuar.');
+      return;
+    }
+    if (accessPasswordHash && !verifyDeviceAccessPassword(trimmed, accessPasswordHash)) {
+      setAccessPasswordError('Senha de acesso incorreta. Verifique e tente novamente.');
+      return;
+    }
+    setIsAccessModalOpen(false);
+    setTypedAccessPassword('');
+    setAccessPasswordError('');
+    void executeConnect(undefined, trimmed);
   }
   function retry() {
     const prepared = handoff.current;
@@ -194,6 +266,80 @@ export function ConnectDevice({ deviceId, enabled, service, manual = false, rust
             </button>
           </div>
         )}
+      </div>
+    )}
+    {isAccessModalOpen && (
+      <div
+        className="tv-modal-backdrop"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsAccessModalOpen(false);
+        }}
+      >
+        <div
+          className="tv-modal-card sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={`access-pwd-title-${deviceId}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="tv-modal-header">
+            <div className="tv-modal-title-wrap">
+              <KeyRound size={18} className="text-amber-400" />
+              <h3 id={`access-pwd-title-${deviceId}`}>Senha de Acesso</h3>
+            </div>
+            <button
+              type="button"
+              className="tv-modal-close-btn"
+              onClick={() => setIsAccessModalOpen(false)}
+              aria-label="Fechar solicitação de senha"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <form onSubmit={handleConfirmAccessPassword} className="tv-modal-body">
+            <p style={{ margin: '0 0 10px 0', fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+              A estação <strong>{deviceDisplayName || peerAlias || 'selecionada'}</strong> está protegida por senha de acesso. Digite a senha abaixo para iniciar a conexão remota:
+            </p>
+            {accessPasswordError && (
+              <div className="tv-modal-error" role="alert" style={{ marginBottom: 10 }}>
+                {accessPasswordError}
+              </div>
+            )}
+            <div className="tv-form-field">
+              <label htmlFor={`access-pwd-input-${deviceId}`} className="tv-field-label">
+                Senha de Acesso da Máquina:
+              </label>
+              <input
+                id={`access-pwd-input-${deviceId}`}
+                type="password"
+                className="tv-text-input"
+                value={typedAccessPassword}
+                onChange={(e) => {
+                  setTypedAccessPassword(e.target.value);
+                  if (accessPasswordError) setAccessPasswordError('');
+                }}
+                placeholder="Digite a senha de acesso..."
+                autoFocus
+                autoComplete="off"
+                required
+              />
+            </div>
+            <div className="tv-modal-actions">
+              <button
+                type="button"
+                className="tv-btn-secondary"
+                onClick={() => setIsAccessModalOpen(false)}
+              >
+                Cancelar
+              </button>
+              <button type="submit" className="tv-btn-primary">
+                <Lock size={15} />
+                <span>Conectar Agora</span>
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     )}
   </div>;

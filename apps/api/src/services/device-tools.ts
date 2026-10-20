@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { DeviceDetailsResponseSchema, UpdateDeviceRequestSchema, UpdateDeviceResponseSchema, ConnectionEventRequestSchema,
-  ConnectionHistoryResponseSchema, DeviceViewSchema, DeleteDeviceResponseSchema, extractDataDivasFromNotes, mergeDataDivasIntoNotes,
+  ConnectionHistoryResponseSchema, DeviceViewSchema, DeleteDeviceResponseSchema, extractDataDivasFromNotes, mergeDataDivasIntoNotes, extractDeviceAccessPolicy,
   type DeviceDetailsResponse, type UpdateDeviceRequest, type UpdateDeviceResponse, type ConnectionEventInput, type ConnectionHistoryResponse,
   type ConnectionHistoryEvent, type DeviceView, type DeleteDeviceResponse } from '@appremoto/contracts';
 import type { AuthenticatedTechnician } from '../plugins/technician-auth.ts';
@@ -41,14 +41,18 @@ export function createDeviceTools(deps: Dependencies): DeviceToolsService {
   }
   function view(id: string, device: EnrollmentData, name: string): DeviceView {
     const age = typeof device.last_seen_at === 'string' ? now().getTime() - Date.parse(device.last_seen_at) : NaN;
-    const { datadivas } = extractDataDivasFromNotes(typeof device.notes === 'string' ? device.notes : null);
+    const { datadivas, cleanNotes } = extractDataDivasFromNotes(typeof device.notes === 'string' ? device.notes : null);
+    const policy = extractDeviceAccessPolicy(cleanNotes);
     return DeviceViewSchema.parse({ id, organizationId: device.organization_id, organizationName: name,
       deviceUuid: device.device_uuid, displayName: device.display_name, hostname: device.hostname,
       operatingSystem: device.operating_system, osVersion: device.os_version, rustdeskId: device.rustdesk_id,
       agentVersion: device.agent_version ?? null, rustdeskVersion: device.rustdesk_version ?? null,
       lastSeenAt: device.last_seen_at ?? null, enabled: device.enabled,
       status: device.enabled === true && age >= 0 && age <= 90_000 ? 'ONLINE' : 'OFFLINE',
-      ...(datadivas ? { datadivas } : {}) });
+      ...(datadivas ? { datadivas } : {}),
+      ...(cleanNotes ? { notes: cleanNotes } : {}),
+      ...(policy.requiresAccessPassword ? { requiresAccessPassword: true } : {}),
+      ...(policy.adminOnlyAccess ? { adminOnlyAccess: true } : {}) });
   }
   async function heartbeatConfirmed(deviceId: string, device: EnrollmentData): Promise<boolean> {
     const token = await repo.snapshot('device_tokens', deviceId);

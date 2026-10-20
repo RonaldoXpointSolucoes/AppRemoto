@@ -32,11 +32,32 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.5.5',
+    date: 'Outubro 2026',
+    title: 'Senha de Acesso por Máquina & Restrição Exclusiva para Administradores',
+    highlight: 'Controle de acesso em 2 níveis adicionais por computador (Senha de Acesso ao Conectar e bloqueio Somente Administrador), preservando a senha interna automática do RustDesk.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Senha de Acesso Individual por Computador',
+        description:
+          'Permite configurar uma Senha de Acesso em máquinas específicas. Ao clicar em Conectar, o painel solicita a senha antes de liberar a sessão remota no RustDesk, mantendo a senha interna automática do sistema intacta.',
+        tag: 'Novo',
+      },
+      {
+        title: 'Nível de Proteção "Somente Administrador"',
+        description:
+          'Permite restringir o acesso de máquinas críticas (ex: Servidores Financeiros ou Diretoria) exclusivamente a usuários com perfil de Administrador, bloqueando conexões de técnicos comuns na interface e na API.',
+        tag: 'Infra & Cockpit',
+      },
+    ],
+  },
+  {
     version: 'v1.5.4',
     date: 'Outubro 2026',
     title: 'Prioridade Padrão Recentes & Online, Busca Completa (Online/Offline) e Exclusão Definitiva de Técnicos',
     highlight: 'Exibe por padrão os computadores mais recentes cadastrados e online (carregando todos os dispositivos da base), mostra tanto os online quanto os offline ao pesquisar na caixa de busca e garante a exclusão definitiva de técnicos sem recriá-los ao retornar à tela.',
-    isCurrent: true,
+    isCurrent: false,
     items: [
       {
         title: 'Lista Padrão Ordenada pelos Mais Recentes Cadastrados & Online',

@@ -1,6 +1,14 @@
 'use client';
 
-import type { DataDivasInfo } from '@appremoto/contracts';
+import {
+  extractDeviceAccessPolicy,
+  encodeDeviceAccessNotes,
+  hashDeviceAccessPassword,
+  verifyDeviceAccessPassword,
+  type DataDivasInfo,
+} from '@appremoto/contracts';
+
+export { hashDeviceAccessPassword, verifyDeviceAccessPassword };
 
 export type SessionResolutionStatus = 'resolved' | 'monitoring' | 'pending_parts' | 'escalated';
 
@@ -230,6 +238,8 @@ export interface DeviceCustomMetadata {
   displayName?: string;
   notes?: string;
   folderId?: string;
+  adminOnlyAccess?: boolean;
+  accessPasswordHash?: string | null;
 }
 
 const RECENT_KEY = 'xpoint_recent_connections';
@@ -543,21 +553,57 @@ export function toggleFavoriteDeviceId(deviceId: string, userId?: string | null)
   }
 }
 
-export function parseDeviceNotes(rawNotes?: string | null): { folderName?: string; notes: string } {
-  if (!rawNotes) return { notes: '' };
-  const match = rawNotes.match(/^\[pasta:([^\]]+)\]\s*([\s\S]*)$/i);
-  if (match) {
-    return { folderName: match[1]?.trim(), notes: match[2]?.trim() || '' };
-  }
-  return { notes: rawNotes };
+export function parseDeviceNotes(rawNotes?: string | null): {
+  folderName?: string;
+  adminOnlyAccess: boolean;
+  requiresAccessPassword: boolean;
+  accessPasswordHash: string | null;
+  notes: string;
+} {
+  const policy = extractDeviceAccessPolicy(rawNotes);
+  return {
+    ...(policy.folderName ? { folderName: policy.folderName } : {}),
+    adminOnlyAccess: policy.adminOnlyAccess,
+    requiresAccessPassword: policy.requiresAccessPassword,
+    accessPasswordHash: policy.accessPasswordHash,
+    notes: policy.cleanNotes,
+  };
 }
 
-export function encodeDeviceNotes(input: { folderName?: string; notes?: string }): string {
-  const cleanNotes = (input.notes || '').trim();
-  if (input.folderName && input.folderName.trim()) {
-    return `[pasta:${input.folderName.trim()}]${cleanNotes ? '\n' + cleanNotes : ''}`;
-  }
-  return cleanNotes;
+export function encodeDeviceNotes(input: {
+  folderName?: string;
+  adminOnlyAccess?: boolean;
+  accessPasswordHash?: string | null;
+  notes?: string;
+}): string {
+  return encodeDeviceAccessNotes(input);
+}
+
+export function getDeviceProtectionState(
+  dev: { id: string; notes?: string; requiresAccessPassword?: boolean; adminOnlyAccess?: boolean },
+  metaMap: Record<string, DeviceCustomMetadata> = getCustomMetadataMap()
+): {
+  adminOnlyAccess: boolean;
+  requiresAccessPassword: boolean;
+  accessPasswordHash: string | null;
+} {
+  const rawNotes = dev.notes || metaMap[dev.id]?.notes || '';
+  const parsed = parseDeviceNotes(rawNotes);
+  const meta = metaMap[dev.id];
+  const accessPasswordHash =
+    parsed.accessPasswordHash ??
+    (meta?.accessPasswordHash !== undefined ? meta.accessPasswordHash : null);
+  const adminOnlyAccess = Boolean(
+    dev.adminOnlyAccess || parsed.adminOnlyAccess || meta?.adminOnlyAccess
+  );
+  const requiresAccessPassword = Boolean(
+    dev.requiresAccessPassword || parsed.requiresAccessPassword || accessPasswordHash
+  );
+  return {
+    adminOnlyAccess,
+    requiresAccessPassword,
+    accessPasswordHash,
+  };
 }
 
 export function getDeviceFolderName(

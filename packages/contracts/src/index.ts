@@ -4,8 +4,9 @@ export * from './device-tools.ts';
 export * from './generic-installer.ts';
 export * from './cnpj-naming.ts';
 
-export { DeviceListQuerySchema, DeviceViewSchema, normalizeDataDivasInfo, extractDataDivasFromNotes, mergeDataDivasIntoNotes } from './devices.ts';
-export type { DeviceListQuery, DeviceView } from './devices.ts';
+export { DeviceListQuerySchema, DeviceViewSchema, normalizeDataDivasInfo, extractDataDivasFromNotes, mergeDataDivasIntoNotes, hashDeviceAccessPassword, verifyDeviceAccessPassword, extractDeviceAccessPolicy, encodeDeviceAccessNotes } from './devices.ts';
+export type { DeviceListQuery, DeviceView, DeviceAccessPolicy } from './devices.ts';
+
 export { DataDivasInfoSchema, ReconfigureRequestSchema, ReconfigureResponseSchema, EnrollRequestSchema, EnrollResponseSchema, HeartbeatRequestSchema, HeartbeatResponseSchema } from './agent.ts';
 export type { DataDivasInfo, ReconfigureRequest, ReconfigureResponse, EnrollRequest, EnrollResponse, HeartbeatRequest, HeartbeatResponse } from './agent.ts';
 
