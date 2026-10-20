@@ -52,6 +52,7 @@ function viewOf(record: DeviceRecord, organizationName: string, snapshotTime: st
     ...(cleanNotes ? { notes: cleanNotes } : {}),
     ...(policy.requiresAccessPassword ? { requiresAccessPassword: true } : {}),
     ...(policy.adminOnlyAccess ? { adminOnlyAccess: true } : {}),
+    ...(policy.customDisplayName ? { customDisplayName: true } : {}),
   });
 }
 

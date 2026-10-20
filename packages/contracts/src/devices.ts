@@ -35,6 +35,7 @@ export const DeviceViewSchema = z.object({
   notes: z.string().max(2048).optional(),
   requiresAccessPassword: z.boolean().optional(),
   adminOnlyAccess: z.boolean().optional(),
+  customDisplayName: z.boolean().optional(),
 }).strict();
 
 export type DeviceListQuery = z.infer<typeof DeviceListQuerySchema>;
@@ -144,6 +145,7 @@ export interface DeviceAccessPolicy {
   adminOnlyAccess: boolean;
   requiresAccessPassword: boolean;
   accessPasswordHash: string | null;
+  customDisplayName?: boolean;
   cleanNotes: string;
 }
 
@@ -182,6 +184,7 @@ export function extractDeviceAccessPolicy(rawNotes?: string | null): DeviceAcces
   let folderName: string | undefined;
   let adminOnlyAccess = false;
   let accessPasswordHash: string | null = null;
+  let customDisplayName = false;
 
   const prefixRegex = /^\s*\[([a-z_]+):([^\]]+)\]\s*/i;
   let safety = 0;
@@ -205,6 +208,11 @@ export function extractDeviceAccessPolicy(rawNotes?: string | null): DeviceAcces
       rest = rest.slice(m[0].length);
       continue;
     }
+    if (key === 'nome_editado') {
+      customDisplayName = val === '1' || val.toLowerCase() === 'true';
+      rest = rest.slice(m[0].length);
+      continue;
+    }
     break;
   }
 
@@ -213,6 +221,7 @@ export function extractDeviceAccessPolicy(rawNotes?: string | null): DeviceAcces
     adminOnlyAccess,
     requiresAccessPassword: Boolean(accessPasswordHash),
     accessPasswordHash,
+    ...(customDisplayName ? { customDisplayName: true } : {}),
     cleanNotes: rest.trim(),
   };
 }
@@ -221,6 +230,7 @@ export function encodeDeviceAccessNotes(input: {
   folderName?: string;
   adminOnlyAccess?: boolean;
   accessPasswordHash?: string | null;
+  customDisplayName?: boolean;
   notes?: string;
 }): string {
   const tags: string[] = [];
@@ -232,6 +242,9 @@ export function encodeDeviceAccessNotes(input: {
   }
   if (input.accessPasswordHash && input.accessPasswordHash.trim()) {
     tags.push(`[senha_acesso:${input.accessPasswordHash.trim()}]`);
+  }
+  if (input.customDisplayName) {
+    tags.push(`[nome_editado:1]`);
   }
   const cleanNotes = (input.notes || '').trim();
   if (tags.length > 0) {

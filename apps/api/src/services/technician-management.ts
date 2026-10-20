@@ -40,8 +40,19 @@ export interface AuthorizedSessionResult {
   globalRole: ManagedRole;
 }
 
+export interface RecentAccessView {
+  id: string;
+  deviceId: string;
+  displayName: string;
+  hostname: string;
+  rustdeskId: string;
+  technicianName: string;
+  connectedAt: string;
+}
+
 export interface TechnicianManagementService {
   listTechnicians(): Promise<{ technicians: ManagedTechnicianView[]; invites: ManagedTechnicianInvite[] }>;
+  listRecentAccesses?(): Promise<{ accesses: RecentAccessView[] }>;
   upsertTechnicianWithInvite(input: {
     displayName: string;
     email: string;
@@ -699,6 +710,99 @@ export function createTechnicianManagementService(options: {
         displayName: resolvedDisplayName,
         globalRole: role,
       };
+    },
+
+    async listRecentAccesses() {
+      try {
+        const auditRes = await databases.listDocuments(DATABASE_ID, 'audit_logs', [
+          Query.equal('action', 'device.connect'),
+          Query.equal('result', 'success'),
+          Query.orderDesc('$createdAt'),
+          Query.limit(50),
+        ]);
+
+        const dedupedDocs: Array<Models.Document & { actor_id?: string; device_id?: string }> = [];
+        for (const rawDoc of auditRes.documents) {
+          const doc = rawDoc as Models.Document & { actor_id?: string; device_id?: string };
+          if (!doc.device_id) continue;
+          const ts = Date.parse(doc.$createdAt);
+          const isDuplicate = dedupedDocs.some((prev) => {
+            if (prev.device_id !== doc.device_id || prev.actor_id !== doc.actor_id) return false;
+            const prevTs = Date.parse(prev.$createdAt);
+            return Math.abs(prevTs - ts) <= 15_000;
+          });
+          if (!isDuplicate) {
+            dedupedDocs.push(doc);
+          }
+          if (dedupedDocs.length >= 15) break;
+        }
+
+        if (dedupedDocs.length === 0) {
+          return { accesses: [] };
+        }
+
+        const deviceIds = Array.from(new Set(dedupedDocs.map((d) => d.device_id!).filter(Boolean)));
+        const actorIds = Array.from(new Set(dedupedDocs.map((d) => d.actor_id || '').filter(Boolean)));
+
+        const deviceMap = new Map<string, { displayName: string; hostname: string; rustdeskId: string }>();
+        if (deviceIds.length > 0) {
+          try {
+            const devRes = await databases.listDocuments(DATABASE_ID, 'devices', [
+              Query.equal('$id', deviceIds),
+              Query.limit(100),
+            ]);
+            for (const d of devRes.documents) {
+              const devDoc = d as Models.Document & {
+                display_name?: string;
+                hostname?: string;
+                rustdesk_id?: string;
+              };
+              deviceMap.set(devDoc.$id, {
+                displayName: devDoc.display_name || devDoc.hostname || 'Computador',
+                hostname: devDoc.hostname || devDoc.$id,
+                rustdeskId: devDoc.rustdesk_id || '',
+              });
+            }
+          } catch {
+            // Ignore partial device lookup error
+          }
+        }
+
+        const techNameMap = new Map<string, string>();
+        if (actorIds.length > 0) {
+          try {
+            const profRes = await databases.listDocuments<ProfileDoc>(DATABASE_ID, PROFILES_COLLECTION, [
+              Query.equal('user_id', actorIds),
+              Query.limit(100),
+            ]);
+            for (const p of profRes.documents) {
+              if (p.user_id && p.display_name) {
+                techNameMap.set(p.user_id, p.display_name);
+              }
+            }
+          } catch {
+            // Ignore profile lookup error
+          }
+        }
+
+        const accesses: RecentAccessView[] = dedupedDocs.map((doc) => {
+          const devInfo = deviceMap.get(doc.device_id!);
+          const techName = (doc.actor_id && techNameMap.get(doc.actor_id)) || 'Técnico';
+          return {
+            id: doc.$id,
+            deviceId: doc.device_id!,
+            displayName: devInfo?.displayName || `Estação ${doc.device_id!.slice(0, 6)}`,
+            hostname: devInfo?.hostname || doc.device_id!,
+            rustdeskId: devInfo?.rustdeskId || '',
+            technicianName: techName,
+            connectedAt: doc.$createdAt,
+          };
+        });
+
+        return { accesses };
+      } catch {
+        return { accesses: [] };
+      }
     },
   };
 }

@@ -244,4 +244,30 @@ export function registerTechnicianManagementRoutes(
       }
     }
   );
+
+  // Authenticated: Lista os últimos acessos remotos realizados no sistema
+  app.get(
+    '/v1/recent-accesses',
+    {
+      preHandler: authenticate,
+      schema: {
+        querystring: {
+          type: 'object',
+          properties: {},
+          additionalProperties: false,
+        },
+      },
+    },
+    async (_request, reply) => {
+      try {
+        if (!service.listRecentAccesses) {
+          return reply.code(200).send({ accesses: [] });
+        }
+        const data = await service.listRecentAccesses();
+        return reply.code(200).send(data);
+      } catch {
+        return reply.code(200).send({ accesses: [] });
+      }
+    }
+  );
 }

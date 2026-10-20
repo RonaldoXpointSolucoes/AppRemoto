@@ -32,11 +32,43 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.5.6',
+    date: 'Outubro 2026',
+    title: 'Preservação de Nome Editado, IP Local na Lista, Link de Download & Histórico Lateral',
+    highlight: 'Preservação integral de nomes de exibição editados (ex.: Marcos X-Point), IP local visível diretamente na lista principal, cópia do link direto do instalador e histórico de últimos acessos na barra lateral.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Preservação Integral do Nome de Exibição Editado',
+        description:
+          'Nomes personalizados editados manualmente (como Marcos X-Point) são exibidos exatamente como foram salvos, sem concatenar razão social acima, mantendo a concatenação inteligente para nomes genéricos (ex.: PANAMBY - SERVIDOR).',
+        tag: 'UI/UX',
+      },
+      {
+        title: 'IP Local do Computador na Lista Simplificada',
+        description:
+          'Exibição direta do endereço IP da rede local (ex.: IP: 192.168.0.125) ao lado do RustDesk ID na linha principal, com cópia rápida em 1 clique.',
+        tag: 'TeamViewer',
+      },
+      {
+        title: 'Botão Copiar Link de Download da Instalação',
+        description:
+          'Na página /setup, além de baixar o executável, agora é possível copiar um link direto de download do instalador configurado para enviar ao cliente.',
+        tag: 'Novo',
+      },
+      {
+        title: 'Últimos Acessos na Barra Lateral Esquerda',
+        description:
+          'A área inferior do menu lateral exibe os últimos computadores acessados com nome da máquina, data/horário e nome do técnico que realizou o acesso.',
+        tag: 'TeamViewer',
+      },
+    ],
+  },
+  {
     version: 'v1.5.5',
     date: 'Outubro 2026',
     title: 'Senha de Acesso por Máquina & Restrição Exclusiva para Administradores',
     highlight: 'Controle de acesso em 2 níveis adicionais por computador (Senha de Acesso ao Conectar e bloqueio Somente Administrador), preservando a senha interna automática do RustDesk.',
-    isCurrent: true,
     items: [
       {
         title: 'Senha de Acesso Individual por Computador',

@@ -236,6 +236,7 @@ export interface DeviceGroup {
 
 export interface DeviceCustomMetadata {
   displayName?: string;
+  customDisplayName?: boolean;
   notes?: string;
   folderId?: string;
   adminOnlyAccess?: boolean;
@@ -289,6 +290,9 @@ export function saveRecentConnection(record: Omit<RecentConnectionRecord, 'conne
     );
     const updated = [newRecord, ...filtered].slice(0, 50);
     localStorage.setItem(RECENT_KEY, JSON.stringify(updated));
+    try {
+      window.dispatchEvent(new CustomEvent('xpoint:recent-connections-updated'));
+    } catch {}
     return updated;
   } catch {
     return [];
@@ -348,6 +352,9 @@ export function updateRecentConnectionNotes(
     }
 
     localStorage.setItem(RECENT_KEY, JSON.stringify(updated));
+    try {
+      window.dispatchEvent(new CustomEvent('xpoint:recent-connections-updated'));
+    } catch {}
     return updated;
   } catch {
     return [];
@@ -558,6 +565,7 @@ export function parseDeviceNotes(rawNotes?: string | null): {
   adminOnlyAccess: boolean;
   requiresAccessPassword: boolean;
   accessPasswordHash: string | null;
+  customDisplayName?: boolean;
   notes: string;
 } {
   const policy = extractDeviceAccessPolicy(rawNotes);
@@ -566,6 +574,7 @@ export function parseDeviceNotes(rawNotes?: string | null): {
     adminOnlyAccess: policy.adminOnlyAccess,
     requiresAccessPassword: policy.requiresAccessPassword,
     accessPasswordHash: policy.accessPasswordHash,
+    ...(policy.customDisplayName ? { customDisplayName: true } : {}),
     notes: policy.cleanNotes,
   };
 }
@@ -574,6 +583,7 @@ export function encodeDeviceNotes(input: {
   folderName?: string;
   adminOnlyAccess?: boolean;
   accessPasswordHash?: string | null;
+  customDisplayName?: boolean;
   notes?: string;
 }): string {
   return encodeDeviceAccessNotes(input);

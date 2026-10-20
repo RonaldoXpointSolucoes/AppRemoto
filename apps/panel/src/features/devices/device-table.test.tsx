@@ -336,7 +336,7 @@ describe('DeviceDirectory', () => {
   it('opens the release notes modal when clicking the version number button', async () => {
     renderDirectory(service());
     await screen.findAllByText('Recepcao 01');
-    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.5.5' });
+    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.5.6' });
     expect(versionButtons.length).toBeGreaterThan(0);
     await userEvent.click(versionButtons[0]);
     const dialog = await screen.findByRole('dialog', { name: /Novidades da Plataforma/i });
@@ -377,6 +377,20 @@ describe('DeviceDirectory', () => {
     const demoResult = resolveCoherentDevicePresentation(sistemaDemo, 'Clientes');
     expect(demoResult.mainTitle).toBe('SISTEMA DEMO - CAIXA-01');
     expect(demoResult.subtitlePrimary).toBe('Sistema Demonstração');
+
+    const marcosXpoint = device({
+      displayName: 'Marcos X-Point',
+      hostname: 'PC-MARCOS',
+      organizationName: 'Geral / Triagem',
+      datadivas: {
+        nomeFantasia: 'SISTEMA DEMONSTRAÇÃO',
+        razaoSocial: 'JOAO MARCOS',
+        nomeMaq: 'PC-MARCOS',
+        ipMaq: '192.168.0.125',
+      },
+    });
+    const marcosResult = resolveCoherentDevicePresentation(marcosXpoint, 'Geral / Triagem');
+    expect(marcosResult.mainTitle).toBe('Marcos X-Point');
   });
 
   it('persists and restores chosen filters separately for each authenticated user when returning to the application', async () => {

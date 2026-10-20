@@ -52,7 +52,8 @@ export function createDeviceTools(deps: Dependencies): DeviceToolsService {
       ...(datadivas ? { datadivas } : {}),
       ...(cleanNotes ? { notes: cleanNotes } : {}),
       ...(policy.requiresAccessPassword ? { requiresAccessPassword: true } : {}),
-      ...(policy.adminOnlyAccess ? { adminOnlyAccess: true } : {}) });
+      ...(policy.adminOnlyAccess ? { adminOnlyAccess: true } : {}),
+      ...(policy.customDisplayName ? { customDisplayName: true } : {}) });
   }
   async function heartbeatConfirmed(deviceId: string, device: EnrollmentData): Promise<boolean> {
     const token = await repo.snapshot('device_tokens', deviceId);

@@ -844,6 +844,192 @@ button, a, input, select { outline-offset: 3px; }
   text-align: left;
 }
 
+.tv-sidebar:not(.collapsed) .tv-sidebar-nav {
+  flex: 0 0 auto;
+  padding-bottom: 8px;
+}
+
+/* Seção de Últimos Acessos na Sidebar Lateral */
+.tv-sidebar-recent-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 10px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+[data-theme="light"] .tv-sidebar-recent-section {
+  border-top-color: #e2e8f0;
+}
+
+.tv-sidebar-recent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 8px;
+  gap: 6px;
+}
+
+.tv-sidebar-recent-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+}
+
+[data-theme="light"] .tv-sidebar-recent-title {
+  color: #64748b;
+}
+
+.tv-sidebar-recent-more {
+  background: transparent;
+  border: 0;
+  color: #38bdf8;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.tv-sidebar-recent-more:hover {
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.tv-sidebar-recent-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 2px;
+}
+
+.tv-sidebar-recent-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.tv-sidebar-recent-list::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 4px;
+}
+
+.tv-sidebar-recent-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: inherit;
+}
+
+.tv-sidebar-recent-card:hover {
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+[data-theme="light"] .tv-sidebar-recent-card {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+[data-theme="light"] .tv-sidebar-recent-card:hover {
+  background: #f0f9ff;
+  border-color: #bae6fd;
+}
+
+.tv-sidebar-recent-pc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tv-sidebar-recent-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tv-sidebar-recent-dot.online {
+  background: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.7);
+}
+
+.tv-sidebar-recent-dot.offline {
+  background: #64748b;
+}
+
+.tv-sidebar-recent-pc-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-theme="light"] .tv-sidebar-recent-pc-name {
+  color: #0f172a;
+}
+
+.tv-sidebar-recent-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.68rem;
+  color: #94a3b8;
+  padding-left: 13px;
+}
+
+[data-theme="light"] .tv-sidebar-recent-meta {
+  color: #64748b;
+}
+
+.tv-sidebar-recent-time {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.tv-sidebar-recent-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #38bdf8;
+  font-weight: 600;
+  max-width: 96px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-theme="light"] .tv-sidebar-recent-user {
+  color: #0284c7;
+}
+
+.tv-sidebar-recent-empty {
+  padding: 12px 8px;
+  font-size: 0.74rem;
+  color: #64748b;
+  text-align: center;
+  font-style: italic;
+}
+
 .tv-sidebar-footer {
   padding: 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -1831,6 +2017,33 @@ button, a, input, select { outline-offset: 3px; }
 
 .tv-id-subtext:hover {
   color: #0067c0;
+}
+
+.tv-inline-ip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 5px;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  background: rgba(56, 189, 248, 0.08);
+  color: #38bdf8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tv-inline-ip-badge:hover {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.45);
+}
+
+[data-theme="light"] .tv-inline-ip-badge {
+  color: #0284c7;
+  background: rgba(2, 132, 199, 0.08);
+  border-color: rgba(2, 132, 199, 0.22);
 }
 
 /* Subtítulo Linha 2: Riqueza de detalhes em tipografia menor */

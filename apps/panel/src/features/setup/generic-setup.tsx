@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Download, LoaderCircle } from 'lucide-react';
+import { Check, Copy, Download, LoaderCircle } from 'lucide-react';
 import type { GenericInstallerPackage, GenericInstallerView } from '@appremoto/contracts';
 import { ApiClientError, createApiClient, type TechnicianView } from '../../lib/api';
 import { createAppwriteSessionClient } from '../../lib/appwrite';
@@ -44,6 +44,7 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const [copiedLink, setCopiedLink] = useState(false);
   const current = () => active.current && sessionEpoch(client) === epoch;
   async function terminal(failure: unknown) {
     if (!(failure instanceof ApiClientError && failure.status === 401)) return false;
@@ -106,6 +107,51 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
       catch (next) { if (current() && !await terminal(next)) setReady(false); }
     } finally { lock.current = false; if (current()) setBusy(false); }
   }
+  async function copyDownloadLink() {
+    if (!current() || !admin || !ready || lock.current) return;
+    lock.current = true; setBusy(true); setError(''); setMessage('');
+    try {
+      const existing = installers.find((item) => item.id === selected && item.active && !item.revokedAt);
+      const result: { package: GenericInstallerPackage; installer?: GenericInstallerView } = existing
+        ? await service.getGenericInstallerPackage(existing.id)
+        : await service.createGenericInstaller('Instalador geral XPoint');
+      try {
+        if (!current()) return;
+        const jsonPayload = JSON.stringify({
+          schemaVersion: 2,
+          installerId: result.package.installerId,
+          installerToken: result.package.installerToken,
+        });
+        const bytes = new TextEncoder().encode(jsonPayload);
+        let binary = '';
+        for (const b of bytes) binary += String.fromCharCode(b);
+        const encoded = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+        const origin = typeof window !== 'undefined' ? window.location.origin : 'https://remoto.xpointsolucoes.com.br';
+        const downloadUrl = `${origin}/api/installer/download?p=${encoded}`;
+        if (typeof navigator !== 'undefined' && navigator.clipboard) {
+          await navigator.clipboard.writeText(downloadUrl);
+        }
+        if (result.installer) acceptList([result.installer, ...installers]);
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 3500);
+        setMessage('Link de download copiado! Envie para o cliente baixar o instalador pronto.');
+      } finally {
+        result.package.installerToken = '';
+      }
+    } catch (failure) {
+      if (!current() || await terminal(failure)) return;
+      setError(
+        failure instanceof ApiClientError && failure.code === 'PASSWORD_NOT_CONFIGURED'
+          ? 'A senha padrão ainda não está configurada no serviço. Solicite a configuração ao administrador.'
+          : 'Não foi possível gerar o link do instalador. Confira a conexão e tente novamente.'
+      );
+      try { const fresh = await service.getGenericInstallers(); if (current()) acceptList(fresh.installers); }
+      catch (next) { if (current() && !await terminal(next)) setReady(false); }
+    } finally {
+      lock.current = false;
+      if (current()) setBusy(false);
+    }
+  }
   async function revoke(installer: GenericInstallerView) {
     if (!current() || !admin || lock.current || !installer.active) return;
     lock.current = true; setBusy(true); setError(''); setMessage('');
@@ -131,10 +177,10 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
         <select id="generic-installer-selection" value={selected} disabled={busy} onChange={(event) => setSelected(event.target.value)}>
           {available.map((item) => <option key={item.id} value={item.id}>{item.name} · {new Date(item.createdAt).toLocaleDateString('pt-BR')}</option>)}
         </select></div>}
-      <button type="button" className="primary-button guide-link" disabled={busy || !ready} onClick={() => void download()}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}><button type="button" className="primary-button guide-link" disabled={busy || !ready} onClick={() => void download()}>
         {busy ? <LoaderCircle aria-hidden="true" size={18} /> : <Download aria-hidden="true" size={18} />}
-        {busy ? 'Preparando…' : 'Baixar instalador completo'}
-      </button>
+        {busy ? 'Preparando…' : 'Baixar instalador completo'}</button><button type="button" className="command-button guide-link" disabled={busy || !ready} onClick={() => void copyDownloadLink()} title="Copia o link direto de download do instalador completo para enviar ao cliente">{copiedLink ? <Check aria-hidden="true" size={18} className="text-emerald-400" /> : <Copy aria-hidden="true" size={18} />}{copiedLink ? 'Link copiado!' : 'Copiar link de download'}
+      </button></div>
       <p className="field-hint">Empresa, grupo por CNPJ e função padronizada do computador são sugeridos automaticamente durante a instalação. Não é necessário abrir nem entrar no painel no computador do cliente.</p>
     </div>}
     {error && <p className="error-state" role="alert">{error}</p>}

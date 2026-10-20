@@ -1,4 +1,12 @@
-import type { DeviceView } from '@appremoto/contracts';
+import { extractDeviceAccessPolicy, type DeviceView } from '@appremoto/contracts';
+
+const GENERIC_ROLE_REGEX =
+  /^((SERVIDOR|SERVER|CAIXA|PDV|BALANCA|GARCOM|ESCRITORIO|COZINHA|ESTOQUE|RETAGUARDA|TOTEM|TERMINAL|ESTACAO|RECEPCAO|FINANCEIRO|DELIVERY|KDS|MAQUINA|COMPUTADOR|PC|NOTEBOOK|WORKSTATION)(\s*[-_#]?\s*\d+)?|DESKTOP-[A-Z0-9-]+|WIN-[A-Z0-9-]+|LAPTOP-[A-Z0-9-]+)$/i;
+
+export function isGenericMachineOrRoleName(raw: string): boolean {
+  const cleaned = stripAccents(raw.trim());
+  return GENERIC_ROLE_REGEX.test(cleaned);
+}
 
 const COMPANY_STOPWORDS = new Set([
   'LTDA',
@@ -218,7 +226,8 @@ export interface CoherentDevicePresentation {
 
 export function resolveCoherentDevicePresentation(
   dev: DeviceView,
-  folderName = 'Clientes'
+  folderName = 'Clientes',
+  customEditedOverride?: boolean
 ): CoherentDevicePresentation {
   const rawDisplay = (dev.displayName || dev.hostname || 'COMPUTADOR').trim();
   const fantasia = dev.datadivas?.nomeFantasia?.trim() || '';
@@ -226,6 +235,10 @@ export function resolveCoherentDevicePresentation(
   const org = dev.organizationName?.trim() || '';
   const orgNorm = stripAccents(org).toUpperCase();
   const effectiveRazao = razao || (!GENERIC_ORGS.has(orgNorm) ? org : '');
+  const policy = extractDeviceAccessPolicy(dev.notes);
+  const isExplicitlyEdited = Boolean(
+    customEditedOverride || dev.customDisplayName || policy.customDisplayName
+  );
 
   const fantasiaTokens = extractSignificantTokens(fantasia);
   const razaoTokens = extractSignificantTokens(effectiveRazao);
@@ -259,9 +272,7 @@ export function resolveCoherentDevicePresentation(
       anchorBrand = cleanBrandPhrase(effectiveRazao) || razaoTokens.slice(0, 2).join(' ') || null;
     } else if (
       effectiveRazao &&
-      /^(SERVIDOR|CAIXA|PDV|BALANCA|GARCOM|ESCRITORIO|COZINHA|ESTOQUE|RETAGUARDA|TERMINAL|ESTACAO|PC\b|DESKTOP-|WIN-)/i.test(
-        stripAccents(rawDisplay)
-      )
+      isGenericMachineOrRoleName(rawDisplay)
     ) {
       anchorBrand = cleanBrandPhrase(effectiveRazao) || razaoTokens.slice(0, 2).join(' ') || null;
     }
@@ -269,58 +280,62 @@ export function resolveCoherentDevicePresentation(
 
   let mainTitle = rawDisplay;
 
-  const hyphenRoleMatch =
-    !rawDisplay.includes(' - ') &&
-    /^(.+?)\s*-\s*(SERVIDOR.*|SERVER.*|CAIXA.*|PDV.*|BALAN.*|GAR.*|ESCRIT.*|COZINHA.*|ESTOQUE.*|RETAGUARDA.*|TOTEM.*|TERMINAL.*|DELIVERY.*)$/i.exec(
-      rawDisplay
-    );
-  const spaceRoleMatch =
-    !rawDisplay.includes(' - ') &&
-    !hyphenRoleMatch &&
-    /^(.+?)\s+(SERVIDOR|SERVER|CAIXA|PDV|BALANCA|BALANÇA|TOTEM|TERMINAL|DELIVERY)$/i.exec(rawDisplay);
+  if (!isExplicitlyEdited) {
+    const hyphenRoleMatch =
+      !rawDisplay.includes(' - ') &&
+      /^(.+?)\s*-\s*(SERVIDOR(?:\s*[-_#]?\s*\d+)?|SERVER(?:\s*[-_#]?\s*\d+)?|CAIXA(?:\s*[-_#]?\s*\d+)?|PDV(?:\s*[-_#]?\s*\d+)?|BALANCA(?:\s*[-_#]?\s*\d+)?|BALANÇA(?:\s*[-_#]?\s*\d+)?|GARCOM(?:\s*[-_#]?\s*\d+)?|GARÇOM(?:\s*[-_#]?\s*\d+)?|ESCRITORIO(?:\s*[-_#]?\s*\d+)?|COZINHA(?:\s*[-_#]?\s*\d+)?|ESTOQUE(?:\s*[-_#]?\s*\d+)?|RETAGUARDA(?:\s*[-_#]?\s*\d+)?|TOTEM(?:\s*[-_#]?\s*\d+)?|TERMINAL(?:\s*[-_#]?\s*\d+)?|DELIVERY(?:\s*[-_#]?\s*\d+)?)$/i.exec(
+        rawDisplay
+      );
+    const spaceRoleMatch =
+      !rawDisplay.includes(' - ') &&
+      !hyphenRoleMatch &&
+      /^(.+?)\s+(SERVIDOR|SERVER|CAIXA|PDV|BALANCA|BALANÇA|TOTEM|TERMINAL|DELIVERY)$/i.exec(rawDisplay);
 
-  if (rawDisplay.includes(' - ') || hyphenRoleMatch || spaceRoleMatch) {
-    let leftPart = '';
-    let rightPart = '';
-    if (rawDisplay.includes(' - ')) {
-      const parts = rawDisplay.split(/\s+-\s+/);
-      leftPart = parts[0]?.trim() || '';
-      rightPart = parts.slice(1).join(' - ').trim();
-    } else if (hyphenRoleMatch) {
-      leftPart = hyphenRoleMatch[1]?.trim() || '';
-      rightPart = hyphenRoleMatch[2]?.trim() || '';
-    } else if (spaceRoleMatch) {
-      leftPart = spaceRoleMatch[1]?.trim() || '';
-      rightPart = spaceRoleMatch[2]?.trim() || '';
-    }
+    if (rawDisplay.includes(' - ') || hyphenRoleMatch || spaceRoleMatch) {
+      let leftPart = '';
+      let rightPart = '';
+      if (rawDisplay.includes(' - ')) {
+        const parts = rawDisplay.split(/\s+-\s+/);
+        leftPart = parts[0]?.trim() || '';
+        rightPart = parts.slice(1).join(' - ').trim();
+      } else if (hyphenRoleMatch) {
+        leftPart = hyphenRoleMatch[1]?.trim() || '';
+        rightPart = hyphenRoleMatch[2]?.trim() || '';
+      } else if (spaceRoleMatch) {
+        leftPart = spaceRoleMatch[1]?.trim() || '';
+        rightPart = spaceRoleMatch[2]?.trim() || '';
+      }
 
-    const leftNorm = stripAccents(leftPart).toUpperCase();
-    const anchorNorm = anchorBrand ? stripAccents(anchorBrand).toUpperCase() : '';
+      if (isGenericMachineOrRoleName(rightPart)) {
+        const leftNorm = stripAccents(leftPart).toUpperCase();
+        const anchorNorm = anchorBrand ? stripAccents(anchorBrand).toUpperCase() : '';
 
-    if (anchorNorm && leftNorm !== anchorNorm && leftNorm.includes(anchorNorm) && rightPart) {
-      mainTitle = `${anchorBrand} - ${rightPart.toUpperCase()}`;
-    } else {
-      mainTitle = `${leftPart.toUpperCase()} - ${rightPart.toUpperCase()}`;
-    }
-  } else if (anchorBrand) {
-    const displayNorm = stripAccents(rawDisplay).toUpperCase();
-    const anchorNorm = stripAccents(anchorBrand).toUpperCase();
+        if (anchorNorm && leftNorm !== anchorNorm && leftNorm.includes(anchorNorm) && rightPart) {
+          mainTitle = `${anchorBrand} - ${rightPart.toUpperCase()}`;
+        } else {
+          mainTitle = `${leftPart.toUpperCase()} - ${rightPart.toUpperCase()}`;
+        }
+      }
+    } else if (anchorBrand && isGenericMachineOrRoleName(rawDisplay)) {
+      const displayNorm = stripAccents(rawDisplay).toUpperCase();
+      const anchorNorm = stripAccents(anchorBrand).toUpperCase();
 
-    let machineLabel = rawDisplay.toUpperCase();
-    if (
-      /^(DESKTOP-|WIN-|WORKSTATION|COMPUTADOR)/i.test(displayNorm) &&
-      dev.datadivas?.funcao
-    ) {
-      machineLabel = dev.datadivas.funcao.trim().toUpperCase();
-    }
+      let machineLabel = rawDisplay.toUpperCase();
+      if (
+        /^(DESKTOP-|WIN-|LAPTOP-|WORKSTATION|COMPUTADOR)/i.test(displayNorm) &&
+        dev.datadivas?.funcao
+      ) {
+        machineLabel = dev.datadivas.funcao.trim().toUpperCase();
+      }
 
-    if (displayNorm === anchorNorm) {
-      const roleFallback = (dev.datadivas?.funcao || dev.hostname || 'MAQUINA').trim().toUpperCase();
-      mainTitle = `${anchorBrand} - ${roleFallback}`;
-    } else if (!displayNorm.includes(anchorNorm)) {
-      mainTitle = `${anchorBrand} - ${machineLabel}`;
-    } else {
-      mainTitle = rawDisplay.toUpperCase();
+      if (displayNorm === anchorNorm) {
+        const roleFallback = (dev.datadivas?.funcao || dev.hostname || 'MAQUINA').trim().toUpperCase();
+        mainTitle = `${anchorBrand} - ${roleFallback}`;
+      } else if (!displayNorm.includes(anchorNorm)) {
+        mainTitle = `${anchorBrand} - ${machineLabel}`;
+      } else {
+        mainTitle = rawDisplay.toUpperCase();
+      }
     }
   }
 

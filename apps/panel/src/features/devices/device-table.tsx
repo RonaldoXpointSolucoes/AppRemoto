@@ -205,7 +205,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   useEffect(() => {
     emitToChatbotHost({
       type: 'XPOINT_REMOTE_READY',
-      version: 'v1.5.5',
+      version: 'v1.5.6',
       embedded: isEmbedMode,
       authenticated: true,
       activeCnpj: chatbotContextRef.current?.cnpj ?? null,
@@ -219,7 +219,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       if (action.action === 'PING') {
         emitToChatbotHost({
           type: 'XPOINT_REMOTE_PONG',
-          version: 'v1.5.5',
+          version: 'v1.5.6',
           authenticated: true,
           activeCnpj: chatbotContextRef.current?.cnpj ?? null,
           timestamp: new Date().toISOString(),
@@ -346,13 +346,14 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     const protocolNumber = generateSessionProtocol(startedAt);
     const sysInfo = parseSystemInfo(device.operatingSystem, device.osVersion);
     const folderName = getDeviceFolderName(device);
+    const coherentName = resolveCoherentDevicePresentation(device, folderName).mainTitle;
     const isFavorite = getFavoriteDeviceIds().includes(device.id);
     const clientEnv = detectClientTelemetry();
 
     saveRecentConnection({
       protocolNumber,
       deviceId: device.id,
-      displayName: device.displayName,
+      displayName: coherentName,
       hostname: device.hostname,
       organizationName: device.organizationName,
       organizationId: device.organizationId,
@@ -376,7 +377,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     const nextSession: ActiveSession = {
       protocolNumber,
       deviceId: device.id,
-      displayName: device.displayName,
+      displayName: coherentName,
       hostname: device.hostname,
       organizationName: device.organizationName,
       organizationId: device.organizationId,
@@ -505,6 +506,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
         logoutPending={logoutPending}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        devices={query.rows}
       />
 
       {/* Conteúdo Principal */}
@@ -521,10 +523,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={() => setIsChangelogOpen(true)}
-                title="Clique para ver todas as novidades da versão v1.5.5"
-                aria-label="Ver novidades da versão v1.5.5 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.5.6"
+                aria-label="Ver novidades da versão v1.5.6 (mobile)"
               >
-                v1.5.5
+                v1.5.6
               </button>
             </div>
           </div>
@@ -592,10 +594,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.5.5"
-              aria-label="Ver novidades da versão v1.5.5"
+              title="Clique para ver todas as novidades da versão v1.5.6"
+              aria-label="Ver novidades da versão v1.5.6"
             >
-              v1.5.5
+              v1.5.6
             </button>
           </div>
 
