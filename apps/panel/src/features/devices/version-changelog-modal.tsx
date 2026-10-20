@@ -32,11 +32,31 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.5.0',
+    date: 'Outubro 2026',
+    title: 'Lista Simplificada de 2 Linhas, Nomenclatura Coerente (Marca + Máquina) & Opção "Ver detalhes"',
+    highlight: 'Concatenação inteligente do nome principal da marca no Nome Fantasia/Razão Social com o nome da máquina (ex: PANAMBY - SERVIDOR), hierarquia limpa de 2 linhas (título maior + subtítulo menor) e gaveta expansível sob demanda ao clicar em "Ver detalhes".',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Concatenação Coerente de Marca Principal + Nome da Máquina (ex: PANAMBY - SERVIDOR)',
+        description:
+          'Cruza automaticamente Nome Fantasia e Razão Social (ignorando sufixos jurídicos e categorias genéricas) para identificar a marca âncora mais coerente e concatenar com a máquina/função.',
+        tag: 'UI/UX',
+      },
+      {
+        title: 'Hierarquia Visual em 2 Linhas (Linha Maior + Subtítulo Menor) & Botão "Ver detalhes ▾"',
+        description:
+          'Exibe o título principal em destaque na primeira linha e um subtítulo enxuto abaixo com o Nome Fantasia completo, Host/Pasta e o botão "Ver detalhes" para revelar especificações e ficha DataDivas apenas quando solicitado.',
+        tag: 'Mobilidade',
+      },
+    ],
+  },
+  {
     version: 'v1.4.9',
     date: 'Outubro 2026',
     title: 'Lista Simplificada Ultra-Limpa & Expansão sob Demanda ("Detalhes")',
     highlight: 'Padronização visual de cada computador em 2 linhas enxutas na lista principal, ocultando metadados técnicos e ficha DataDivas até que o técnico clique em "Detalhes".',
-    isCurrent: true,
     items: [
       {
         title: 'Lista Simplificada Uniforme em 2 Linhas (Mobile & Desktop)',

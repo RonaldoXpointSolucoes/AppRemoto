@@ -7808,9 +7808,61 @@ button, a, input, select { outline-offset: 3px; }
 /* =========================================================
    LISTA SIMPLIFICADA & GAVETA EXPANSÍVEL SOB DEMANDA (v1.4.9)
    ========================================================= */
+.tv-row {
+  padding: 13px 18px 13px 28px;
+}
+
 .tv-row.is-expanded {
   align-items: flex-start;
-  background: linear-gradient(180deg, rgba(14, 165, 233, 0.05) 0%, transparent 100%);
+  background: linear-gradient(180deg, rgba(14, 165, 233, 0.06) 0%, transparent 100%);
+}
+
+.tv-name-info {
+  gap: 4px;
+}
+
+.tv-name-header {
+  align-items: center;
+  gap: 8px;
+}
+
+.tv-display-name {
+  font-size: 1.02rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  flex: 0 1 auto;
+}
+
+.tv-subtext-primary {
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  gap: 6px;
+  line-height: 1.35;
+}
+
+.tv-subtitle-company {
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+[data-theme="light"] .tv-subtitle-company {
+  color: #475569;
+}
+
+.tv-subtitle-meta {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  opacity: 0.9;
+}
+
+.tv-mobile-id-group {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .tv-compact-role-tag {
@@ -7969,6 +8021,10 @@ button, a, input, select { outline-offset: 3px; }
     align-items: flex-start;
     padding: 11px 12px;
     min-height: 62px;
+  }
+
+  .tv-mobile-id-group {
+    display: inline-flex;
   }
 
   .tv-col-actions {

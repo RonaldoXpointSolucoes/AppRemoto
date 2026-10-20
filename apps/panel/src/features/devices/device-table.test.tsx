@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { OrganizationView } from '../../lib/api';
 import { ApiClientError } from '../../lib/api';
 import { DeviceDirectory, type DeviceDirectoryService } from './device-table';
+import { resolveCoherentDevicePresentation } from './teamviewer-device-tree';
 import { LoginForm } from '../auth/login-form';
 
 const organizations: OrganizationView[] = [
@@ -335,7 +336,7 @@ describe('DeviceDirectory', () => {
   it('opens the release notes modal when clicking the version number button', async () => {
     renderDirectory(service());
     await screen.findAllByText('Recepcao 01');
-    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.4.9' });
+    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.5.0' });
     expect(versionButtons.length).toBeGreaterThan(0);
     await userEvent.click(versionButtons[0]);
     const dialog = await screen.findByRole('dialog', { name: /Novidades da Plataforma/i });
@@ -344,6 +345,38 @@ describe('DeviceDirectory', () => {
     expect(within(dialog).getByText('Integração Nativa C:\\DataDivas\\config.ini no Instalador EXE v1.2.8 & Ficha Cadastral no Painel')).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Entendi, voltar ao painel' }));
     expect(screen.queryByRole('dialog', { name: /Novidades da Plataforma/i })).not.toBeInTheDocument();
+  });
+
+  it('concatenates the coherent anchor brand from nomeFantasia and razaoSocial with the machine name (e.g. PANAMBY - SERVIDOR)', () => {
+    const panamby = device({
+      displayName: 'Servidor',
+      hostname: 'SERVIDOR',
+      organizationName: 'BBQ PANAMBY BAR E RESTAURANTE LTDA',
+      datadivas: {
+        nomeFantasia: 'PENOSA E RABICO PANAMBY',
+        razaoSocial: 'BBQ PANAMBY BAR E RESTAURANTE LTDA',
+        funcao: 'SERVIDOR',
+      },
+    });
+    const result = resolveCoherentDevicePresentation(panamby, 'Clientes');
+    expect(result.mainTitle).toBe('PANAMBY - SERVIDOR');
+    expect(result.anchorBrand).toBe('PANAMBY');
+    expect(result.subtitlePrimary).toBe('Penosa e Rabico Panamby');
+    expect(result.roleIncludedInTitle).toBe(true);
+
+    const sistemaDemo = device({
+      displayName: 'CAIXA-01',
+      hostname: 'DESKTOP-3U5D0O2',
+      organizationName: 'SISTEMA DEMO',
+      datadivas: {
+        nomeFantasia: 'SISTEMA DEMONSTRAÇÃO',
+        razaoSocial: 'SISTEMA DEMO',
+        funcao: 'CAIXA',
+      },
+    });
+    const demoResult = resolveCoherentDevicePresentation(sistemaDemo, 'Clientes');
+    expect(demoResult.mainTitle).toBe('SISTEMA DEMO - CAIXA-01');
+    expect(demoResult.subtitlePrimary).toBe('Sistema Demonstração');
   });
 
   it('persists and restores chosen filters separately for each authenticated user when returning to the application', async () => {

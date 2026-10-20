@@ -63,6 +63,352 @@ function getDeviceNotes(dev: DeviceView, metaMap: Record<string, DeviceCustomMet
   return '';
 }
 
+const COMPANY_STOPWORDS = new Set([
+  'LTDA',
+  'ME',
+  'EPP',
+  'EIRELI',
+  'SA',
+  'S/A',
+  'CIA',
+  'COMPANHIA',
+  'SOCIEDADE',
+  'EMPRESARIAL',
+  'LIMITADA',
+  'INDIVIDUAL',
+  'MICROEMPRESA',
+  'COMERCIO',
+  'COMERCIAL',
+  'SERVICOS',
+  'SERVICO',
+  'INDUSTRIA',
+  'INDUSTRIAL',
+  'DISTRIBUIDORA',
+  'IMPORTACAO',
+  'EXPORTACAO',
+  'PARTICIPACOES',
+  'HOLDING',
+  'GRUPO',
+  'REDE',
+  'FILIAL',
+  'MATRIZ',
+  'UNIDADE',
+  'LOJA',
+  'RESTAURANTE',
+  'RESTAURANTES',
+  'BAR',
+  'BARES',
+  'LANCHONETE',
+  'PADARIA',
+  'PANIFICADORA',
+  'CONFEITARIA',
+  'PIZZARIA',
+  'CHURRASCARIA',
+  'HAMBURGUERIA',
+  'BISTRO',
+  'CAFE',
+  'CAFETERIA',
+  'ADEGA',
+  'EMPORIO',
+  'MERCADO',
+  'SUPERMERCADO',
+  'MINIMERCADO',
+  'HORTIFRUTI',
+  'ACOUGUE',
+  'FARMACIA',
+  'DROGARIA',
+  'CLINICA',
+  'CONSULTORIO',
+  'LABORATORIO',
+  'HOSPITAL',
+  'HOTEL',
+  'POUSADA',
+  'MOTEL',
+  'AUTO',
+  'POSTO',
+  'OFICINA',
+  'ESTACIONAMENTO',
+  'ESCRITORIO',
+  'CONTABILIDADE',
+  'ADVOCACIA',
+  'ENGENHARIA',
+  'CONSTRUTORA',
+  'IMOBILIARIA',
+  'ESCOLA',
+  'COLEGIO',
+  'ACADEMIA',
+  'SALAO',
+  'BARBEARIA',
+  'PET',
+  'SHOP',
+  'ALIMENTOS',
+  'BEBIDAS',
+  'PRODUTOS',
+  'ARTIGOS',
+  'EQUIPAMENTOS',
+  'SOLUCOES',
+  'TECNOLOGIA',
+  'INFORMATICA',
+  'SISTEMAS',
+  'DE',
+  'DA',
+  'DO',
+  'DAS',
+  'DOS',
+  'E',
+  'EM',
+  'COM',
+  'PARA',
+  'POR',
+  'NO',
+  'NA',
+  'NOS',
+  'NAS',
+  'AO',
+  'AOS',
+]);
+
+const GENERIC_ORGS = new Set([
+  'CLIENTES',
+  'X-POINT SOLUCOES',
+  'XPOINT SOLUCOES',
+  'SERVIDORES E INFRA',
+  'OPERACAO NORTE',
+  'OPERACAO SUL',
+  'PADRAO',
+  'DEFAULT',
+]);
+
+const TITLE_CASE_LOWER_WORDS = new Set([
+  'de',
+  'da',
+  'do',
+  'das',
+  'dos',
+  'e',
+  'em',
+  'com',
+  'para',
+  'por',
+  'no',
+  'na',
+]);
+
+const TITLE_CASE_UPPER_WORDS = new Set([
+  'LTDA',
+  'ME',
+  'EPP',
+  'EIRELI',
+  'SA',
+  'BBQ',
+  'TI',
+  'PDV',
+  'SP',
+  'RJ',
+  'MG',
+  'PR',
+  'SC',
+  'RS',
+  'BA',
+  'GO',
+  'DF',
+]);
+
+function stripAccents(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function toTitleCasePtBr(raw: string): string {
+  const words = raw.trim().split(/\s+/).filter(Boolean);
+  return words
+    .map((word, index) => {
+      const upperNoAccent = stripAccents(word).toUpperCase();
+      if (TITLE_CASE_UPPER_WORDS.has(upperNoAccent)) {
+        return upperNoAccent;
+      }
+      const lower = word.toLowerCase();
+      if (index > 0 && TITLE_CASE_LOWER_WORDS.has(lower)) {
+        return lower;
+      }
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(' ');
+}
+
+function extractSignificantTokens(raw?: string | null): string[] {
+  if (!raw) return [];
+  const normalized = stripAccents(raw)
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]/g, ' ');
+  return normalized
+    .split(/\s+/)
+    .filter((token) => token.length >= 2 && !COMPANY_STOPWORDS.has(token));
+}
+
+function cleanBrandPhrase(raw: string): string {
+  const words = raw
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-ZÀ-Ú0-9\s&.-]/gi, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+
+  // Remove termos jurídicos/categorias das extremidades mantendo conectivos internos (ex: "VINHO E CIA", "SABOR DA VILA")
+  let start = 0;
+  let end = words.length - 1;
+  while (start <= end && COMPANY_STOPWORDS.has(stripAccents(words[start]))) {
+    start++;
+  }
+  while (end >= start && COMPANY_STOPWORDS.has(stripAccents(words[end]))) {
+    end--;
+  }
+  const sliced = start <= end ? words.slice(start, end + 1) : words;
+  return sliced.slice(0, 3).join(' ');
+}
+
+export interface CoherentDevicePresentation {
+  /** Linha 1 (Maior): Ex: "PANAMBY - SERVIDOR" ou "SISTEMA DEMO - CAIXA-01" */
+  mainTitle: string;
+  /** Nome âncora da marca extraído por referência cruzada (ex: "PANAMBY") */
+  anchorBrand: string | null;
+  /** Subtítulo principal (Linha 2 menor abaixo): Ex: "Penosa e Rabico Panamby" */
+  subtitlePrimary: string;
+  /** Subtítulo complementar: Ex: "Host: SERVIDOR" */
+  subtitleSecondary: string | null;
+  /** Se a tag de função já está contemplada no título principal (evita repetição visual) */
+  roleIncludedInTitle: boolean;
+}
+
+export function resolveCoherentDevicePresentation(
+  dev: DeviceView,
+  folderName = 'Clientes'
+): CoherentDevicePresentation {
+  const rawDisplay = (dev.displayName || dev.hostname || 'COMPUTADOR').trim();
+  const fantasia = dev.datadivas?.nomeFantasia?.trim() || '';
+  const razao = dev.datadivas?.razaoSocial?.trim() || '';
+  const org = dev.organizationName?.trim() || '';
+  const orgNorm = stripAccents(org).toUpperCase();
+  const effectiveRazao = razao || (!GENERIC_ORGS.has(orgNorm) ? org : '');
+
+  const fantasiaTokens = extractSignificantTokens(fantasia);
+  const razaoTokens = extractSignificantTokens(effectiveRazao);
+
+  // 1. Referência cruzada entre Nome Fantasia e Razão Social para achar o nome principal mais coerente
+  // Exemplo: "PENOSA E RABICO PANAMBY" ∩ "BBQ PANAMBY BAR E RESTAURANTE LTDA" => "PANAMBY"
+  // Exemplo: "SISTEMA DEMONSTRAÇÃO" ∩ "SISTEMA DEMO" => "SISTEMA DEMO"
+  let anchorBrand: string | null = null;
+
+  if (fantasiaTokens.length > 0 && razaoTokens.length > 0) {
+    const matchedTokens: string[] = [];
+    for (const fTok of fantasiaTokens) {
+      const rMatch = razaoTokens.find(
+        (rTok) =>
+          rTok === fTok ||
+          (rTok.length >= 4 && fTok.length >= 4 && (fTok.startsWith(rTok) || rTok.startsWith(fTok)))
+      );
+      if (rMatch) {
+        // Prefere a forma mais concisa quando uma é abreviação direta da outra (ex: DEMO vs DEMONSTRACAO)
+        const chosen = rMatch.length <= fTok.length ? rMatch : fTok;
+        if (!matchedTokens.includes(chosen)) {
+          matchedTokens.push(chosen);
+        }
+      }
+    }
+    if (matchedTokens.length > 0) {
+      anchorBrand = matchedTokens.slice(0, 3).join(' ');
+    }
+  }
+
+  if (!anchorBrand) {
+    if (fantasia) {
+      anchorBrand = cleanBrandPhrase(fantasia) || fantasiaTokens.slice(0, 2).join(' ') || null;
+    } else if (effectiveRazao && dev.datadivas) {
+      anchorBrand = cleanBrandPhrase(effectiveRazao) || razaoTokens.slice(0, 2).join(' ') || null;
+    } else if (
+      effectiveRazao &&
+      /^(SERVIDOR|CAIXA|PDV|BALANCA|GARCOM|ESCRITORIO|COZINHA|ESTOQUE|RETAGUARDA|TERMINAL|ESTACAO|PC\b|DESKTOP-|WIN-)/i.test(
+        stripAccents(rawDisplay)
+      )
+    ) {
+      anchorBrand = cleanBrandPhrase(effectiveRazao) || razaoTokens.slice(0, 2).join(' ') || null;
+    }
+  }
+
+  // 2. Construção do Nome Principal Concatenado (Marca Principal + Nome da Máquina)
+  let mainTitle = rawDisplay;
+  let companyFromDisplay: string | null = null;
+
+  if (rawDisplay.includes(' - ')) {
+    const parts = rawDisplay.split(/\s+-\s+/);
+    const leftPart = parts[0]?.trim() || '';
+    const rightPart = parts.slice(1).join(' - ').trim();
+    companyFromDisplay = leftPart;
+
+    const leftNorm = stripAccents(leftPart).toUpperCase();
+    const anchorNorm = anchorBrand ? stripAccents(anchorBrand).toUpperCase() : '';
+
+    // Se a parte esquerda era o nome fantasia longo inteiro e encontramos uma âncora mais curta e coerente (ex: PANAMBY)
+    if (anchorNorm && leftNorm !== anchorNorm && leftNorm.includes(anchorNorm) && rightPart) {
+      mainTitle = `${anchorBrand} - ${rightPart.toUpperCase()}`;
+    } else {
+      mainTitle = `${leftPart.toUpperCase()} - ${rightPart.toUpperCase()}`;
+    }
+  } else if (anchorBrand) {
+    const displayNorm = stripAccents(rawDisplay).toUpperCase();
+    const anchorNorm = stripAccents(anchorBrand).toUpperCase();
+
+    // Determina o rótulo mais coerente para a máquina (ex: SERVIDOR, CAIXA-01)
+    let machineLabel = rawDisplay.toUpperCase();
+    if (
+      /^(DESKTOP-|WIN-|WORKSTATION|COMPUTADOR)/i.test(displayNorm) &&
+      dev.datadivas?.funcao
+    ) {
+      machineLabel = dev.datadivas.funcao.trim().toUpperCase();
+    }
+
+    if (displayNorm === anchorNorm) {
+      const roleFallback = (dev.datadivas?.funcao || dev.hostname || 'MAQUINA').trim().toUpperCase();
+      mainTitle = `${anchorBrand} - ${roleFallback}`;
+    } else if (!displayNorm.includes(anchorNorm)) {
+      mainTitle = `${anchorBrand} - ${machineLabel}`;
+    } else {
+      mainTitle = rawDisplay.toUpperCase();
+    }
+  }
+
+  // 3. Construção do Subtítulo Menor Abaixo (Contexto da Empresa + Host/Pasta)
+  let subtitlePrimary = folderName;
+  if (fantasia) {
+    subtitlePrimary = toTitleCasePtBr(fantasia);
+  } else if (effectiveRazao) {
+    subtitlePrimary = toTitleCasePtBr(effectiveRazao);
+  } else if (companyFromDisplay) {
+    subtitlePrimary = toTitleCasePtBr(companyFromDisplay);
+  } else if (org) {
+    subtitlePrimary = org;
+  }
+
+  const hostClean = (dev.hostname || '').trim();
+  const subtitleSecondary =
+    hostClean && stripAccents(hostClean).toUpperCase() !== stripAccents(mainTitle).toUpperCase()
+      ? `Host: ${hostClean}`
+      : folderName
+        ? `Pasta: ${folderName}`
+        : null;
+
+  const roleNorm = dev.datadivas?.funcao ? stripAccents(dev.datadivas.funcao).toUpperCase() : '';
+  const titleNorm = stripAccents(mainTitle).toUpperCase();
+  const roleIncludedInTitle = Boolean(roleNorm && titleNorm.includes(roleNorm));
+
+  return {
+    mainTitle,
+    anchorBrand,
+    subtitlePrimary,
+    subtitleSecondary,
+    roleIncludedInTitle,
+  };
+}
+
 export function TeamViewerDeviceTree({
   devices,
   statusState,
@@ -594,7 +940,10 @@ export function TeamViewerDeviceTree({
         return 0;
       }
       if (sortBy === 'name') {
-        return (a.displayName || '').localeCompare(b.displayName || '', 'pt-BR');
+        return resolveCoherentDevicePresentation(a).mainTitle.localeCompare(
+          resolveCoherentDevicePresentation(b).mainTitle,
+          'pt-BR'
+        );
       }
       if (sortBy === 'recent') {
         const tA = a.lastSeenAt ? new Date(a.lastSeenAt).getTime() : 0;
@@ -810,6 +1159,7 @@ export function TeamViewerDeviceTree({
             const parsedNotes = parseDeviceNotes(rawNotes);
             const folderName = getDeviceFolderName(dev, groups);
             const rec = recents.find((r) => r.deviceId === dev.id || r.rustdeskId === dev.rustdeskId);
+            const presentation = resolveCoherentDevicePresentation(dev, folderName);
 
             return (
               <div
@@ -823,29 +1173,32 @@ export function TeamViewerDeviceTree({
                     <span className={`tv-status-dot ${isOnline ? 'online' : 'offline'}`} />
                   </div>
                   <div className="tv-name-info">
-                    {/* Linha 1 Simplificada: Estrela + Nome Principal + Função Compacta */}
+                    {/* Linha 1 (Maior): Estrela + Nome Principal Coerente Concatenado (ex: PANAMBY - SERVIDOR) */}
                     <div className="tv-name-header">
                       <button
                         type="button"
                         className={`tv-pin-star-btn ${isFavorite ? 'active' : ''}`}
                         title={isFavorite ? 'Desafixar do topo' : 'Fixar computador no topo da lista'}
-                        aria-label={isFavorite ? `Desafixar ${dev.displayName}` : `Fixar ${dev.displayName}`}
+                        aria-label={isFavorite ? `Desafixar ${presentation.mainTitle}` : `Fixar ${presentation.mainTitle}`}
                         onClick={(e) => handleToggleFavorite(dev, e)}
                       >
                         <Star size={13} className={isFavorite ? 'fill-amber-400 text-amber-400' : ''} />
                       </button>
                       <strong
                         className="tv-display-name clickable"
-                        title="Clique para expandir ou recolher os detalhes deste computador"
+                        title="Clique para ver ou ocultar os detalhes completos deste computador"
                         onClick={(e) => toggleDeviceDetails(dev.id, e)}
                       >
-                        {dev.displayName}
+                        {presentation.mainTitle}
                       </strong>
-                      {dev.datadivas?.funcao && (
+                      {dev.datadivas?.funcao && !presentation.roleIncludedInTitle && (
                         <span className="tv-compact-role-tag" title={`Função: ${dev.datadivas.funcao}`}>
                           {dev.datadivas.funcao}
                         </span>
                       )}
+                      <span className={`tv-badge-os tv-badge-os-desktop ${sys.badge.toLowerCase().replace(/\s+/g, '')}`}>
+                        {sys.badge}
+                      </span>
                       <button
                         type="button"
                         className="tv-inline-edit-btn"
@@ -854,57 +1207,70 @@ export function TeamViewerDeviceTree({
                       >
                         <Pencil size={12} />
                       </button>
-                      <span className={`tv-badge-os tv-badge-os-desktop ${sys.badge.toLowerCase().replace(/\s+/g, '')}`}>
-                        {sys.badge}
-                      </span>
                       {isFavorite && <span className="tv-badge-pinned">Fixado</span>}
                     </div>
 
-                    {/* Linha 2 Simplificada: ID RustDesk + Status + Pasta + Botão "Detalhes" */}
+                    {/* Linha 2 (Subtítulo Menor Abaixo): Contexto Fantasia/Empresa + Host/Pasta + Opção "Ver detalhes" */}
                     <div className="tv-subtext-primary">
                       <span
-                        className="tv-id-subtext"
-                        title="ID do RustDesk (toque para copiar)"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
-                            setCopiedId(dev.rustdeskId);
-                            showToast(`ID ${formatRustDeskId(dev.rustdeskId)} copiado!`);
-                            setTimeout(() => setCopiedId(null), 2500);
-                          });
-                        }}
+                        className="tv-subtitle-company"
+                        title={
+                          dev.datadivas?.razaoSocial
+                            ? `${presentation.subtitlePrimary} · ${dev.datadivas.razaoSocial}`
+                            : presentation.subtitlePrimary
+                        }
                       >
-                        {formatRustDeskId(dev.rustdeskId)}
+                        {presentation.subtitlePrimary}
                       </span>
-                      <button
-                        type="button"
-                        className="tv-copy-id-btn"
-                        title={copiedId === dev.rustdeskId ? 'Copiado!' : 'Copiar ID do RustDesk'}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
-                            setCopiedId(dev.rustdeskId);
-                            showToast(`ID ${formatRustDeskId(dev.rustdeskId)} copiado!`);
-                            setTimeout(() => setCopiedId(null), 2500);
-                          });
-                        }}
-                      >
-                        {copiedId === dev.rustdeskId ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
-                      </button>
+                      {presentation.subtitleSecondary && (
+                        <>
+                          <span className="tv-subtext-sep">·</span>
+                          <span className="tv-subtitle-meta">{presentation.subtitleSecondary}</span>
+                        </>
+                      )}
+                      <span className="tv-mobile-id-group">
+                        <span className="tv-subtext-sep">·</span>
+                        <span
+                          className="tv-id-subtext"
+                          title="ID do RustDesk (toque para copiar)"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
+                              setCopiedId(dev.rustdeskId);
+                              showToast(`ID ${formatRustDeskId(dev.rustdeskId)} copiado!`);
+                              setTimeout(() => setCopiedId(null), 2500);
+                            });
+                          }}
+                        >
+                          {formatRustDeskId(dev.rustdeskId)}
+                        </span>
+                        <button
+                          type="button"
+                          className="tv-copy-id-btn"
+                          title={copiedId === dev.rustdeskId ? 'Copiado!' : 'Copiar ID do RustDesk'}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
+                              setCopiedId(dev.rustdeskId);
+                              showToast(`ID ${formatRustDeskId(dev.rustdeskId)} copiado!`);
+                              setTimeout(() => setCopiedId(null), 2500);
+                            });
+                          }}
+                        >
+                          {copiedId === dev.rustdeskId ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                        </button>
+                      </span>
                       <span className={`tv-mobile-inline-status ${isOnline ? 'online' : 'offline'}`}>
                         {isOnline ? '● Online' : `Visto: ${formatLastSeen(dev.lastSeenAt)}`}
-                      </span>
-                      <span className="tv-compact-folder-tag" title={`Pasta: ${folderName}`}>
-                        📁 {folderName}
                       </span>
                       <button
                         type="button"
                         className={`tv-details-expand-btn ${isExpanded ? 'expanded' : ''}`}
                         aria-expanded={isExpanded}
-                        aria-label={isExpanded ? `Ocultar detalhes de ${dev.displayName}` : `Ver detalhes de ${dev.displayName}`}
+                        aria-label={isExpanded ? `Ocultar detalhes de ${presentation.mainTitle}` : `Ver detalhes de ${presentation.mainTitle}`}
                         onClick={(e) => toggleDeviceDetails(dev.id, e)}
                       >
-                        <span>{isExpanded ? 'Ocultar' : 'Detalhes'}</span>
+                        <span>{isExpanded ? 'Ocultar detalhes' : 'Ver detalhes'}</span>
                         {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                       </button>
                     </div>
