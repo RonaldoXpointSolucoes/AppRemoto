@@ -196,7 +196,24 @@ export function createApiClient(options: ApiClientOptions) {
       if (query.search) params.set('search', query.search);
       if (query.cursor) params.set('cursor', query.cursor);
       params.set('limit', String(query.cursor ? query.limit : Math.max(query.limit ?? 50, 100)));
-      return request(`/v1/devices?${params.toString()}`, DevicePageSchema);
+      const fetchAll = async (): Promise<DevicePage> => {
+        const firstPage = await request(`/v1/devices?${params.toString()}`, DevicePageSchema);
+        if (query.cursor || !firstPage.nextCursor) return firstPage;
+        const combined = [...firstPage.devices];
+        let nextCursor: string | null = firstPage.nextCursor;
+        let pages = 1;
+        while (nextCursor && pages < 10) {
+          const nextParams = new URLSearchParams(params);
+          nextParams.set('cursor', nextCursor);
+          nextParams.set('limit', '100');
+          const nextPage = await request(`/v1/devices?${nextParams.toString()}`, DevicePageSchema);
+          combined.push(...nextPage.devices);
+          nextCursor = nextPage.nextCursor;
+          pages++;
+        }
+        return { devices: combined, nextCursor };
+      };
+      return fetchAll();
     },
     getCnpjGroups: (cnpj?: string) => {
       const qs = cnpj ? `?cnpj=${encodeURIComponent(cnpj)}` : '';

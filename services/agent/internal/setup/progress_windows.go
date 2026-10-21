@@ -54,21 +54,23 @@ func ShowProgress(report *Report) (func(), error) {
 		createSolidBrush := gdi.NewProc("CreateSolidBrush")
 		deleteObject := gdi.NewProc("DeleteObject")
 
-		colCanvas := rgb(241, 245, 249)   // #F1F5F9
-		colHeader := rgb(15, 23, 42)      // #0F172A
-		colAccent := rgb(6, 182, 212)     // #06B6D4
-		colBadgeBg := rgb(6, 78, 59)      // #064E3B
-		colBadgeBrd := rgb(16, 185, 129)  // #10B981
-		colCard := rgb(255, 255, 255)     // #FFFFFF
-		colCardBrd := rgb(203, 213, 225)  // #CBD5E1
+		colCanvas := rgb(245, 245, 247)      // #F5F5F7 Apple Window Canvas
+		colHeader := rgb(255, 255, 255)      // #FFFFFF Clean Surface Header
+		colHeaderBorder := rgb(229, 229, 234) // #E5E5EA Subtle Divider
+		colAccent := rgb(0, 113, 227)        // #0071E3 Apple System Blue
+		colBadgeBg := rgb(236, 253, 243)     // #ECFDF3 Apple Soft Verified Green
+		colBadgeBrd := rgb(166, 244, 197)    // #A6F4C5 Verified Border
+		colCard := rgb(255, 255, 255)        // #FFFFFF Pure White Card
+		colCardBrd := rgb(210, 210, 215)     // #D2D2D7 Apple Card Border
 
 		brushCanvas, _, _ := createSolidBrush.Call(colCanvas)
 		brushHeader, _, _ := createSolidBrush.Call(colHeader)
+		brushHeaderBorder, _, _ := createSolidBrush.Call(colHeaderBorder)
 		brushAccent, _, _ := createSolidBrush.Call(colAccent)
 		brushBadge, _, _ := createSolidBrush.Call(colBadgeBg)
 		brushCard, _, _ := createSolidBrush.Call(colCard)
 
-		for _, b := range []uintptr{brushCanvas, brushHeader, brushAccent, brushBadge, brushCard} {
+		for _, b := range []uintptr{brushCanvas, brushHeader, brushHeaderBorder, brushAccent, brushBadge, brushCard} {
 			if b != 0 {
 				defer deleteObject.Call(b)
 			}
@@ -103,25 +105,27 @@ func ShowProgress(report *Report) (func(), error) {
 					user.NewProc("FillRect").Call(hdc, uintptr(unsafe.Pointer(&headerRect)), brushHeader)
 					accentRect := winRect{Left: 0, Top: 0, Right: rc.Right, Bottom: 4}
 					user.NewProc("FillRect").Call(hdc, uintptr(unsafe.Pointer(&accentRect)), brushAccent)
+					dividerRect := winRect{Left: 0, Top: 81, Right: rc.Right, Bottom: 82}
+					user.NewProc("FillRect").Call(hdc, uintptr(unsafe.Pointer(&dividerRect)), brushHeaderBorder)
 
 					createPen := gdi.NewProc("CreatePen")
 					selectObj := gdi.NewProc("SelectObject")
 					roundRect := gdi.NewProc("RoundRect")
 
-					// Security badge
+					// Security badge (16px radius)
 					penBadge, _, _ := createPen.Call(0, 1, colBadgeBrd)
 					oldPen, _, _ := selectObj.Call(hdc, penBadge)
 					oldBrush, _, _ := selectObj.Call(hdc, brushBadge)
-					roundRect.Call(hdc, 480, 16, 738, 68, 12, 12)
+					roundRect.Call(hdc, 480, 16, 738, 68, 16, 16)
 					selectObj.Call(hdc, oldBrush)
 					selectObj.Call(hdc, oldPen)
 					deleteObject.Call(penBadge)
 
-					// Progress card
+					// Progress card (20px radius)
 					penCard, _, _ := createPen.Call(0, 1, colCardBrd)
 					oldPen, _, _ = selectObj.Call(hdc, penCard)
 					oldBrush, _, _ = selectObj.Call(hdc, brushCard)
-					roundRect.Call(hdc, 20, 96, 740, 412, 12, 12)
+					roundRect.Call(hdc, 20, 96, 740, 412, 20, 20)
 					selectObj.Call(hdc, oldBrush)
 					selectObj.Call(hdc, oldPen)
 					deleteObject.Call(penCard)
@@ -135,31 +139,31 @@ func ShowProgress(report *Report) (func(), error) {
 				setTextColor := gdi.NewProc("SetTextColor")
 				switch lparam {
 				case headerTitleCtrl:
-					setTextColor.Call(wparam, rgb(255, 255, 255))
+					setTextColor.Call(wparam, rgb(29, 29, 31))
 					setBkColor.Call(wparam, colHeader)
 					return brushHeader
 				case headerSubCtrl:
-					setTextColor.Call(wparam, rgb(148, 163, 184))
+					setTextColor.Call(wparam, rgb(110, 110, 115))
 					setBkColor.Call(wparam, colHeader)
 					return brushHeader
 				case badgeTitleCtrl:
-					setTextColor.Call(wparam, rgb(110, 231, 183))
+					setTextColor.Call(wparam, rgb(6, 118, 71))
 					setBkColor.Call(wparam, colBadgeBg)
 					return brushBadge
 				case badgeSubCtrl:
-					setTextColor.Call(wparam, rgb(209, 250, 229))
+					setTextColor.Call(wparam, rgb(22, 101, 52))
 					setBkColor.Call(wparam, colBadgeBg)
 					return brushBadge
 				case cardTitleCtrl:
-					setTextColor.Call(wparam, rgb(3, 105, 161))
+					setTextColor.Call(wparam, rgb(0, 113, 227))
 					setBkColor.Call(wparam, colCard)
 					return brushCard
 				case footerCtrl:
-					setTextColor.Call(wparam, rgb(100, 116, 139))
+					setTextColor.Call(wparam, rgb(134, 134, 139))
 					setBkColor.Call(wparam, colCanvas)
 					return brushCanvas
 				default:
-					setTextColor.Call(wparam, rgb(15, 23, 42))
+					setTextColor.Call(wparam, rgb(29, 29, 31))
 					setBkColor.Call(wparam, colCard)
 					return brushCard
 				}
@@ -235,16 +239,16 @@ func ShowProgress(report *Report) (func(), error) {
 		}
 
 		addStatic := func(text string, x, y, w, h int, f uintptr) uintptr {
-			ctrl, _, _ := create.Call(0, uintptr(unsafe.Pointer(ptr("STATIC"))), uintptr(unsafe.Pointer(ptr(text))), 0x50000000, uintptr(x), uintptr(y), uintptr(w), uintptr(h), hwnd, 0, instance, 0)
+			ctrl, _, _ := create.Call(0, uintptr(unsafe.Pointer(ptr("STATIC"))), uintptr(unsafe.Pointer(ptr(text))), 0x50000080, uintptr(x), uintptr(y), uintptr(w), uintptr(h), hwnd, 0, instance, 0)
 			if f != 0 && ctrl != 0 {
-				user.NewProc("SendMessageW").Call(ctrl, 0x30, f, 1)
+				user.NewProc("SendMessageW").Call(ctrl, 0x30, f, 0)
 			}
 			return ctrl
 		}
 
 		headerTitleCtrl = addStatic("XPoint Remote — Configurando Acesso Seguro", 24, 16, 440, 26, headerFont)
 		headerSubCtrl = addStatic("Aguarde enquanto aplicamos a proteção, o serviço e o vínculo por CNPJ", 24, 46, 440, 20, smallFont)
-		badgeTitleCtrl = addStatic("🛡️ INSTALAÇÃO PROTEGIDA ATIVA", 492, 23, 234, 18, boldSmallFont)
+		badgeTitleCtrl = addStatic("✓ INSTALAÇÃO PROTEGIDA ATIVA", 492, 23, 234, 18, boldSmallFont)
 		badgeSubCtrl = addStatic("Não desligue o computador agora", 492, 43, 234, 16, smallFont)
 
 		cardTitleCtrl = addStatic("ANDAMENTO DAS ETAPAS DE CONFIGURAÇÃO & SEGURANÇA", 38, 108, 684, 18, boldSmallFont)
@@ -255,12 +259,13 @@ func ShowProgress(report *Report) (func(), error) {
 		}
 		footerCtrl = addStatic("🔒 Todas as credenciais permanecem criptografadas localmente com Windows DPAPI • XPoint Soluções", 24, 422, 712, 18, smallFont)
 
+		invalidate := user.NewProc("InvalidateRect")
+		invalidate.Call(hwnd, 0, 1)
 		user.NewProc("UpdateWindow").Call(hwnd)
 		ready <- nil
 		peek := user.NewProc("PeekMessageW")
 		translate := user.NewProc("TranslateMessage")
 		dispatch := user.NewProc("DispatchMessageW")
-		invalidate := user.NewProc("InvalidateRect")
 		lastText := ""
 		for {
 			select {

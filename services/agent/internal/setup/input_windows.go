@@ -223,33 +223,35 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 		}
 	}
 
-	// Paleta de Cores SaaS Enterprise (RGB)
-	colCanvasBg := rgb(241, 245, 249)     // #F1F5F9 Slate 100
-	colHeaderBg := rgb(15, 23, 42)        // #0F172A Slate 900
-	colAccentCyan := rgb(6, 182, 212)     // #06B6D4 Cyan 500
-	colBadgeBg := rgb(6, 78, 59)          // #064E3B Emerald 900
-	colBadgeBorder := rgb(16, 185, 129)   // #10B981 Emerald 500
-	colDdCardBg := rgb(240, 249, 255)     // #F0F9FF Sky 50
-	colDdBorder := rgb(186, 230, 253)     // #BAE6FD Sky 200
-	colCardBg := rgb(255, 255, 255)       // #FFFFFF Pure White
-	colCardBorder := rgb(203, 213, 225)   // #CBD5E1 Slate 300
-	colCalloutBg := rgb(236, 253, 245)    // #ECFDF5 Emerald 50
-	colCalloutBorder := rgb(167, 243, 208) // #A7F3D0 Emerald 200
-	colStatusBg := rgb(248, 250, 252)     // #F8FAFC Slate 50
+	// Paleta de Cores Inspirada no macOS / Apple HIG (Light Mode Clean)
+	colCanvasBg := rgb(245, 245, 247)      // #F5F5F7 Apple Window Canvas
+	colHeaderBg := rgb(255, 255, 255)      // #FFFFFF Clean Surface Header
+	colHeaderBorder := rgb(229, 229, 234)  // #E5E5EA Apple Subtle Hairline
+	colAccentBlue := rgb(0, 113, 227)      // #0071E3 Apple System Blue
+	colBadgeBg := rgb(236, 253, 243)       // #ECFDF3 Apple Soft Verified Green
+	colBadgeBorder := rgb(166, 244, 197)   // #A6F4C5 Verified Border
+	colDdCardBg := rgb(245, 245, 247)      // #F5F5F7 Subtle Nested Surface
+	colDdBorder := rgb(229, 229, 234)      // #E5E5EA Subtle Nested Border
+	colCardBg := rgb(255, 255, 255)        // #FFFFFF Pure White Card
+	colCardBorder := rgb(210, 210, 215)    // #D2D2D7 Apple Card Border
+	colCalloutBg := rgb(240, 247, 255)     // #F0F7FF Apple Blue Tinted Callout
+	colCalloutBorder := rgb(178, 215, 255) // #B2D7FF Apple Blue Soft Border
+	colStatusBg := rgb(255, 255, 255)      // #FFFFFF Status Pill Surface
 
 	createSolidBrush := gdi.NewProc("CreateSolidBrush")
 	deleteObject := gdi.NewProc("DeleteObject")
 
 	brushCanvas, _, _ := createSolidBrush.Call(colCanvasBg)
 	brushHeader, _, _ := createSolidBrush.Call(colHeaderBg)
-	brushAccent, _, _ := createSolidBrush.Call(colAccentCyan)
+	brushHeaderBorder, _, _ := createSolidBrush.Call(colHeaderBorder)
+	brushAccent, _, _ := createSolidBrush.Call(colAccentBlue)
 	brushBadge, _, _ := createSolidBrush.Call(colBadgeBg)
 	brushDdCard, _, _ := createSolidBrush.Call(colDdCardBg)
 	brushCard, _, _ := createSolidBrush.Call(colCardBg)
 	brushCallout, _, _ := createSolidBrush.Call(colCalloutBg)
 	brushStatus, _, _ := createSolidBrush.Call(colStatusBg)
 
-	for _, b := range []uintptr{brushCanvas, brushHeader, brushAccent, brushBadge, brushDdCard, brushCard, brushCallout, brushStatus} {
+	for _, b := range []uintptr{brushCanvas, brushHeader, brushHeaderBorder, brushAccent, brushBadge, brushDdCard, brushCard, brushCallout, brushStatus} {
 		if b != 0 {
 			defer deleteObject.Call(b)
 		}
@@ -499,7 +501,7 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 
 	var boldBtnFont, bodyFont uintptr
 
-	drawCard := func(hdc uintptr, left, top, right, bottom int32, fillBrush, borderColor, topStripeBrush uintptr) {
+	drawCard := func(hdc uintptr, left, top, right, bottom, radius int32, fillBrush, borderColor, topStripeBrush uintptr) {
 		fillRect := user.NewProc("FillRect")
 		createPen := gdi.NewProc("CreatePen")
 		selectObj := gdi.NewProc("SelectObject")
@@ -508,13 +510,13 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 		pen, _, _ := createPen.Call(0, 1, borderColor)
 		oldPen, _, _ := selectObj.Call(hdc, pen)
 		oldBrush, _, _ := selectObj.Call(hdc, fillBrush)
-		roundRect.Call(hdc, uintptr(left), uintptr(top), uintptr(right), uintptr(bottom), 12, 12)
+		roundRect.Call(hdc, uintptr(left), uintptr(top), uintptr(right), uintptr(bottom), uintptr(radius), uintptr(radius))
 		selectObj.Call(hdc, oldBrush)
 		selectObj.Call(hdc, oldPen)
 		deleteObject.Call(pen)
 
 		if topStripeBrush != 0 {
-			stripe := winRect{Left: left + 1, Top: top + 6, Right: left + 5, Bottom: bottom - 6}
+			stripe := winRect{Left: left + 1, Top: top + 8, Right: left + 5, Bottom: bottom - 8}
 			fillRect.Call(hdc, uintptr(unsafe.Pointer(&stripe)), topStripeBrush)
 		}
 	}
@@ -542,49 +544,49 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 		useBold := false
 
 		switch dis.CtlID {
-		case 1: // Botão Primário: Instalar Acesso Seguro
+		case 1: // Botão Primário Estilo Apple: Instalar Acesso Seguro (#0071E3 Apple System Blue)
 			useBold = true
 			if isDisabled {
-				btnBgColor = rgb(148, 163, 184)
-				btnBorderColor = rgb(148, 163, 184)
-				txtColor = rgb(241, 245, 249)
+				btnBgColor = rgb(210, 210, 215)
+				btnBorderColor = rgb(210, 210, 215)
+				txtColor = rgb(255, 255, 255)
 			} else if isPressed {
-				btnBgColor = rgb(4, 120, 87) // Emerald 700
-				btnBorderColor = rgb(6, 95, 70)
+				btnBgColor = rgb(0, 91, 181) // #005BB5 Pressed Apple Blue
+				btnBorderColor = rgb(0, 75, 150)
 				txtColor = rgb(255, 255, 255)
 			} else {
-				btnBgColor = rgb(5, 150, 105) // Emerald 600
-				btnBorderColor = rgb(4, 120, 87)
+				btnBgColor = rgb(0, 113, 227) // #0071E3 Apple System Blue
+				btnBorderColor = rgb(0, 102, 204)
 				txtColor = rgb(255, 255, 255)
 			}
-		case 5: // Botão Consultar CNPJ
+		case 5: // Botão Consultar CNPJ (Apple Tinted Pill Button)
 			useBold = true
 			if isDisabled {
-				btnBgColor = rgb(226, 232, 240)
-				btnBorderColor = rgb(203, 213, 225)
-				txtColor = rgb(148, 163, 184)
+				btnBgColor = rgb(242, 242, 247)
+				btnBorderColor = rgb(210, 210, 215)
+				txtColor = rgb(142, 142, 147)
 			} else if isPressed {
-				btnBgColor = rgb(3, 105, 161) // Sky 700
-				btnBorderColor = rgb(7, 89, 133)
-				txtColor = rgb(255, 255, 255)
+				btnBgColor = rgb(209, 230, 255)
+				btnBorderColor = rgb(0, 113, 227)
+				txtColor = rgb(0, 75, 150)
 			} else {
-				btnBgColor = rgb(2, 132, 199) // Sky 600
-				btnBorderColor = rgb(3, 105, 161)
-				txtColor = rgb(255, 255, 255)
+				btnBgColor = rgb(232, 242, 255) // #E8F2FF Soft Apple Blue Tint
+				btnBorderColor = rgb(148, 198, 255)
+				txtColor = rgb(0, 113, 227) // #0071E3 Apple System Blue
 			}
-		default: // Botões Secundários (Verificar Conexão, Abrir Log, Cancelar)
+		default: // Botões Secundários macOS (Verificar Conexão, Abrir Log, Cancelar)
 			if isDisabled {
-				btnBgColor = rgb(241, 245, 249)
-				btnBorderColor = rgb(203, 213, 225)
-				txtColor = rgb(148, 163, 184)
+				btnBgColor = rgb(245, 245, 247)
+				btnBorderColor = rgb(210, 210, 215)
+				txtColor = rgb(142, 142, 147)
 			} else if isPressed {
-				btnBgColor = rgb(226, 232, 240)
-				btnBorderColor = rgb(148, 163, 184)
-				txtColor = rgb(15, 23, 42)
+				btnBgColor = rgb(229, 229, 234)
+				btnBorderColor = rgb(199, 199, 204)
+				txtColor = rgb(29, 29, 31)
 			} else {
 				btnBgColor = rgb(255, 255, 255)
-				btnBorderColor = rgb(148, 163, 184)
-				txtColor = rgb(30, 41, 59)
+				btnBorderColor = rgb(210, 210, 215)
+				txtColor = rgb(29, 29, 31)
 			}
 		}
 
@@ -599,8 +601,8 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 			uintptr(dis.RcItem.Top),
 			uintptr(dis.RcItem.Right),
 			uintptr(dis.RcItem.Bottom),
-			10,
-			10,
+			14,
+			14,
 		)
 
 		selectObj.Call(dis.Hdc, oldBrush)
@@ -655,29 +657,31 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 				user.NewProc("GetClientRect").Call(hwnd, uintptr(unsafe.Pointer(&rc)))
 				user.NewProc("FillRect").Call(hdc, uintptr(unsafe.Pointer(&rc)), brushCanvas)
 
-				// 1. Top Enterprise Dark Header Banner (0..72)
-				headerRect := winRect{Left: 0, Top: 0, Right: rc.Right, Bottom: 72}
+				// 1. Top Clean Apple-style Header Banner (0..74)
+				headerRect := winRect{Left: 0, Top: 0, Right: rc.Right, Bottom: 74}
 				user.NewProc("FillRect").Call(hdc, uintptr(unsafe.Pointer(&headerRect)), brushHeader)
 				accentRect := winRect{Left: 0, Top: 0, Right: rc.Right, Bottom: 4}
 				user.NewProc("FillRect").Call(hdc, uintptr(unsafe.Pointer(&accentRect)), brushAccent)
+				dividerRect := winRect{Left: 0, Top: 73, Right: rc.Right, Bottom: 74}
+				user.NewProc("FillRect").Call(hdc, uintptr(unsafe.Pointer(&dividerRect)), brushHeaderBorder)
 
-				// Security Badge Pill inside Header (Right side)
-				drawCard(hdc, 578, 12, 860, 60, brushBadge, colBadgeBorder, 0)
+				// Security Badge Pill inside Header (Right side, 16px radius)
+				drawCard(hdc, 580, 14, 860, 62, 16, brushBadge, colBadgeBorder, 0)
 
-				// 2. Card 1: Dados Detectados Localmente (DataDivas & Hostname)
-				drawCard(hdc, 20, 82, 860, 148, brushDdCard, colDdBorder, brushAccent)
+				// 2. Card 1 (Principal): Dados a Preencher Juntos — CNPJ, RAZÃO & NOME PADRÃO (20px radius)
+				drawCard(hdc, 20, 84, 860, 368, 20, brushCard, colCardBorder, 0)
 
-				// 3. Card 2: Identificação Empresarial & Computadores do CNPJ
-				drawCard(hdc, 20, 156, 860, 356, brushCard, colCardBorder, 0)
+				// Callout box de recomendação dentro do Card 1 (14px radius)
+				drawCard(hdc, 38, 246, 842, 298, 14, brushCallout, colCalloutBorder, 0)
 
-				// 4. Card 3: Classificação Inteligente & Renomeação Segura do Windows
-				drawCard(hdc, 20, 364, 860, 568, brushCard, colCardBorder, 0)
+				// 3. Card 2: Contexto Detectado Localmente & Computadores do CNPJ (20px radius)
+				drawCard(hdc, 20, 378, 860, 566, 20, brushCard, colCardBorder, 0)
 
-				// Callout box de recomendação dentro do Card 3
-				drawCard(hdc, 310, 448, 844, 504, brushCallout, colCalloutBorder, 0)
+				// Sub-card DataDivas dentro do Card 2 (12px radius)
+				drawCard(hdc, 38, 412, 842, 468, 12, brushDdCard, colDdBorder, brushAccent)
 
-				// 5. Card 4: Barra de Status Operacional
-				drawCard(hdc, 20, 576, 860, 606, brushStatus, colCardBorder, 0)
+				// 4. Card 3: Barra de Status Operacional (14px radius)
+				drawCard(hdc, 20, 574, 860, 604, 14, brushStatus, colCardBorder, 0)
 
 				user.NewProc("EndPaint").Call(hwnd, uintptr(unsafe.Pointer(&ps)))
 			}
@@ -698,55 +702,55 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 
 			switch lparam {
 			case headerTitleCtrl:
-				setTextColor.Call(wparam, rgb(255, 255, 255))
+				setTextColor.Call(wparam, rgb(29, 29, 31)) // #1D1D1F Apple Primary Ink
 				setBkColor.Call(wparam, colHeaderBg)
 				return brushHeader
 			case headerSubCtrl:
-				setTextColor.Call(wparam, rgb(148, 163, 184))
+				setTextColor.Call(wparam, rgb(110, 110, 115)) // #6E6E73 Apple Secondary Ink
 				setBkColor.Call(wparam, colHeaderBg)
 				return brushHeader
 			case badgeTitleCtrl:
-				setTextColor.Call(wparam, rgb(110, 231, 183))
+				setTextColor.Call(wparam, rgb(6, 118, 71)) // #067647 Verified Green
 				setBkColor.Call(wparam, colBadgeBg)
 				return brushBadge
 			case badgeSubCtrl:
-				setTextColor.Call(wparam, rgb(209, 250, 229))
+				setTextColor.Call(wparam, rgb(22, 101, 52))
 				setBkColor.Call(wparam, colBadgeBg)
 				return brushBadge
 			case ddTitleCtrl:
-				setTextColor.Call(wparam, rgb(3, 105, 161))
+				setTextColor.Call(wparam, rgb(0, 113, 227)) // #0071E3 Apple System Blue
 				setBkColor.Call(wparam, colDdCardBg)
 				return brushDdCard
 			case ddLine1Ctrl, ddLine2Ctrl:
-				setTextColor.Call(wparam, rgb(15, 23, 42))
+				setTextColor.Call(wparam, rgb(66, 66, 69))
 				setBkColor.Call(wparam, colDdCardBg)
 				return brushDdCard
 			case reasonTitleCtrl:
-				setTextColor.Call(wparam, rgb(6, 95, 70))
+				setTextColor.Call(wparam, rgb(0, 91, 181)) // #005BB5 Apple Deep Blue
 				setBkColor.Call(wparam, colCalloutBg)
 				return brushCallout
 			case reasonLabel:
-				setTextColor.Call(wparam, rgb(4, 120, 87))
+				setTextColor.Call(wparam, rgb(29, 29, 31))
 				setBkColor.Call(wparam, colCalloutBg)
 				return brushCallout
 			case statusLabel:
-				setTextColor.Call(wparam, rgb(15, 23, 42))
+				setTextColor.Call(wparam, rgb(29, 29, 31))
 				setBkColor.Call(wparam, colStatusBg)
 				return brushStatus
 			case footerCtrl:
-				setTextColor.Call(wparam, rgb(100, 116, 139))
+				setTextColor.Call(wparam, rgb(134, 134, 139)) // #86868B Apple Muted Label
 				setBkColor.Call(wparam, colCanvasBg)
 				return brushCanvas
 			case sec1TitleCtrl, sec2TitleCtrl:
-				setTextColor.Call(wparam, rgb(15, 23, 42))
+				setTextColor.Call(wparam, rgb(29, 29, 31))
 				setBkColor.Call(wparam, colCardBg)
 				return brushCard
 			case groupSummaryLabel, renameHintCtrl:
-				setTextColor.Call(wparam, rgb(71, 85, 105))
+				setTextColor.Call(wparam, rgb(110, 110, 115))
 				setBkColor.Call(wparam, colCardBg)
 				return brushCard
 			default:
-				setTextColor.Call(wparam, rgb(30, 41, 59))
+				setTextColor.Call(wparam, rgb(29, 29, 31))
 				setBkColor.Call(wparam, colCardBg)
 				return brushCard
 			}
@@ -1106,11 +1110,15 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 	}
 
 	controlWithFont := func(class, text string, x, y, w, h int, id uintptr, extra uint32, f uintptr) uintptr {
+		styleFlags := uint32(0x50000000) | extra
+		if class == "STATIC" {
+			styleFlags |= 0x00000080 // SS_NOPREFIX: preserva '&' sem converter para sublinhado '_'
+		}
 		value, _, _ := create.Call(
 			0,
 			uintptr(unsafe.Pointer(ptr(class))),
 			uintptr(unsafe.Pointer(ptr(text))),
-			uintptr(0x50000000|extra),
+			uintptr(styleFlags),
 			uintptr(x),
 			uintptr(y),
 			uintptr(w),
@@ -1120,73 +1128,41 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 			instance,
 			0,
 		)
-		if f != 0 {
-			send.Call(value, 0x30, f, 1)
+		if f != 0 && value != 0 {
+			// Passa lParam=0 para aplicar a fonte sem forçar WM_CTLCOLORSTATIC antes da variável Go receber o handle
+			send.Call(value, 0x30, f, 0)
 		}
 		return value
 	}
 
 	// =========================================================================
-	// 1. BANNER SUPERIOR ENTERPRISE (y: 0..72)
+	// 1. BANNER SUPERIOR ESTILO APPLE (y: 0..74)
 	// =========================================================================
-	headerTitleCtrl = controlWithFont("STATIC", "XPoint Remote — Identificação & Acesso Seguro", 24, 13, 540, 24, 0, 0, headerFont)
-	headerSubCtrl = controlWithFont("STATIC", "Organização inteligente por CNPJ, nomenclatura padronizada e proteção do equipamento", 24, 41, 540, 18, 0, 0, smallFont)
+	headerTitleCtrl = controlWithFont("STATIC", "XPoint Remote — Identificação & Acesso Seguro", 28, 14, 540, 26, 0, 0, headerFont)
+	headerSubCtrl = controlWithFont("STATIC", "Preencha CNPJ, Razão Social e Nome Padrão abaixo para concluir a configuração", 28, 42, 540, 18, 0, 0, smallFont)
 
-	badgeTitleCtrl = controlWithFont("STATIC", "🛡️ INSTALAÇÃO VERIFICADA & CRIPTOGRAFADA", 590, 18, 258, 16, 0, 0, smallBoldFont)
-	badgeSubCtrl = controlWithFont("STATIC", "Conexão TLS 1.3 • Pacote Oficial XPoint", 590, 36, 258, 16, 0, 0, smallFont)
-
-	// =========================================================================
-	// 2. CARD 1: DADOS DETECTADOS LOCALMENTE (y: 82..148)
-	// =========================================================================
-	ddLine1, ddLine2 := formatDataDivasLines(dataDivas, currentHost)
-	ddTitleCtrl = controlWithFont("STATIC", "DADOS DETECTADOS AUTOMATICAMENTE NESTE COMPUTADOR (C:\\DataDivas\\config.ini)", 36, 88, 808, 16, 0, 0, smallBoldFont)
-	ddLine1Ctrl = controlWithFont("STATIC", ddLine1, 36, 106, 808, 18, 0, 0, bodyFont)
-	ddLine2Ctrl = controlWithFont("STATIC", ddLine2, 36, 125, 808, 16, 0, 0, smallFont)
+	badgeTitleCtrl = controlWithFont("STATIC", "✓ INSTALAÇÃO VERIFICADA & CRIPTOGRAFADA", 594, 20, 252, 16, 0, 0, smallBoldFont)
+	badgeSubCtrl = controlWithFont("STATIC", "Conexão TLS 1.3 • Pacote Oficial XPoint", 594, 38, 252, 16, 0, 0, smallFont)
 
 	// =========================================================================
-	// 3. CARD 2: GRUPO EMPRESARIAL POR CNPJ & COMPUTADORES (y: 156..356)
+	// 2. CARD 1 (PRINCIPAL): DADOS A PREENCHER PRÓXIMOS — CNPJ, RAZÃO & NOME PADRÃO (y: 84..368)
 	// =========================================================================
-	sec1TitleCtrl = controlWithFont("STATIC", "1. Identificação Empresarial & Grupo do CNPJ", 36, 164, 808, 20, 0, 0, secTitleFont)
+	sec1TitleCtrl = controlWithFont("STATIC", "1. Dados de Preenchimento — CNPJ, Razão Social e Nome Padrão", 38, 96, 804, 20, 0, 0, secTitleFont)
 
-	controlWithFont("STATIC", "CNPJ da Empresa (14 dígitos):", 36, 188, 210, 16, 0, 0, labelFont)
+	// Linha 1 de Preenchimento: CNPJ + Consultar + RAZÃO SOCIAL
+	controlWithFont("STATIC", "CNPJ (14 dígitos):", 38, 124, 196, 16, 0, 0, labelFont)
 	cnpjDisplay := initialCnpj
 	if len(initialCnpj) == 14 {
 		cnpjDisplay = FormatCnpj(initialCnpj)
 	}
-	cnpjEdit = controlWithFont("EDIT", cnpjDisplay, 36, 206, 200, 25, 12, 0x00810080, bodyFont)
-	queryCnpjBtn = controlWithFont("BUTTON", "Consultar CNPJ", 244, 205, 136, 27, 5, 0x00010000|bsOwnerDraw, boldBtnFont)
+	cnpjEdit = controlWithFont("EDIT", cnpjDisplay, 38, 143, 196, 26, 12, 0x00810080, bodyFont)
+	queryCnpjBtn = controlWithFont("BUTTON", "Consultar CNPJ", 242, 142, 132, 28, 5, 0x00010000|bsOwnerDraw, boldBtnFont)
 
-	controlWithFont("STATIC", "Razão Social / Nome da Empresa:", 396, 188, 448, 16, 0, 0, labelFont)
-	companyEdit = controlWithFont("EDIT", initialCompany, 396, 206, 448, 25, 13, 0x00810080, bodyFont)
+	controlWithFont("STATIC", "RAZÃO SOCIAL / EMPRESA:", 390, 124, 452, 16, 0, 0, labelFont)
+	companyEdit = controlWithFont("EDIT", initialCompany, 390, 143, 452, 26, 13, 0x00810080, bodyFont)
 
-	initialGroupMsg := "ℹ️ Informe um CNPJ de 14 dígitos e clique em Consultar CNPJ para listar os computadores da empresa."
-	if len(initialCnpj) == 11 {
-		initialGroupMsg = "ℹ️ Documento de 11 dígitos (CPF/Demo) lido do config.ini. Para agrupar por CNPJ, informe 14 dígitos ou prossiga com sugestão local."
-	} else if len(initialCnpj) == 14 {
-		initialGroupMsg = "🔄 Sincronizando computadores registrados neste CNPJ…"
-	}
-	groupSummaryLabel = controlWithFont("STATIC", initialGroupMsg, 36, 236, 808, 18, 0, 0, smallFont)
-
-	controlWithFont("STATIC", "Computadores já registrados neste CNPJ (Nome Padronizado  │  Função  │  Status  │  Host Windows):", 36, 256, 808, 16, 0, 0, labelFont)
-	computersList = controlWithFont("LISTBOX", "", 36, 274, 808, 74, 16, 0x00B00001, monoFont)
-
-	// =========================================================================
-	// 4. CARD 3: CLASSIFICAÇÃO INTELIGENTE & RENOMEAÇÃO SEGURA (y: 364..568)
-	// =========================================================================
-	sec2TitleCtrl = controlWithFont("STATIC", "2. Classificação da Máquina, Nomenclatura Padronizada & Windows", 36, 372, 808, 20, 0, 0, secTitleFont)
-
-	controlWithFont("STATIC", "Operação nesta instalação:", 36, 396, 420, 16, 0, 0, labelFont)
-	operationCombo = controlWithFont("COMBOBOX", "", 36, 414, 420, 240, 14, 0x00210003, bodyFont)
-
-	controlWithFont("STATIC", "Função padronizada do computador:", 472, 396, 372, 16, 0, 0, labelFont)
-	roleCombo = controlWithFont("COMBOBOX", "", 472, 414, 372, 260, 15, 0x00210003, bodyFont)
-	for _, item := range DefaultRoleCatalog {
-		label := fmt.Sprintf("%s  —  ex.: %s", item.Label, item.ExampleDefault)
-		send.Call(roleCombo, cbAddString, 0, uintptr(unsafe.Pointer(ptr(label))))
-	}
-	send.Call(roleCombo, cbSetDroppedWidth, 420, 0)
-
-	controlWithFont("STATIC", "Nome padronizado (máx. 15 caracteres):", 36, 448, 262, 16, 0, 0, labelFont)
+	// Linha 2 de Preenchimento (logo abaixo de CNPJ e RAZÃO): NOME PADRÃO + FUNÇÃO + MODO DE OPERAÇÃO
+	controlWithFont("STATIC", "NOME PADRÃO (máx. 15):", 38, 182, 224, 16, 0, 0, labelFont)
 	initialRole := InferRoleFromName(initialLocalMaq)
 	if initialLocalMaq == "" {
 		initialRole = InferRoleFromName(currentHost)
@@ -1194,48 +1170,79 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 	if initialRole == "PERSONALIZADO" {
 		initialRole = "CAIXA"
 	}
-	selectRoleCode(initialRole)
 	initialSug := LocalSuggestNameForRole(initialRole, nil, "", "")
-	machineEdit = controlWithFont("EDIT", initialSug.SuggestedName, 36, 468, 262, 32, 11, 0x00810080, machineFont)
+	machineEdit = controlWithFont("EDIT", initialSug.SuggestedName, 38, 201, 224, 30, 11, 0x00810080, machineFont)
 	send.Call(machineEdit, emLimitText, MaxWindowsHostnameLength, 0)
 
-	// Callout de Recomendação Inteligente (x: 310..844, y: 448..504)
-	reasonTitleCtrl = controlWithFont("STATIC", "✨ SUGESTÃO INTELIGENTE DO SISTEMA", 322, 453, 510, 16, 0, 0, smallBoldFont)
-	reasonLabel = controlWithFont("STATIC", initialSug.Reason, 322, 470, 510, 30, 0, 0, smallFont)
+	controlWithFont("STATIC", "FUNÇÃO DO COMPUTADOR:", 278, 182, 256, 16, 0, 0, labelFont)
+	roleCombo = controlWithFont("COMBOBOX", "", 278, 203, 256, 260, 15, 0x00210003, bodyFont)
+	for _, item := range DefaultRoleCatalog {
+		label := fmt.Sprintf("%s  —  ex.: %s", item.Label, item.ExampleDefault)
+		send.Call(roleCombo, cbAddString, 0, uintptr(unsafe.Pointer(ptr(label))))
+	}
+	send.Call(roleCombo, cbSetDroppedWidth, 420, 0)
+	selectRoleCode(initialRole)
 
-	renameLabel := fmt.Sprintf("Alterar também o nome real deste computador no Windows para o nome padronizado (atual: %s)", currentHost)
-	renameCheckbox = controlWithFont("BUTTON", renameLabel, 36, 512, 808, 20, 17, 0x00010003, labelFont)
+	controlWithFont("STATIC", "OPERAÇÃO NESTA INSTALAÇÃO:", 550, 182, 292, 16, 0, 0, labelFont)
+	operationCombo = controlWithFont("COMBOBOX", "", 550, 203, 292, 240, 14, 0x00210003, bodyFont)
+
+	// Callout de Recomendação Inteligente dentro do Card 1 (x: 38..842, y: 246..298)
+	reasonTitleCtrl = controlWithFont("STATIC", "✨ SUGESTÃO INTELIGENTE DO SISTEMA", 52, 252, 776, 16, 0, 0, smallBoldFont)
+	reasonLabel = controlWithFont("STATIC", initialSug.Reason, 52, 270, 776, 22, 0, 0, smallFont)
+
+	renameLabel := fmt.Sprintf("Alterar também o nome real deste computador no Windows para o Nome Padrão (atual: %s)", currentHost)
+	renameCheckbox = controlWithFont("BUTTON", renameLabel, 38, 308, 804, 20, 17, 0x00010003, labelFont)
 	send.Call(renameCheckbox, bmSetCheck, bstChecked, 0)
 
 	renameHintCtrl = controlWithFont(
 		"STATIC",
 		"🔒 Garantia de continuidade: O computador NÃO será reiniciado automaticamente. Ao final da instalação, você poderá escolher se deseja reiniciar agora ou depois.",
-		36,
-		534,
-		808,
-		26,
+		38,
+		330,
+		804,
+		28,
 		0,
 		0,
 		smallFont,
 	)
 
 	// =========================================================================
-	// 5. CARD 4: STATUS & BOTÕES DE AÇÃO (y: 576..672)
+	// 3. CARD 2: DADOS DETECTADOS & COMPUTADORES JÁ REGISTRADOS NO CNPJ (y: 378..566)
 	// =========================================================================
-	statusLabel = controlWithFont("STATIC", "✅ Status: Pronto para instalar com segurança.", 32, 582, 816, 18, 0, 0, bodyFont)
+	sec2TitleCtrl = controlWithFont("STATIC", "2. Diagnóstico Local & Computadores Já Registrados no CNPJ", 38, 388, 804, 18, 0, 0, secTitleFont)
 
-	checkBtn = controlWithFont("BUTTON", "Verificar Conexão", 20, 614, 160, 38, 3, 0x00010000|bsOwnerDraw, bodyFont)
-	logBtn = controlWithFont("BUTTON", "Abrir Log", 190, 614, 120, 38, 4, 0x00010000|bsOwnerDraw, bodyFont)
+	ddLine1, ddLine2 := formatDataDivasLines(dataDivas, currentHost)
+	ddTitleCtrl = controlWithFont("STATIC", "DADOS DETECTADOS AUTOMATICAMENTE NESTE COMPUTADOR (C:\\DataDivas\\config.ini)", 50, 416, 780, 15, 0, 0, smallBoldFont)
+	ddLine1Ctrl = controlWithFont("STATIC", ddLine1, 50, 432, 780, 16, 0, 0, smallFont)
+	ddLine2Ctrl = controlWithFont("STATIC", ddLine2, 50, 449, 780, 15, 0, 0, smallFont)
+
+	initialGroupMsg := "ℹ️ Informe um CNPJ de 14 dígitos acima e clique em Consultar CNPJ para listar os computadores da empresa."
+	if len(initialCnpj) == 11 {
+		initialGroupMsg = "ℹ️ Documento de 11 dígitos (CPF/Demo) lido do config.ini. Para agrupar por CNPJ, informe 14 dígitos ou prossiga com sugestão local."
+	} else if len(initialCnpj) == 14 {
+		initialGroupMsg = "🔄 Sincronizando computadores registrados neste CNPJ…"
+	}
+	groupSummaryLabel = controlWithFont("STATIC", initialGroupMsg, 38, 474, 804, 16, 0, 0, smallFont)
+
+	computersList = controlWithFont("LISTBOX", "", 38, 493, 804, 64, 16, 0x00B00001, monoFont)
+
+	// =========================================================================
+	// 4. CARD 3: STATUS & BOTÕES DE AÇÃO ESTILO APPLE (y: 574..672)
+	// =========================================================================
+	statusLabel = controlWithFont("STATIC", "✅ Status: Pronto para instalar com segurança.", 34, 580, 812, 18, 0, 0, bodyFont)
+
+	checkBtn = controlWithFont("BUTTON", "Verificar Conexão", 20, 612, 160, 38, 3, 0x00010000|bsOwnerDraw, bodyFont)
+	logBtn = controlWithFont("BUTTON", "Abrir Log", 190, 612, 120, 38, 4, 0x00010000|bsOwnerDraw, bodyFont)
 	_ = logBtn
-	cancelBtn = controlWithFont("BUTTON", "Cancelar", 528, 614, 124, 38, 2, 0x00010000|bsOwnerDraw, bodyFont)
+	cancelBtn = controlWithFont("BUTTON", "Cancelar", 520, 612, 124, 38, 2, 0x00010000|bsOwnerDraw, bodyFont)
 	_ = cancelBtn
-	installBtn = controlWithFont("BUTTON", "✓ Instalar Acesso Seguro", 664, 614, 196, 38, 1, 0x00010001|bsOwnerDraw, boldBtnFont)
+	installBtn = controlWithFont("BUTTON", "✓ Instalar Acesso Seguro", 656, 612, 204, 38, 1, 0x00010001|bsOwnerDraw, boldBtnFont)
 
 	footerCtrl = controlWithFont(
 		"STATIC",
 		"RustDesk 1.4.9  •  Criptografia Ponta a Ponta  •  XPoint Remote v"+Version+"  •  XPoint Soluções Tecnológicas",
 		20,
-		656,
+		655,
 		840,
 		16,
 		0,
@@ -1245,6 +1252,7 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 
 	populateOperationCombo(nil)
 	populateComputersList(nil, false)
+	invalidate.Call(hwnd, 0, 1)
 	user.NewProc("SetFocus").Call(machineEdit)
 	user.NewProc("UpdateWindow").Call(hwnd)
 

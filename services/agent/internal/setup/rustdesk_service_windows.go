@@ -5,14 +5,16 @@ package setup
 import (
 	"context"
 	"errors"
-	"github.com/RonaldoXpointSolucoes/AppRemoto/services/agent/internal/rustdesk"
-	"golang.org/x/sys/windows"
-	"golang.org/x/sys/windows/svc"
-	"golang.org/x/sys/windows/svc/mgr"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/RonaldoXpointSolucoes/AppRemoto/services/agent/internal/rustdesk"
+	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/svc"
+	"golang.org/x/sys/windows/svc/mgr"
 )
 
 func isRustDeskServicePath(serviceBinaryPath, exePath string) bool {
@@ -32,10 +34,22 @@ func isRustDeskServicePath(serviceBinaryPath, exePath string) bool {
 	return false
 }
 
+func isRustDeskExecutableReference(serviceBinaryPath, exePath string) bool {
+	if isRustDeskServicePath(serviceBinaryPath, exePath) {
+		return true
+	}
+	lowerBin := strings.ToLower(strings.TrimSpace(serviceBinaryPath))
+	lowerExe := strings.ToLower(exePath)
+	if strings.Contains(lowerBin, lowerExe) || strings.Contains(lowerBin, `\rustdesk\rustdesk.exe`) {
+		return true
+	}
+	return false
+}
+
 func findRustDeskExecutable() (string, error) {
-	for _, folder := range []*windows.KNOWNFOLDERID{windows.FOLDERID_ProgramFiles, windows.FOLDERID_ProgramFilesX86} {
+	for _, folder := range []*windows.KNOWNFOLDERID{windows.FOLDERID_ProgramFiles, windows.FOLDERID_ProgramFilesX64, windows.FOLDERID_ProgramFilesX86} {
 		root, e := windows.KnownFolderPath(folder, 0)
-		if e != nil {
+		if e != nil || root == "" {
 			continue
 		}
 		p := filepath.Join(root, "RustDesk", "RustDesk.exe")
@@ -46,6 +60,159 @@ func findRustDeskExecutable() (string, error) {
 	return "", windows.ERROR_FILE_NOT_FOUND
 }
 
+func stageRustDeskFromPortableCache() (string, error) {
+	if existing, err := findRustDeskExecutable(); err == nil {
+		return existing, nil
+	}
+	var candidateDirs []string
+	if localAppData, err := windows.KnownFolderPath(windows.FOLDERID_LocalAppData, 0); err == nil && localAppData != "" {
+		candidateDirs = append(candidateDirs, filepath.Join(localAppData, "rustdesk"))
+	}
+	if envLocal := os.Getenv("LOCALAPPDATA"); envLocal != "" {
+		candidateDirs = append(candidateDirs, filepath.Join(envLocal, "rustdesk"))
+	}
+	candidateDirs = append(candidateDirs, `C:\Windows\System32\config\systemprofile\AppData\Local\rustdesk`)
+
+	var sourceDir string
+	for _, dir := range candidateDirs {
+		exe := filepath.Join(dir, "rustdesk.exe")
+		dll := filepath.Join(dir, "librustdesk.dll")
+		if stExe, err1 := os.Stat(exe); err1 == nil && stExe.Mode().IsRegular() {
+			if stDll, err2 := os.Stat(dll); err2 == nil && stDll.Mode().IsRegular() {
+				sourceDir = dir
+				break
+			}
+		}
+	}
+	if sourceDir == "" {
+		return "", windows.ERROR_FILE_NOT_FOUND
+	}
+
+	programFiles, err := windows.KnownFolderPath(windows.FOLDERID_ProgramFiles, 0)
+	if err != nil || programFiles == "" {
+		programFiles = `C:\Program Files`
+	}
+	targetDir := filepath.Join(programFiles, "RustDesk")
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return "", err
+	}
+
+	copyErr := filepath.Walk(sourceDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(sourceDir, path)
+		if err != nil || rel == "." {
+			return nil
+		}
+		if strings.EqualFold(rel, "meta.toml") {
+			return nil
+		}
+		destRel := rel
+		if strings.EqualFold(rel, "rustdesk.exe") {
+			destRel = "RustDesk.exe"
+		}
+		destPath := filepath.Join(targetDir, destRel)
+		if info.IsDir() {
+			return os.MkdirAll(destPath, 0755)
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			return err
+		}
+		srcFile, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer srcFile.Close()
+		dstFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+		if err != nil {
+			return err
+		}
+		_, cpErr := io.Copy(dstFile, srcFile)
+		closeErr := dstFile.Close()
+		if cpErr != nil {
+			return cpErr
+		}
+		return closeErr
+	})
+	if copyErr != nil {
+		return "", copyErr
+	}
+	return findRustDeskExecutable()
+}
+
+func normalizeRustDeskServiceConfig(s *mgr.Service, exePath string) error {
+	serviceBinary := windows.EscapeArg(exePath) + " --service"
+	c, err := s.Config()
+	if err == nil && isRustDeskServicePath(c.BinaryPathName, exePath) &&
+		(strings.EqualFold(c.ServiceStartName, "LocalSystem") || c.ServiceStartName == "" || strings.EqualFold(c.ServiceStartName, ".\\LocalSystem")) &&
+		c.StartType == mgr.StartAutomatic {
+		return nil
+	}
+	// If RustDesk installer created a temporary --import-config service command, let it run once before normalizing.
+	if err == nil && strings.Contains(strings.ToLower(c.BinaryPathName), "--import-config") {
+		_ = s.Start()
+		time.Sleep(800 * time.Millisecond)
+		_, _ = s.Control(svc.Stop)
+		time.Sleep(400 * time.Millisecond)
+	}
+	binPtr, err := windows.UTF16PtrFromString(serviceBinary)
+	if err != nil {
+		return err
+	}
+	startNamePtr, err := windows.UTF16PtrFromString("LocalSystem")
+	if err != nil {
+		return err
+	}
+	return windows.ChangeServiceConfig(
+		s.Handle,
+		windows.SERVICE_WIN32_OWN_PROCESS,
+		windows.SERVICE_AUTO_START,
+		windows.SERVICE_ERROR_NORMAL,
+		binPtr,
+		nil,
+		nil,
+		nil,
+		startNamePtr,
+		nil,
+		nil,
+	)
+}
+
+func reconcileExistingRustDeskServiceBeforeInstall() {
+	m, err := mgr.Connect()
+	if err != nil {
+		return
+	}
+	defer m.Disconnect()
+	s, err := m.OpenService("RustDesk")
+	if err != nil {
+		return
+	}
+	defer s.Close()
+
+	exePath, findErr := findRustDeskExecutable()
+	if findErr != nil {
+		exePath, findErr = stageRustDeskFromPortableCache()
+	}
+	c, cfgErr := s.Config()
+	if findErr == nil && exePath != "" {
+		if cfgErr == nil && isRustDeskExecutableReference(c.BinaryPathName, exePath) && !isRustDeskServicePath(c.BinaryPathName, exePath) {
+			_ = normalizeRustDeskServiceConfig(s, exePath)
+		}
+		return
+	}
+	// If the RustDesk service points to a RustDesk binary that no longer exists on disk, delete the stale service entry so bundled install can proceed cleanly.
+	if cfgErr == nil && isRustDeskExecutableReference(c.BinaryPathName, `C:\Program Files\RustDesk\RustDesk.exe`) {
+		_, _ = s.Control(svc.Stop)
+		time.Sleep(300 * time.Millisecond)
+		_ = s.Delete()
+	}
+}
+
 func ensureRustDeskServiceInstalled(ctx context.Context, exePath string) error {
 	m, e := mgr.Connect()
 	if e != nil {
@@ -54,6 +221,7 @@ func ensureRustDeskServiceInstalled(ctx context.Context, exePath string) error {
 	defer m.Disconnect()
 	s, e := m.OpenService("RustDesk")
 	if e == nil {
+		_ = normalizeRustDeskServiceConfig(s, exePath)
 		s.Close()
 		return nil
 	}
@@ -64,6 +232,7 @@ func ensureRustDeskServiceInstalled(ctx context.Context, exePath string) error {
 	clear(res.Stderr)
 	s, e = m.OpenService("RustDesk")
 	if e == nil {
+		_ = normalizeRustDeskServiceConfig(s, exePath)
 		s.Close()
 		return nil
 	}
@@ -82,6 +251,10 @@ func ensureRustDeskServiceInstalled(ctx context.Context, exePath string) error {
 	)
 	if createErr != nil {
 		if errors.Is(createErr, windows.ERROR_SERVICE_EXISTS) {
+			if existingSvc, openErr := m.OpenService("RustDesk"); openErr == nil {
+				_ = normalizeRustDeskServiceConfig(existingSvc, exePath)
+				existingSvc.Close()
+			}
 			return nil
 		}
 		if runErr != nil {
@@ -89,6 +262,7 @@ func ensureRustDeskServiceInstalled(ctx context.Context, exePath string) error {
 		}
 		return createErr
 	}
+	_ = normalizeRustDeskServiceConfig(newService, exePath)
 	newService.Close()
 	return nil
 }
@@ -108,10 +282,10 @@ func findInstalledRustDesk() (string, error) {
 	if e != nil {
 		return "", e
 	}
-	// Resolve only the two protected installation locations. Portable copies are not installed services.
-	for _, folder := range []*windows.KNOWNFOLDERID{windows.FOLDERID_ProgramFiles, windows.FOLDERID_ProgramFilesX86} {
+	// Resolve only the protected installation locations. Portable copies are not installed services.
+	for _, folder := range []*windows.KNOWNFOLDERID{windows.FOLDERID_ProgramFiles, windows.FOLDERID_ProgramFilesX64, windows.FOLDERID_ProgramFilesX86} {
 		root, e := windows.KnownFolderPath(folder, 0)
-		if e != nil {
+		if e != nil || root == "" {
 			continue
 		}
 		p := filepath.Join(root, "RustDesk", "RustDesk.exe")

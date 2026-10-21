@@ -714,13 +714,13 @@ export const DEFAULT_USER_VIEW_PREFERENCES: UserViewPreferences = {
   search: '',
   viewMode: 'teamviewer',
   sidebarCollapsed: false,
-  onlyOnlineQuickFilter: true,
+  onlyOnlineQuickFilter: false,
   onlyFavoritesQuickFilter: false,
   sortBy: 'smart',
   compactMode: false,
 };
 
-const USER_PREFS_PREFIX = 'xpoint_user_view_prefs_v2_';
+const USER_PREFS_PREFIX = 'xpoint_user_view_prefs_v3_';
 const LAST_ACTIVE_USER_KEY = 'xpoint_last_active_user_id_v1';
 
 export function getLastActiveUserId(): string | null {
@@ -757,7 +757,7 @@ export function getUserViewPreferences(userId?: string | null): UserViewPreferen
       viewMode: parsed.viewMode === 'table' ? 'table' : 'teamviewer',
       sidebarCollapsed: Boolean(parsed.sidebarCollapsed),
       onlyOnlineQuickFilter:
-        typeof parsed.onlyOnlineQuickFilter === 'boolean' ? parsed.onlyOnlineQuickFilter : true,
+        typeof parsed.onlyOnlineQuickFilter === 'boolean' ? parsed.onlyOnlineQuickFilter : false,
       onlyFavoritesQuickFilter: Boolean(parsed.onlyFavoritesQuickFilter),
       sortBy:
         parsed.sortBy === 'name' || parsed.sortBy === 'recent' || parsed.sortBy === 'smart'

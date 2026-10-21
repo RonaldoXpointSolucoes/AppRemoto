@@ -32,11 +32,38 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.5.7',
+    date: 'Outubro 2026',
+    title: 'Instalador Apple Design, Correção Definitiva do Serviço RustDesk & Lista Completa de Acessos',
+    highlight: 'Redesign do instalador com estética inspirada no macOS (cantos arredondados e campos CNPJ, Razão Social e Nome Padrão agrupados lado a lado), correção definitiva do erro RUSTDESK_INSTALL_FAILED e carregamento completo da frota de dispositivos na lista principal.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Correção Definitiva do Serviço RustDesk (RUSTDESK_INSTALL_FAILED)',
+        description:
+          'Normaliza automaticamente o BinaryPathName do serviço Windows do RustDesk (--import-config -> --service), aguarda processos filhos de lote (cmd/xcopy/sc) antes de encerrar o job e faz staging seguro a partir do cache portátil.',
+        tag: 'Infra & Cockpit',
+      },
+      {
+        title: 'Interface do Instalador Inspirada na Apple com Campos Próximos',
+        description:
+          'Agrupa CNPJ, Razão Social e Nome Padrão no topo do card principal, aplica paleta clean estilo macOS (#F5F5F7 / #FFFFFF / Apple Blue #0071E3) com cantos arredondados de 20px e corrige artefatos visuais de rótulos.',
+        tag: 'UI/UX',
+      },
+      {
+        title: 'Carregamento Integral da Lista de Computadores (Online + Offline)',
+        description:
+          'Exibe todos os computadores cadastrados na lista principal sem ocultar máquinas offline por padrão, mantendo os mais recentes e online no topo e paginando frotas acima de 100 máquinas automaticamente.',
+        tag: 'TeamViewer',
+      },
+    ],
+  },
+  {
     version: 'v1.5.6',
     date: 'Outubro 2026',
     title: 'Preservação de Nome Editado, IP Local na Lista, Link de Download & Histórico Lateral',
     highlight: 'Preservação integral de nomes de exibição editados (ex.: Marcos X-Point), IP local visível diretamente na lista principal, cópia do link direto do instalador e histórico de últimos acessos na barra lateral.',
-    isCurrent: true,
+    isCurrent: false,
     items: [
       {
         title: 'Preservação Integral do Nome de Exibição Editado',

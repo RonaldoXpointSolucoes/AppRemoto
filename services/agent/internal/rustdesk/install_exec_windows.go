@@ -5,9 +5,12 @@ package rustdesk
 import (
 	"context"
 	"errors"
-	"golang.org/x/sys/windows"
+	"path/filepath"
+	"strings"
 	"time"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 // NewInstallerRunner retains the contained installer's direct child after a
@@ -19,9 +22,26 @@ func NewInstallerRunner(maxOutputBytes int) CommandRunner {
 	return &windowsExecRunner{maxOutputBytes: maxOutputBytes, waitInstaller: true}
 }
 
+func isShortLivedInstallHelper(proc windows.Handle) bool {
+	var size uint32 = 1024
+	buf := make([]uint16, size)
+	if err := windows.QueryFullProcessImageName(proc, 0, &buf[0], &size); err != nil || size == 0 {
+		return false
+	}
+	base := strings.ToLower(filepath.Base(windows.UTF16ToString(buf[:size])))
+	switch base {
+	case "cmd.exe", "xcopy.exe", "sc.exe", "reg.exe", "netsh.exe", "cscript.exe", "wscript.exe":
+		return true
+	default:
+		return false
+	}
+}
+
 // The pinned portable launcher spawns the real installer as its direct child.
-// Its installer may leave a long-running tray grandchild. Pin direct-child handles,
-// wait for them, then close the job to clean up only the contained leftovers.
+// Its installer may leave a long-running tray grandchild, while also invoking
+// short-lived batch utilities (cmd/xcopy/sc) to copy files and register the service.
+// Pin direct-child handles, wait for them and any active batch utilities, then close
+// the job to clean up only the contained leftovers.
 func waitInstallerChildren(ctx context.Context, job windows.Handle, parent uint32) error {
 	var list struct {
 		Assigned uint32
@@ -82,6 +102,41 @@ func waitInstallerChildren(ctx context.Context, job windows.Handle, parent uint3
 			if status != uint32(windows.WAIT_TIMEOUT) {
 				return errors.New("installer child wait failed")
 			}
+		}
+	}
+	// If the direct child spawned short-lived batch tools (cmd.exe / xcopy.exe / sc.exe),
+	// let them finish copying files and registering the service before closing the job.
+	helperDeadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(helperDeadline) {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		var active struct {
+			Assigned uint32
+			Count    uint32
+			IDs      [256]uintptr
+		}
+		if e := windows.QueryInformationJobObject(job, windows.JobObjectBasicProcessIdList, uintptr(unsafe.Pointer(&active)), uint32(unsafe.Sizeof(active)), nil); e != nil {
+			break
+		}
+		hasHelper := false
+		for i := uint32(0); i < active.Count && i < 256; i++ {
+			pid := active.IDs[i]
+			if pid == uintptr(parent) {
+				continue
+			}
+			h, e := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION|windows.SYNCHRONIZE, false, uint32(pid))
+			if e != nil {
+				continue
+			}
+			if isShortLivedInstallHelper(h) {
+				hasHelper = true
+				_, _ = windows.WaitForSingleObject(h, 150)
+			}
+			windows.CloseHandle(h)
+		}
+		if !hasHelper {
+			break
 		}
 	}
 	// Let any pending cancellation win before installation completion is reported.

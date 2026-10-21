@@ -256,8 +256,9 @@ describe('teamviewer-storage', () => {
     const { DEFAULT_USER_VIEW_PREFERENCES, getUserViewPreferences } = await import('./teamviewer-storage');
     const { getTechnicians, deleteTechnician } = await import('../technicians/technician-service');
 
-    expect(DEFAULT_USER_VIEW_PREFERENCES.onlyOnlineQuickFilter).toBe(true);
-    expect(getUserViewPreferences('new-user').onlyOnlineQuickFilter).toBe(true);
+    expect(DEFAULT_USER_VIEW_PREFERENCES.onlyOnlineQuickFilter).toBe(false);
+    expect(DEFAULT_USER_VIEW_PREFERENCES.sortBy).toBe('smart');
+    expect(getUserViewPreferences('new-user').onlyOnlineQuickFilter).toBe(false);
 
     const initial = getTechnicians();
     const david = initial.find((t) => t.email === 'david_ladivas@hotmail.com')!;

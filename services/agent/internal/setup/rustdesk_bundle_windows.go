@@ -18,6 +18,7 @@ import (
 )
 
 func ensureRustDesk(ctx context.Context, r io.ReaderAt, b Bundle, ps Paths, report *Report) (resolved string, finalErr error) {
+	reconcileExistingRustDeskServiceBeforeInstall()
 	path, reused, err := reuseOrInstallRustDesk(findInstalledRustDesk, func() (bool, error) {
 		m, err := mgr.Connect()
 		if err != nil {
@@ -91,29 +92,48 @@ func installBundledRustDesk(ctx context.Context, r io.ReaderAt, b Bundle, ps Pat
 	report.Record(2, operation, "START", nil)
 	installCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
-	result, e := rustdesk.NewInstallerRunner(16<<10).Run(installCtx, payload, "--silent-install")
+	result, runErr := rustdesk.NewInstallerRunner(16<<10).Run(installCtx, payload, "--silent-install")
 	clear(result.Stdout)
 	clear(result.Stderr)
-	if e != nil {
-		return "", e
-	}
-	if result.ExitCode != 0 {
-		return "", &preparationError{"RUSTDESK_INSTALL_FAILED"}
+	if runErr != nil || result.ExitCode != 0 {
+		// Fallback to staging from portable cache extracted by the launcher before failing.
+		if _, stageErr := stageRustDeskFromPortableCache(); stageErr != nil {
+			if runErr != nil {
+				return "", runErr
+			}
+			return "", &preparationError{"RUSTDESK_INSTALL_FAILED"}
+		}
 	}
 	operation = "RUSTDESK_INSTALL_READBACK"
 	report.Record(2, operation, "START", nil)
 	readback, cancelReadback := context.WithTimeout(ctx, 30*time.Second)
 	defer cancelReadback()
 	var exePath string
+	stagedFallbackTried := false
+	startWait := time.Now()
 	for {
 		exePath, e = findRustDeskExecutable()
 		if e == nil {
 			break
 		}
+		if !stagedFallbackTried && time.Since(startWait) >= 3*time.Second {
+			stagedFallbackTried = true
+			if stagedPath, stageErr := stageRustDeskFromPortableCache(); stageErr == nil && stagedPath != "" {
+				exePath = stagedPath
+				break
+			}
+		}
 		select {
 		case <-readback.Done():
+			if stagedPath, stageErr := stageRustDeskFromPortableCache(); stageErr == nil && stagedPath != "" {
+				exePath = stagedPath
+				break
+			}
 			return "", &preparationError{"RUSTDESK_INSTALL_FAILED"}
 		case <-time.After(250 * time.Millisecond):
+		}
+		if exePath != "" {
+			break
 		}
 	}
 	if serviceErr := ensureRustDeskServiceInstalled(ctx, exePath); serviceErr != nil {
@@ -125,6 +145,7 @@ func installBundledRustDesk(ctx context.Context, r io.ReaderAt, b Bundle, ps Pat
 		if e == nil {
 			break
 		}
+		_ = ensureRustDeskServiceInstalled(ctx, exePath)
 		select {
 		case <-readback.Done():
 			return "", &preparationError{"RUSTDESK_INSTALL_FAILED"}
