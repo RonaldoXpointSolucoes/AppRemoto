@@ -233,6 +233,7 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 	// The old service is stopped before inspecting recovery markers: it cannot race enrollment.
 	start(3, "RECOVERY_STATE")
 	registration := filepath.Join(ps.Data, "installation.json")
+	cleanupNonSystemIdentityDir(ps.Agent)
 	pending, e := privateExists(filepath.Join(ps.Agent, "enrollment-pending.json"))
 	if e != nil {
 		return fail("STATE", e)

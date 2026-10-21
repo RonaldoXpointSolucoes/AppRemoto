@@ -21,7 +21,6 @@ import (
 
 	"github.com/RonaldoXpointSolucoes/AppRemoto/services/agent/internal/api"
 	"github.com/RonaldoXpointSolucoes/AppRemoto/services/agent/internal/rustdesk"
-	"github.com/RonaldoXpointSolucoes/AppRemoto/services/agent/internal/state"
 	"golang.org/x/sys/windows"
 )
 
@@ -156,10 +155,9 @@ func formatDataDivasLines(dd *api.DataDivasInfo, currentHost string) (string, st
 func discoverLocalMachineContext() (deviceUUID string, rustdeskID string, currentHost string) {
 	currentHost, _ = os.Hostname()
 	if ps, err := paths(); err == nil {
-		if prepareErr := state.PrepareIdentityDirectory(ps.Agent); prepareErr == nil {
-			if id, loadErr := state.LoadOrCreateIdentity(filepath.Join(ps.Agent, "identity.json")); loadErr == nil {
-				deviceUUID = id.DeviceUUID
-			}
+		cleanupNonSystemIdentityDir(ps.Agent)
+		if raw, readErr := readIdentityUUIDReadOnly(filepath.Join(ps.Agent, "identity.json")); readErr == nil {
+			deviceUUID = raw
 		}
 	}
 	if rdPath, err := findInstalledRustDesk(); err == nil {

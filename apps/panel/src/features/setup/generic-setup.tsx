@@ -168,7 +168,7 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
   const available = installers.filter((item) => item.active && !item.revokedAt);
   return <section className="automatic-setup" aria-labelledby="generic-setup-title">
     <div className="setup-introduction">
-      <p className="eyebrow">Instalador completo 1.3.2 · Windows 64 bits · UI Enterprise Segura</p>
+      <p className="eyebrow">Instalador completo 1.3.3 · Windows 64 bits · UI Enterprise Segura</p>
       <h1 id="generic-setup-title">Um instalador para todos os computadores.</h1>
       <p>Baixe uma vez e use o mesmo arquivo nos computadores dos clientes. Se o RustDesk já estiver instalado, ele aplica os padrões da XPoint. Se não estiver, instala tudo com interface moderna de alta confiança, lê automaticamente os dados do <code>C:\DataDivas\config.ini</code>, sugere a função e numeração sequencial por CNPJ e permite renomear o Windows sem reiniciar à força.</p>
     </div>

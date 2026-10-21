@@ -67,6 +67,7 @@ func prepareGeneric(ctx context.Context, p GenericProvisioning, input Installati
 			ReplacesDeviceID:        input.ReplacesDeviceID,
 		})
 	}
+	cleanupNonSystemIdentityDir(ps.Agent)
 	pending, err := privateExists(filepath.Join(ps.Agent, "enrollment-pending.json"))
 	if err != nil {
 		return Provisioning{}, err

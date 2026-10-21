@@ -122,6 +122,9 @@ func prepareIdentityDirectory(path string) error {
 		return err
 	}
 	if !created {
+		if uSID, sSID, sErr := identitySIDs(); sErr == nil && uSID.Equals(sSID) {
+			_ = windows.SetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION, sSID, nil, nil, nil)
+		}
 		descriptor, err := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
 		if err != nil {
 			return err
@@ -250,6 +253,9 @@ func openOrCreateIdentityDirectoryRelative(parent windows.Handle, name string, d
 	var handle windows.Handle
 	var status windows.IO_STATUS_BLOCK
 	access := uint32(windows.FILE_GENERIC_READ | windows.FILE_GENERIC_WRITE | windows.READ_CONTROL | windows.WRITE_DAC)
+	if uSID, sSID, sErr := identitySIDs(); sErr == nil && uSID.Equals(sSID) {
+		access |= uint32(windows.WRITE_OWNER)
+	}
 	if err := windows.NtCreateFile(&handle, access, attributes, &status, nil, windows.FILE_ATTRIBUTE_NORMAL,
 		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, windows.FILE_OPEN_IF,
 		windows.FILE_DIRECTORY_FILE|windows.FILE_OPEN_REPARSE_POINT|windows.FILE_SYNCHRONOUS_IO_NONALERT,
@@ -298,6 +304,8 @@ func validateDedicatedIdentityDirectoryWindows(directory *os.File, handle window
 	if err != nil {
 		return err
 	}
+	uSID, sSID, sErr := identitySIDs()
+	isSystem := sErr == nil && uSID.Equals(sSID)
 	for _, entry := range entries {
 		if !isKnownIdentityArtifact(entry.Name()) {
 			return fmt.Errorf("identity directory contains unrelated entry %q", entry.Name())
@@ -307,12 +315,40 @@ func validateDedicatedIdentityDirectoryWindows(directory *os.File, handle window
 			return fmt.Errorf("validate identity artifact %q: %w", entry.Name(), err)
 		}
 		err = validateRestrictedIdentityWindowsHandle(artifact)
+		if err != nil && isSystem {
+			repairRelativeIdentityArtifactForSystem(handle, entry.Name(), sSID)
+			err = validateRestrictedIdentityWindowsHandle(artifact)
+		}
 		windows.CloseHandle(artifact)
 		if err != nil {
 			return fmt.Errorf("validate identity artifact %q: %w", entry.Name(), err)
 		}
 	}
 	return nil
+}
+
+func repairRelativeIdentityArtifactForSystem(parent windows.Handle, name string, systemSID *windows.SID) {
+	objectName, err := windows.NewNTUnicodeString(name)
+	if err != nil {
+		return
+	}
+	attributes := &windows.OBJECT_ATTRIBUTES{
+		Length:        uint32(unsafe.Sizeof(windows.OBJECT_ATTRIBUTES{})),
+		RootDirectory: parent,
+		ObjectName:    objectName,
+		Attributes:    windows.OBJ_CASE_INSENSITIVE,
+	}
+	var handle windows.Handle
+	var status windows.IO_STATUS_BLOCK
+	if err := windows.NtCreateFile(&handle, uint32(windows.FILE_GENERIC_READ|windows.READ_CONTROL|windows.WRITE_DAC|windows.WRITE_OWNER), attributes, &status,
+		nil, 0, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, windows.FILE_OPEN,
+		windows.FILE_NON_DIRECTORY_FILE|windows.FILE_OPEN_REPARSE_POINT|windows.FILE_SYNCHRONOUS_IO_NONALERT,
+		0, 0); err != nil {
+		return
+	}
+	defer windows.CloseHandle(handle)
+	_ = windows.SetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION, systemSID, nil, nil, nil)
+	_ = restrictIdentityWindowsHandle(handle)
 }
 
 func openRelativeIdentityArtifact(parent windows.Handle, name string) (windows.Handle, error) {
