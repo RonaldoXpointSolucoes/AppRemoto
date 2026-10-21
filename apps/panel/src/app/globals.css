@@ -9090,4 +9090,168 @@ button, a, input, select { outline-offset: 3px; }
   }
 }
 
+/* Central de Comandos Remotos de Manutenção Segura (v1.6.4) */
+.tv-drawer-maint-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(12, 19, 36, 0.92) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.16);
+}
+
+.tv-drawer-maint-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tv-drawer-maint-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  letter-spacing: 0.01em;
+}
+
+.tv-drawer-maint-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: rgba(16, 185, 129, 0.12);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.tv-drawer-maint-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.tv-maint-cmd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 7px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.16s ease;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(30, 41, 59, 0.75);
+  color: #e2e8f0;
+}
+
+.tv-maint-cmd-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: rgba(51, 65, 85, 0.85);
+  border-color: rgba(148, 163, 184, 0.4);
+}
+
+.tv-maint-cmd-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.tv-maint-cmd-btn.sync {
+  background: rgba(14, 165, 233, 0.14);
+  border-color: rgba(56, 189, 248, 0.32);
+  color: #bae6fd;
+}
+
+.tv-maint-cmd-btn.sync:hover:not(:disabled) {
+  background: rgba(14, 165, 233, 0.24);
+  border-color: rgba(56, 189, 248, 0.55);
+}
+
+.tv-maint-cmd-btn.net {
+  background: rgba(99, 102, 241, 0.13);
+  border-color: rgba(129, 140, 248, 0.3);
+  color: #c7d2fe;
+}
+
+.tv-maint-cmd-btn.net:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.24);
+  border-color: rgba(129, 140, 248, 0.5);
+}
+
+.tv-maint-cmd-btn.screen {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(251, 191, 36, 0.28);
+  color: #fde68a;
+}
+
+.tv-maint-cmd-btn.screen:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.22);
+  border-color: rgba(251, 191, 36, 0.5);
+}
+
+.tv-maint-cmd-btn.danger {
+  background: rgba(244, 63, 94, 0.13);
+  border-color: rgba(251, 113, 133, 0.32);
+  color: #fecdd3;
+}
+
+.tv-maint-cmd-btn.danger:hover:not(:disabled) {
+  background: rgba(244, 63, 94, 0.24);
+  border-color: rgba(251, 113, 133, 0.55);
+}
+
+.tv-maint-cmd-btn.danger.is-confirming {
+  background: rgba(225, 29, 72, 0.32);
+  border-color: rgba(251, 113, 133, 0.8);
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(244, 63, 94, 0.35);
+}
+
+.tv-drawer-maint-feedback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  background: rgba(2, 6, 23, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  font-size: 0.71rem;
+  color: #cbd5e1;
+}
+
+.tv-maint-feedback-status strong {
+  color: #38bdf8;
+}
+
+.tv-maint-copy-cmd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 5px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #bae6fd;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tv-maint-copy-cmd-btn:hover {
+  background: rgba(56, 189, 248, 0.25);
+  color: #ffffff;
+}
+
+
 

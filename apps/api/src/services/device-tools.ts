@@ -88,8 +88,12 @@ export function createDeviceTools(deps: Dependencies): DeviceToolsService {
         const event = { organizationId: organization.id, actorId: technician.userId, deviceId, sourceIp };
         await audit.recordOperator(randomUUID(), { ...event, action: 'device.update.requested' });
         const existingDataDivas = extractDataDivasFromNotes(typeof priorDevice.notes === 'string' ? priorDevice.notes : null).datadivas;
-        const persistedNotes = existingDataDivas
-          ? (mergeDataDivasIntoNotes(request.notes, existingDataDivas) ?? request.notes)
+        const incomingDataDivas = extractDataDivasFromNotes(request.notes).datadivas;
+        const mergedDataDivas = existingDataDivas || incomingDataDivas
+          ? { ...(existingDataDivas ?? {}), ...(incomingDataDivas ?? {}) }
+          : null;
+        const persistedNotes = mergedDataDivas
+          ? (mergeDataDivasIntoNotes(request.notes, mergedDataDivas) ?? request.notes)
           : request.notes;
         await deps.receipts.updateDeviceFields(deviceId, { displayName: request.displayName, notes: persistedNotes });
         const { device } = await authorizedDevice(technician, deviceId, 'canManageDevices');

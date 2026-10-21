@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import type { DeviceView } from '@appremoto/contracts';
+import { mergeDataDivasIntoNotes, type DeviceView, type SafeRemoteCommandAction } from '@appremoto/contracts';
 import {
   Clock,
   Folder,
@@ -33,6 +33,9 @@ import {
   HardDrive,
   Activity,
   Network,
+  RotateCcw,
+  RefreshCw,
+  Terminal,
 } from 'lucide-react';
 import { ConnectDevice } from './connect-device';
 import type { ConnectionLogEvent } from './connection-log';
@@ -188,8 +191,13 @@ export function TeamViewerDeviceTree({
   const [renameFolderName, setRenameFolderName] = useState('');
   const [folderToDelete, setFolderToDelete] = useState<DeviceGroup | null>(null);
 
-  // Toast / Feedback
+  // Toast / Feedback e Comandos Remotos Seguros
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [sendingCommandKey, setSendingCommandKey] = useState<string | null>(null);
+  const [confirmRebootDeviceId, setConfirmRebootDeviceId] = useState<string | null>(null);
+  const [localCommandFeedback, setLocalCommandFeedback] = useState<
+    Record<string, { action: SafeRemoteCommandAction; status: string; message: string; quickCmd: string }>
+  >({});
 
   // Bloqueia a rolagem da tela de fundo enquanto qualquer modal estiver aberto
   useEffect(() => {
@@ -209,6 +217,116 @@ export function TeamViewerDeviceTree({
     setTimeout(() => {
       setToastMessage(null);
     }, 3500);
+  }
+
+  async function handleDispatchRemoteCommand(
+    dev: DeviceView,
+    action: SafeRemoteCommandAction,
+    e?: React.MouseEvent,
+  ) {
+    e?.stopPropagation();
+    if (!canManage(dev.organizationId)) {
+      showToast('Apenas operadores com permissão de gestão podem enviar comandos de manutenção.');
+      return;
+    }
+
+    if (action === 'REBOOT_PC' && confirmRebootDeviceId !== dev.id) {
+      setConfirmRebootDeviceId(dev.id);
+      showToast(`⚠️ Clique novamente em "Confirmar Reinício" para reiniciar ${dev.displayName}`);
+      setTimeout(() => {
+        setConfirmRebootDeviceId((curr) => (curr === dev.id ? null : curr));
+      }, 6000);
+      return;
+    }
+
+    setConfirmRebootDeviceId(null);
+    const cmdMeta: Record<
+      SafeRemoteCommandAction,
+      { label: string; quickCmd: string; queuedMsg: string }
+    > = {
+      REBOOT_PC: {
+        label: 'Reiniciar Computador',
+        quickCmd: 'shutdown /r /t 5 /c "Reinicializacao de manutencao X-Point"',
+        queuedMsg: 'Reinicialização agendada para o próximo ciclo de comunicação (até 30s).',
+      },
+      TURN_OFF_SCREEN: {
+        label: 'Desligar Tela / Bloquear Estação',
+        quickCmd: 'rundll32.exe user32.dll,LockWorkStation',
+        queuedMsg: 'Bloqueio de tela enviado para o próximo ciclo de comunicação (até 30s).',
+      },
+      FLUSH_DNS: {
+        label: 'Limpar Cache DNS & Renovar Rede',
+        quickCmd: 'ipconfig /flushdns && arp -d *',
+        queuedMsg: 'Limpeza de DNS enviada para o próximo ciclo de comunicação (até 30s).',
+      },
+      SYNC_TELEMETRY: {
+        label: 'Sincronizar Leitura Agora',
+        quickCmd: 'systeminfo | findstr /B /C:"Nome do host" /C:"Memória física"',
+        queuedMsg: 'Sincronização imediata de CPU, RAM, Disco e Rede solicitada ao servidor.',
+      },
+    };
+
+    const metaInfo = cmdMeta[action];
+    const key = `${dev.id}:${action}`;
+    setSendingCommandKey(key);
+
+    try {
+      if (service.updateDevice) {
+        const raw = getDeviceNotes(dev, customMetaMap);
+        const parsed = parseDeviceNotes(raw);
+        const protection = getDeviceProtectionState(dev, customMetaMap);
+        const folderName = getDeviceFolderName(dev, groups);
+        const baseNotes = encodeDeviceNotes({
+          folderName,
+          adminOnlyAccess: protection.adminOnlyAccess,
+          accessPasswordHash: protection.accessPasswordHash,
+          customDisplayName:
+            parsed.customDisplayName || Boolean(customMetaMap[dev.id]?.customDisplayName),
+          notes: parsed.notes,
+        });
+        const cmdId = `cmd-${Date.now()}`;
+        const nowIso = new Date().toISOString();
+        const notesWithCommand =
+          mergeDataDivasIntoNotes(baseNotes, {
+            ...(dev.datadivas ?? {}),
+            comandoPendente: action,
+            comandoId: cmdId,
+            comandoSolicitadoEm: nowIso,
+            comandoStatus: 'PENDENTE',
+            comandoResultado: metaInfo.queuedMsg,
+          }) ?? baseNotes;
+
+        await service.updateDevice(dev.id, {
+          displayName: dev.displayName,
+          notes: notesWithCommand,
+        });
+      }
+
+      setLocalCommandFeedback((prev) => ({
+        ...prev,
+        [dev.id]: {
+          action,
+          status: 'PENDENTE',
+          message: metaInfo.queuedMsg,
+          quickCmd: metaInfo.quickCmd,
+        },
+      }));
+      showToast(`⚡ ${metaInfo.label} enviado para "${dev.displayName}"!`);
+      onSaved?.();
+    } catch {
+      showToast(`Falha ao enfileirar comando. Copie o comando rápido abaixo para usar no RustDesk.`);
+      setLocalCommandFeedback((prev) => ({
+        ...prev,
+        [dev.id]: {
+          action,
+          status: 'TERMINAL',
+          message: 'Use o botão Copiar Comando Rápido para executar diretamente no terminal RustDesk.',
+          quickCmd: metaInfo.quickCmd,
+        },
+      }));
+    } finally {
+      setSendingCommandKey(null);
+    }
   }
 
   function handleToggleFavorite(dev: DeviceView, e?: React.MouseEvent) {
@@ -1559,6 +1677,114 @@ export function TeamViewerDeviceTree({
                         )}
                       </div>
                     </div>
+
+                    {/* Central de Comandos Remotos de Manutenção Segura */}
+                    {canManage(dev.organizationId) && (
+                      <div className="tv-drawer-maint-bar" aria-label="Comandos Remotos de Manutenção Segura">
+                        <div className="tv-drawer-maint-top">
+                          <div className="tv-drawer-maint-title">
+                            <Terminal size={13} className="text-sky-400" />
+                            <span>Comandos Remotos de Manutenção Segura</span>
+                            <span className="tv-drawer-maint-badge">Fila Leve (Zero Sobrecarga)</span>
+                          </div>
+                          <div className="tv-drawer-maint-actions">
+                            <button
+                              type="button"
+                              className="tv-maint-cmd-btn sync"
+                              disabled={sendingCommandKey === `${dev.id}:SYNC_TELEMETRY`}
+                              onClick={(e) => void handleDispatchRemoteCommand(dev, 'SYNC_TELEMETRY', e)}
+                              title="Forçar atualização imediata da leitura de Processador, Memória, HD e Roteador no próximo pulso"
+                            >
+                              {sendingCommandKey === `${dev.id}:SYNC_TELEMETRY` ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                <RefreshCw size={12} />
+                              )}
+                              <span>Sincronizar Leitura Agora</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              className="tv-maint-cmd-btn net"
+                              disabled={sendingCommandKey === `${dev.id}:FLUSH_DNS`}
+                              onClick={(e) => void handleDispatchRemoteCommand(dev, 'FLUSH_DNS', e)}
+                              title="Limpar cache DNS (ipconfig /flushdns) e renovar tabela de rede local"
+                            >
+                              {sendingCommandKey === `${dev.id}:FLUSH_DNS` ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                <Globe size={12} />
+                              )}
+                              <span>Limpar DNS & Rede</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              className="tv-maint-cmd-btn screen"
+                              disabled={sendingCommandKey === `${dev.id}:TURN_OFF_SCREEN`}
+                              onClick={(e) => void handleDispatchRemoteCommand(dev, 'TURN_OFF_SCREEN', e)}
+                              title="Bloquear estação de trabalho / desligar exibição da tela remota"
+                            >
+                              {sendingCommandKey === `${dev.id}:TURN_OFF_SCREEN` ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                <Lock size={12} />
+                              )}
+                              <span>Desligar Tela / Bloquear</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              className={`tv-maint-cmd-btn danger ${confirmRebootDeviceId === dev.id ? 'is-confirming' : ''}`}
+                              disabled={sendingCommandKey === `${dev.id}:REBOOT_PC`}
+                              onClick={(e) => void handleDispatchRemoteCommand(dev, 'REBOOT_PC', e)}
+                              title="Reiniciar o sistema operacional Windows remotamente (requer dupla confirmação)"
+                            >
+                              {sendingCommandKey === `${dev.id}:REBOOT_PC` ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                <RotateCcw size={12} />
+                              )}
+                              <span>
+                                {confirmRebootDeviceId === dev.id
+                                  ? '⚠️ Confirmar Reinício?'
+                                  : 'Reiniciar PC'}
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {(localCommandFeedback[dev.id] || dev.datadivas?.comandoStatus) && (
+                          <div className="tv-drawer-maint-feedback">
+                            <span className="tv-maint-feedback-status">
+                              Status: <strong>{localCommandFeedback[dev.id]?.status || dev.datadivas?.comandoStatus}</strong>
+                              {' — '}
+                              {localCommandFeedback[dev.id]?.message ||
+                                dev.datadivas?.comandoResultado ||
+                                'Comando registrado'}
+                            </span>
+                            {localCommandFeedback[dev.id]?.quickCmd && (
+                              <button
+                                type="button"
+                                className="tv-maint-copy-cmd-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const cmd = localCommandFeedback[dev.id]?.quickCmd;
+                                  if (!cmd) return;
+                                  void navigator.clipboard.writeText(cmd).then(() => {
+                                    showToast('Comando copiado para a área de transferência!');
+                                  });
+                                }}
+                                title="Copiar comando equivalente para colar diretamente no terminal / CMD do RustDesk"
+                              >
+                                <Copy size={11} />
+                                <span>Copiar Comando Rápido (CMD)</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Dados Cadastrais DataDivas (C:\DataDivas\config.ini) */}
                     {dev.datadivas && (

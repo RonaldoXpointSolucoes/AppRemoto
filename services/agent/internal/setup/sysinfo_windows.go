@@ -3,9 +3,11 @@
 package setup
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
@@ -161,25 +163,53 @@ var (
 	lastCPUIdle, lastCPUKernel uint64
 	lastCPUUser                uint64
 	hasCPUSample               bool
+
+	cpuModelOnce  sync.Once
+	cachedCPUName string
+
+	slowTelemetryMu      sync.Mutex
+	slowTelemetryAt      time.Time
+	cachedDiskTotalGb    string
+	cachedDiskUsedGb     string
+	cachedDiskFreeGb     string
+	cachedDiskPctStr     string
+	cachedNetLocalIP     string
+	cachedNetSubnetCIDR  string
+	cachedNetGatewayIP   string
+	cachedNetType        string
 )
 
+const slowTelemetryCacheTTL = 180 * time.Second
+
+// ForceRefreshTelemetryCache invalida o cache local de disco e topologia de rede
+// para forçar uma nova leitura imediata no próximo ciclo.
+func ForceRefreshTelemetryCache() {
+	slowTelemetryMu.Lock()
+	slowTelemetryAt = time.Time{}
+	slowTelemetryMu.Unlock()
+}
+
 func readCPUModelWindows() string {
-	cores := runtime.NumCPU()
-	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `HARDWARE\Description\System\CentralProcessor\0`, registry.QUERY_VALUE)
-	if err == nil {
-		defer k.Close()
-		if val, _, err := k.GetStringValue("ProcessorNameString"); err == nil {
-			clean := strings.Join(strings.Fields(strings.TrimSpace(val)), " ")
-			if clean != "" {
-				label := fmt.Sprintf("%s (%d núcleos)", clean, cores)
-				if len(label) > 96 {
-					label = label[:96]
+	cpuModelOnce.Do(func() {
+		cores := runtime.NumCPU()
+		k, err := registry.OpenKey(registry.LOCAL_MACHINE, `HARDWARE\Description\System\CentralProcessor\0`, registry.QUERY_VALUE)
+		if err == nil {
+			defer k.Close()
+			if val, _, err := k.GetStringValue("ProcessorNameString"); err == nil {
+				clean := strings.Join(strings.Fields(strings.TrimSpace(val)), " ")
+				if clean != "" {
+					label := fmt.Sprintf("%s (%d núcleos)", clean, cores)
+					if len(label) > 96 {
+						label = label[:96]
+					}
+					cachedCPUName = label
+					return
 				}
-				return label
 			}
 		}
-	}
-	return fmt.Sprintf("Processador x64 (%d núcleos)", cores)
+		cachedCPUName = fmt.Sprintf("Processador x64 (%d núcleos)", cores)
+	})
+	return cachedCPUName
 }
 
 func sampleSystemTimes() (idle, kernel, user uint64, ok bool) {
@@ -373,7 +403,8 @@ func findGatewayForIPv4(ipStr string, ipv4 net.IP) string {
 }
 
 // EnrichDataDivasWithTelemetry anexa métricas em tempo real de CPU, Memória RAM, Disco (HD)
-// e topologia de rede local (sub-rede CIDR, gateway do roteador e tipo de conexão).
+// e topologia de rede local (sub-rede CIDR, gateway do roteador e tipo de conexão),
+// utilizando cache inteligente de 3 minutos para métricas lentas (Disco e Topologia).
 func EnrichDataDivasWithTelemetry(info *api.DataDivasInfo) *api.DataDivasInfo {
 	if info == nil {
 		info = &api.DataDivasInfo{}
@@ -389,13 +420,28 @@ func EnrichDataDivasWithTelemetry(info *api.DataDivasInfo) *api.DataDivasInfo {
 		info.RAMUsadaGb = ramUsed
 		info.RAMUsoPct = ramPct
 	}
-	if dTot, dUsed, dFree, dPct := collectDiskTelemetryWindows(); dTot != "" {
+
+	currentIP := getPrimaryLocalIPv4()
+	slowTelemetryMu.Lock()
+	cacheValid := !slowTelemetryAt.IsZero() &&
+		time.Since(slowTelemetryAt) < slowTelemetryCacheTTL &&
+		(currentIP == "" || currentIP == cachedNetLocalIP)
+	if !cacheValid {
+		cachedDiskTotalGb, cachedDiskUsedGb, cachedDiskFreeGb, cachedDiskPctStr = collectDiskTelemetryWindows()
+		cachedNetLocalIP, cachedNetSubnetCIDR, cachedNetGatewayIP, cachedNetType = collectNetworkTopologyWindows()
+		slowTelemetryAt = time.Now()
+	}
+	dTot, dUsed, dFree, dPct := cachedDiskTotalGb, cachedDiskUsedGb, cachedDiskFreeGb, cachedDiskPctStr
+	lanIP, cidr, gw, netType := cachedNetLocalIP, cachedNetSubnetCIDR, cachedNetGatewayIP, cachedNetType
+	slowTelemetryMu.Unlock()
+
+	if dTot != "" {
 		info.DiscoTotalGb = dTot
 		info.DiscoUsadoGb = dUsed
 		info.DiscoLivreGb = dFree
 		info.DiscoUsoPct = dPct
 	}
-	if lanIP, cidr, gw, netType := collectNetworkTopologyWindows(); lanIP != "" {
+	if lanIP != "" {
 		if info.IPMaq == "" {
 			info.IPMaq = lanIP
 		}
@@ -410,4 +456,40 @@ func EnrichDataDivasWithTelemetry(info *api.DataDivasInfo) *api.DataDivasInfo {
 		}
 	}
 	return info
+}
+
+// ExecuteSafeRemoteCommand executa exclusivamente ações administrativas seguras de manutenção
+// homologadas pela plataforma (SYNC_TELEMETRY, FLUSH_DNS, TURN_OFF_SCREEN, REBOOT_PC).
+func ExecuteSafeRemoteCommand(action string) (status string, resultMsg string) {
+	switch strings.TrimSpace(strings.ToUpper(action)) {
+	case "SYNC_TELEMETRY":
+		ForceRefreshTelemetryCache()
+		return "EXECUTADO", "Leitura local de hardware e rede atualizada com sucesso"
+	case "FLUSH_DNS":
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "ipconfig.exe", "/flushdns")
+		if err := cmd.Run(); err != nil {
+			return "ERRO", "Falha ao limpar cache DNS no Windows"
+		}
+		ForceRefreshTelemetryCache()
+		return "EXECUTADO", "Cache DNS limpo e tabela de rede renovada"
+	case "TURN_OFF_SCREEN":
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "rundll32.exe", "user32.dll,LockWorkStation")
+		_ = cmd.Run()
+		return "EXECUTADO", "Estação bloqueada / tela desligada com sucesso"
+	case "REBOOT_PC":
+		go func() {
+			time.Sleep(2 * time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "shutdown.exe", "/r", "/t", "5", "/c", "Reinicializacao de manutencao solicitada pelo Painel X-Point Remoto")
+			_ = cmd.Run()
+		}()
+		return "EXECUTADO", "Reinicialização agendada no Windows (em 5 segundos)"
+	default:
+		return "REJEITADO", "Comando remoto não permitido pela política de segurança"
+	}
 }

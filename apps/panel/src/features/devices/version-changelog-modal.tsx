@@ -34,27 +34,27 @@ export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
     version: 'v1.6.4',
     date: 'Outubro 2026',
-    title: 'Instalador Windows v1.3.4 — Sincronização CNPJ Online, Reparo Automático de Identidade & Passo 6 Resiliente',
+    title: 'Telemetria Leve de Baixo Consumo (Zero Sobrecarga) & Comandos Remotos de Manutenção Segura',
     highlight:
-      'Novo executável Windows v1.3.4 integrado ao painel v1.6.4: reserva de nome online por CNPJ sem alerta de contingência, auto-reparo de permissões em ProgramData\\identity e conclusão rápida do Passo 6.',
+      'Otimização inteligente de escrita no servidor (throttling por delta de uso ≥10% ou janela de 3 minutos), cache local no agente Windows e central de comandos remotos seguros (Reiniciar PC, Desligar Tela/Bloquear, Limpar DNS e Sincronizar Leitura Agora).',
     isCurrent: true,
     items: [
       {
-        title: 'Novo Executável Windows v1.3.4 Publicado',
+        title: 'Escrita Inteligente no Servidor (85% Menos Gravações em Banco)',
         description:
-          'Atualização da versão visual do instalador (v1.3.4) e do manifesto de distribuição com verificação SHA-256 e eliminação de cache.',
-        tag: 'TeamViewer',
-      },
-      {
-        title: 'Reserva e Consulta de CNPJ 100% Compatíveis Online',
-        description:
-          'Sincronização direta das rotas de contexto, sugestão, reserva e confirmação de nome por CNPJ sem exibir aviso de contingência.',
+          'O pulso de 30s mantém o status Online em tempo real, mas só regrava o bloco de telemetria estendida quando há mudança de rede/identidade, variação ≥10% de CPU/RAM ou a cada 3 minutos.',
         tag: 'Infra & Cockpit',
       },
       {
-        title: 'Proteção de Identidade SYSTEM & Passo 6 Instantâneo',
+        title: 'Comandos Remotos de Manutenção Segura (Fila Leve Piggyback)',
         description:
-          'Prevenção de criação de arquivos de identidade pelo usuário interativo, auto-reparo de ACL para LocalSystem e confirmação rápida do Passo 6.',
+          'Envio de comandos administrativos homologados (Reiniciar PC com dupla confirmação, Desligar Tela/Bloquear, Limpar DNS e Sincronizar Leitura Agora) acoplados à resposta do heartbeat, sem polling extra.',
+        tag: 'TeamViewer',
+      },
+      {
+        title: 'Cache de Hardware & Rede no Agente Windows',
+        description:
+          'Modelo de CPU lido uma única vez (sync.Once) e leitura de disco/topologia em cache de 3 minutos com invalidação automática em troca de IP local.',
         tag: 'UI/UX',
       },
     ],
@@ -65,7 +65,7 @@ export const PLATFORM_RELEASES: ReleaseVersion[] = [
     title: 'Gaveta de Telemetria Panorâmica Full-Width (100% da Linha) & Refinamento Visual de Hardware/Rede',
     highlight:
       'Reestruturação completa do layout da linha de dispositivos e da gaveta expansível: os cards de Processador, Memória RAM, HD/SSD e Diagnóstico de Roteador agora ocupam toda a largura da tabela (4 colunas) em grid panorâmico lado a lado, sem esmagamento de texto.',
-        items: [
+    items: [
       {
         title: 'Gaveta Expansível Full-Width (Spanning nas 4 Colunas)',
         description:
@@ -768,7 +768,7 @@ export function VersionChangelogModal({
             <div className="changelog-title-group">
               <div className="changelog-title-row">
                 <h2 id="changelog-modal-title">Novidades da Plataforma</h2>
-                <span className="changelog-current-pill">v1.6.3 · ATUAL</span>
+                <span className="changelog-current-pill">v1.6.4 · ATUAL</span>
               </div>
               <p className="changelog-subtitle">
                 Histórico de atualizações, recursos de mobilidade e melhorias de UI/UX do XPoint Remote

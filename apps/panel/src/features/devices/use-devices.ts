@@ -143,7 +143,7 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
     }, 30_000);
     function handleVisibilityOrFocus() {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        if (Date.now() - lastRefreshAt.current >= 15_000) {
+        if (Date.now() - lastRefreshAt.current >= 30_000) {
           refreshRef.current();
         }
       }

@@ -20,6 +20,11 @@ const V161_TELEMETRY_KEYS: (keyof DataDivasInfo)[] = [
   'redeSubrede',
   'redeGateway',
   'redeTipo',
+  'comandoPendente',
+  'comandoId',
+  'comandoSolicitadoEm',
+  'comandoStatus',
+  'comandoResultado',
 ];
 
 function stripForLegacyStrictClient(device: DeviceView): DeviceView {

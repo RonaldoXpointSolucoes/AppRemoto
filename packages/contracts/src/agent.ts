@@ -3,6 +3,14 @@ import { z } from 'zod';
 const version = z.string().min(1).max(64);
 const optField = (max: number) => z.string().trim().max(max).optional();
 
+export const SafeRemoteCommandActionSchema = z.enum([
+  'REBOOT_PC',
+  'TURN_OFF_SCREEN',
+  'FLUSH_DNS',
+  'SYNC_TELEMETRY',
+]);
+export type SafeRemoteCommandAction = z.infer<typeof SafeRemoteCommandActionSchema>;
+
 export const DataDivasInfoSchema = z.object({
   nomeFantasia: optField(160),
   razaoSocial: optField(160),
@@ -35,6 +43,11 @@ export const DataDivasInfoSchema = z.object({
   redeSubrede: optField(48),
   redeGateway: optField(48),
   redeTipo: optField(32),
+  comandoPendente: optField(32),
+  comandoId: optField(64),
+  comandoSolicitadoEm: optField(64),
+  comandoStatus: optField(32),
+  comandoResultado: optField(160),
 }).strict();
 export type DataDivasInfo = z.infer<typeof DataDivasInfoSchema>;
 
@@ -78,9 +91,17 @@ export const HeartbeatRequestSchema = z.object({
   datadivas: DataDivasInfoSchema.optional(),
 }).strict();
 
+export const HeartbeatPendingCommandSchema = z.object({
+  id: z.string().min(1).max(64),
+  action: SafeRemoteCommandActionSchema,
+  requestedAt: z.string().min(1).max(64),
+}).strict();
+export type HeartbeatPendingCommand = z.infer<typeof HeartbeatPendingCommandSchema>;
+
 export const HeartbeatResponseSchema = z.object({
   deviceId: z.string().min(1).max(36),
   lastSeenAt: z.iso.datetime({ offset: true }),
+  pendingCommand: HeartbeatPendingCommandSchema.optional(),
 }).strict();
 
 export type EnrollRequest = z.infer<typeof EnrollRequestSchema>;

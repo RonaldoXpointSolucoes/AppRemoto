@@ -7,8 +7,8 @@ export * from './cnpj-naming.ts';
 export { DeviceListQuerySchema, DeviceViewSchema, normalizeDataDivasInfo, extractDataDivasFromNotes, mergeDataDivasIntoNotes, hashDeviceAccessPassword, verifyDeviceAccessPassword, extractDeviceAccessPolicy, encodeDeviceAccessNotes } from './devices.ts';
 export type { DeviceListQuery, DeviceView, DeviceAccessPolicy } from './devices.ts';
 
-export { DataDivasInfoSchema, ReconfigureRequestSchema, ReconfigureResponseSchema, EnrollRequestSchema, EnrollResponseSchema, HeartbeatRequestSchema, HeartbeatResponseSchema } from './agent.ts';
-export type { DataDivasInfo, ReconfigureRequest, ReconfigureResponse, EnrollRequest, EnrollResponse, HeartbeatRequest, HeartbeatResponse } from './agent.ts';
+export { SafeRemoteCommandActionSchema, HeartbeatPendingCommandSchema, DataDivasInfoSchema, ReconfigureRequestSchema, ReconfigureResponseSchema, EnrollRequestSchema, EnrollResponseSchema, HeartbeatRequestSchema, HeartbeatResponseSchema } from './agent.ts';
+export type { SafeRemoteCommandAction, HeartbeatPendingCommand, DataDivasInfo, ReconfigureRequest, ReconfigureResponse, EnrollRequest, EnrollResponse, HeartbeatRequest, HeartbeatResponse } from './agent.ts';
 
 export const ApiErrorSchema = z.object({
   code: z.string().regex(/^[A-Z][A-Z0-9_]{2,63}$/),

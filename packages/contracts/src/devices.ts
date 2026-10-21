@@ -74,6 +74,11 @@ const DATADIVAS_KEYS: (keyof DataDivasInfo)[] = [
   'redeSubrede',
   'redeGateway',
   'redeTipo',
+  'comandoPendente',
+  'comandoId',
+  'comandoSolicitadoEm',
+  'comandoStatus',
+  'comandoResultado',
 ];
 
 const DATADIVAS_TAG_REGEX = /\n?\[datadivas_b64:([A-Za-z0-9_-]+)\]\s*$/;
@@ -137,10 +142,15 @@ export function mergeDataDivasIntoNotes(
   incoming?: DataDivasInfo | null
 ): string | null {
   const { datadivas: prevDataDivas, cleanNotes } = extractDataDivasFromNotes(existingRawNotes);
-  const normalizedIncoming = normalizeDataDivasInfo(incoming);
-  const merged = prevDataDivas && normalizedIncoming
-    ? normalizeDataDivasInfo({ ...prevDataDivas, ...normalizedIncoming })
-    : (normalizedIncoming ?? prevDataDivas);
+  const rawMerged: DataDivasInfo = { ...(prevDataDivas ?? {}) };
+  if (incoming) {
+    for (const key of DATADIVAS_KEYS) {
+      if (incoming[key] !== undefined) {
+        rawMerged[key] = incoming[key];
+      }
+    }
+  }
+  const merged = normalizeDataDivasInfo(rawMerged);
   if (!merged) {
     return existingRawNotes ?? null;
   }

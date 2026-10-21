@@ -1,10 +1,68 @@
-import type { HeartbeatRequest, HeartbeatResponse } from '@appremoto/contracts';
-import { HeartbeatRequestSchema, extractDataDivasFromNotes, mergeDataDivasIntoNotes, normalizeWindowsHostname } from '@appremoto/contracts';
+import type { DataDivasInfo, HeartbeatPendingCommand, HeartbeatRequest, HeartbeatResponse } from '@appremoto/contracts';
+import { HeartbeatRequestSchema, SafeRemoteCommandActionSchema, extractDataDivasFromNotes, mergeDataDivasIntoNotes, normalizeWindowsHostname } from '@appremoto/contracts';
 import { randomUUID } from 'node:crypto';
 import { enrollmentId, IndeterminateEnrollmentWrite, sameEnrollmentState,
   type EnrollmentData, type EnrollmentRepository,
   type HeartbeatTokenRepository } from '../repositories/enrollment.ts';
 import type { HeartbeatAuditRepository } from '../repositories/audit.ts';
+
+const TELEMETRY_SOFT_THROTTLE_MS = 180_000;
+const COMMAND_TTL_MS = 10 * 60_000;
+
+const STRUCTURAL_DATADIVAS_KEYS: (keyof DataDivasInfo)[] = [
+  'nomeFantasia', 'razaoSocial', 'cnpj', 'serial', 'ie', 'endereco', 'cidade', 'uf',
+  'nomeMaq', 'ipMaq', 'ipDataDivas', 'banco', 'funcao',
+  'windowsHostnameDesejado', 'statusRenomeacao', 'erroRenomeacao',
+  'reservaId', 'substituiuDeviceId',
+  'cpuModelo', 'ramTotalGb', 'discoTotalGb',
+  'redeSubrede', 'redeGateway', 'redeTipo',
+  'comandoPendente', 'comandoId', 'comandoSolicitadoEm', 'comandoStatus', 'comandoResultado',
+];
+
+function supportsRemoteCommands(agentVersion: string): boolean {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(agentVersion.trim());
+  if (!match) return false;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  const patch = Number(match[3]);
+  if (major !== 1) return major > 1;
+  if (minor !== 6) return minor > 6;
+  return patch >= 4;
+}
+
+function hasSignificantUsageDelta(prevValue?: string, nextValue?: string, threshold = 10): boolean {
+  if (!nextValue) return false;
+  if (!prevValue) return true;
+  const prevNum = Number(prevValue);
+  const nextNum = Number(nextValue);
+  if (!Number.isFinite(prevNum) || !Number.isFinite(nextNum)) return prevValue !== nextValue;
+  return Math.abs(nextNum - prevNum) >= threshold;
+}
+
+export function shouldPersistDataDivasUpdate(
+  existing: DataDivasInfo | null,
+  candidate: DataDivasInfo,
+  nowIso: string,
+): boolean {
+  if (!existing) return true;
+  for (const key of STRUCTURAL_DATADIVAS_KEYS) {
+    if (candidate[key] !== undefined && candidate[key] !== (existing[key] ?? '')) {
+      if (candidate[key] === '' && existing[key] === undefined) continue;
+      return true;
+    }
+  }
+  if (
+    hasSignificantUsageDelta(existing.cpuUsoPct, candidate.cpuUsoPct, 10) ||
+    hasSignificantUsageDelta(existing.ramUsoPct, candidate.ramUsoPct, 10) ||
+    hasSignificantUsageDelta(existing.discoUsoPct, candidate.discoUsoPct, 5)
+  ) {
+    return true;
+  }
+  const lastSyncMs = existing.ultimaSincronizacao ? Date.parse(existing.ultimaSincronizacao) : NaN;
+  const nowMs = Date.parse(nowIso);
+  if (!Number.isFinite(lastSyncMs) || !Number.isFinite(nowMs)) return true;
+  return nowMs - lastSyncMs >= TELEMETRY_SOFT_THROTTLE_MS;
+}
 
 export class HeartbeatError extends Error {
   readonly code: 'UNAUTHENTICATED' | 'HEARTBEAT_FORBIDDEN' | 'HEARTBEAT_UNAVAILABLE';
@@ -87,14 +145,75 @@ export function createHeartbeatService(dependencies: HeartbeatDependencies): Rec
           nextRenameStatus = 'DIVERGENTE';
         }
       }
-      const enrichedDataDivas = (request.data.datadivas || existingDataDivas)
+
+      let pendingCommandToDeliver: HeartbeatPendingCommand | undefined;
+      let commandPatch: Partial<DataDivasInfo> = {};
+      const incomingCmdId = request.data.datadivas?.comandoId;
+      const incomingCmdStatus = request.data.datadivas?.comandoStatus;
+
+      if (incomingCmdId && existingDataDivas?.comandoId === incomingCmdId && incomingCmdStatus) {
+        commandPatch = {
+          comandoPendente: '',
+          comandoStatus: incomingCmdStatus,
+          ...(request.data.datadivas?.comandoResultado ? { comandoResultado: request.data.datadivas.comandoResultado } : {}),
+        };
+      } else if (existingDataDivas?.comandoPendente && existingDataDivas.comandoStatus === 'PENDENTE') {
+        const parsedAction = SafeRemoteCommandActionSchema.safeParse(existingDataDivas.comandoPendente);
+        const requestedMs = existingDataDivas.comandoSolicitadoEm ? Date.parse(existingDataDivas.comandoSolicitadoEm) : NaN;
+        const nowMs = Date.parse(timestamp);
+        const isExpired = Number.isFinite(requestedMs) && Number.isFinite(nowMs) && (nowMs - requestedMs > COMMAND_TTL_MS);
+
+        if (!parsedAction.success || isExpired) {
+          commandPatch = {
+            comandoPendente: '',
+            comandoStatus: isExpired ? 'EXPIRADO' : 'REJEITADO',
+            comandoResultado: isExpired ? 'Comando expirou (limite de 10 min sem recepção)' : 'Ação não permitida',
+          };
+        } else if (parsedAction.data === 'SYNC_TELEMETRY') {
+          if (supportsRemoteCommands(request.data.agentVersion)) {
+            pendingCommandToDeliver = {
+              id: existingDataDivas.comandoId || randomUUID(),
+              action: 'SYNC_TELEMETRY',
+              requestedAt: existingDataDivas.comandoSolicitadoEm || timestamp,
+            };
+          }
+          commandPatch = {
+            comandoPendente: '',
+            comandoStatus: 'EXECUTADO',
+            comandoResultado: `Leitura sincronizada às ${timestamp.slice(11, 19)} UTC`,
+          };
+        } else if (supportsRemoteCommands(request.data.agentVersion)) {
+          pendingCommandToDeliver = {
+            id: existingDataDivas.comandoId || randomUUID(),
+            action: parsedAction.data,
+            requestedAt: existingDataDivas.comandoSolicitadoEm || timestamp,
+          };
+          commandPatch = {
+            comandoPendente: '',
+            comandoStatus: 'ENTREGUE_AGENTE',
+            comandoResultado: 'Comando entregue ao agente Windows para execução imediata',
+          };
+        } else {
+          commandPatch = {
+            comandoPendente: '',
+            comandoStatus: 'DISPONIVEL_TERMINAL',
+            comandoResultado: `Agente v${request.data.agentVersion}: use Copiar Comando Rápido para executar no RustDesk`,
+          };
+        }
+      }
+
+      const enrichedDataDivas: DataDivasInfo | undefined = (request.data.datadivas || existingDataDivas)
         ? {
             ...(request.data.datadivas ?? {}),
             ...(nextRenameStatus ? { statusRenomeacao: nextRenameStatus } : {}),
+            ...commandPatch,
             ultimaSincronizacao: timestamp,
           }
         : undefined;
-      const nextNotes = enrichedDataDivas
+      const shouldWriteNotes = enrichedDataDivas
+        ? shouldPersistDataDivasUpdate(existingDataDivas, enrichedDataDivas, timestamp)
+        : false;
+      const nextNotes = (enrichedDataDivas && shouldWriteNotes)
         ? mergeDataDivasIntoNotes(typeof device.notes === 'string' ? device.notes : null, enrichedDataDivas)
         : device.notes;
       const updatedDevice = { ...device,
@@ -144,7 +263,11 @@ export function createHeartbeatService(dependencies: HeartbeatDependencies): Rec
       try { await audit.recordHeartbeat(auditId, event); }
       catch { throw new HeartbeatError('HEARTBEAT_UNAVAILABLE', true); }
       await releaseGuard();
-      return { deviceId, lastSeenAt: timestamp };
+      return {
+        deviceId,
+        lastSeenAt: timestamp,
+        ...(pendingCommandToDeliver ? { pendingCommand: pendingCommandToDeliver } : {}),
+      };
     });
     tails.set(deviceId, operation);
     const cleanup = () => { if (tails.get(deviceId) === operation) tails.delete(deviceId); };
