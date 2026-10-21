@@ -32,12 +32,39 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.6.0',
+    date: 'Outubro 2026',
+    title: 'Exibição Permanente de IP Local (LAN) e IP Público (WAN) em Todos os Dispositivos',
+    highlight:
+      'Agora todo computador exibe simultaneamente seu IP Local (rede interna RFC 1918) e seu IP Público (WAN de internet) na listagem principal, gaveta expansível, modal de edição, diagnóstico e ficha compartilhável.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Duplo Badge Permanente: IP Local + IP Público na Listagem',
+        description:
+          'Cada linha da árvore de computadores exibe sempre "IP Local: ..." (azul ciano) e "IP Público: ..." (verde esmeralda) lado a lado com cópia em 1 clique.',
+        tag: 'UI/UX',
+      },
+      {
+        title: 'Classificação Inteligente LAN vs WAN & Telemetria da API',
+        description:
+          'Separação automática entre IPs privados locais (192.168.*, 10.*, 172.16-31.*) e IPs públicos de saída (WAN / AWS / Fibra), expondo o IP público registrado no heartbeat da API.',
+        tag: 'Infra & Cockpit',
+      },
+      {
+        title: 'Visibilidade Completa no Modal de Edição e Diagnóstico',
+        description:
+          'Inclusão dos campos IP Local (LAN) e IP Público (WAN) também nos chips do modal Editar Computador, no cartão de especificações de Diagnóstico e no compartilhamento de ficha.',
+        tag: 'TeamViewer',
+      },
+    ],
+  },
+  {
     version: 'v1.5.9',
     date: 'Outubro 2026',
     title: 'Modal de Edição Compacto com Scroll Isolado & Bloqueio de Fechamento Externo',
     highlight:
       'Reestruturação completa do modal Editar Computador com cabeçalho e rodapé fixos, rolagem interna isolada sem mover o fundo, contraste perfeito no modo claro/escuro e fechamento exclusivo pelo botão Fechar.',
-    isCurrent: true,
     items: [
       {
         title: 'Cabeçalho e Rodapé Fixos com Rolagem Interna Isolada',

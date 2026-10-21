@@ -147,7 +147,7 @@ test('Appwrite repository scans one bounded keyset page with snapshot and safe p
       device_uuid: '00000000-0000-4000-8000-000000000001', display_name: `Device ${index}`,
       hostname: `host-${index}`, operating_system: 'Windows', os_version: '11',
       rustdesk_id: `${index}`, agent_version: null, rustdesk_version: null,
-      last_seen_at: null, enabled: true, last_ip: 'private' }));
+      last_seen_at: null, enabled: true, last_ip: '198.51.100.7' }));
     return { total: rows.length, documents: rows.slice(0, 21) };
   } } as unknown as Databases;
   const result = await createDeviceRepository(databases).scan(['a'], 'previous-id', '2026-09-30T12:00:00.000Z', 20);
@@ -160,10 +160,10 @@ test('Appwrite repository scans one bounded keyset page with snapshot and safe p
     const selected = call.queries.find((query) => query.method === 'select')?.values as string[];
     assert.ok(selected.includes('$id'));
     assert.ok(selected.includes('$createdAt'));
-    assert.ok(!selected.includes('last_ip'));
+    assert.ok(selected.includes('last_ip'));
     assert.ok(!selected.some((field) => /token|credential|password/i.test(field)));
   }
-  assert.ok(!('last_ip' in result.records[0]!));
+  assert.equal(result.records[0]?.publicIp, '198.51.100.7');
   const queries = calls[0]!.queries;
   assert.deepEqual(queries.find((query) => query.method === 'greaterThan'),
     { method: 'greaterThan', attribute: '$id', values: ['previous-id'] });

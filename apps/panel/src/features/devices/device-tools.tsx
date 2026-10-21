@@ -12,7 +12,7 @@ import { buildRustDeskPeerAliasPowerShellCommand, probeRustDeskApp } from './rus
 import { downloadConnectionLog, localEvent, stageLabels, type ConnectionLogEvent } from './connection-log';
 import type { DeviceDirectoryService } from './use-devices';
 import { formatLastSeen } from './device-record';
-import { parseSystemInfo } from './system-info';
+import { parseSystemInfo, resolveDeviceNetworkIps } from './system-info';
 import { resolveCoherentDevicePresentation } from './device-presentation';
 import { parseDeviceNotes, encodeDeviceNotes, hashDeviceAccessPassword, saveDeviceCustomMetadata } from './teamviewer-storage';
 
@@ -43,6 +43,7 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
   const [deleteError, setDeleteError] = useState('');
   const [copiedCommand, setCopiedCommand] = useState(false);
   const [copiedIp, setCopiedIp] = useState(false);
+  const [copiedPublicIp, setCopiedPublicIp] = useState(false);
   const [copiedDataDivasField, setCopiedDataDivasField] = useState<string | null>(null);
   const active = useRef(true);
   const closeRef = useRef(onClose); closeRef.current = onClose;
@@ -170,6 +171,13 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
     });
   }
 
+  function copyPublicIp(ipAddress: string) {
+    void navigator.clipboard.writeText(ipAddress).then(() => {
+      setCopiedPublicIp(true);
+      setTimeout(() => setCopiedPublicIp(false), 3000);
+    });
+  }
+
   function copyDataDivasValue(key: string, value: string) {
     void navigator.clipboard.writeText(value).then(() => {
       setCopiedDataDivasField(key);
@@ -179,6 +187,12 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
 
   const sys = parseSystemInfo(currentDev.operatingSystem, currentDev.osVersion);
   const dd = currentDev.datadivas ?? device.datadivas;
+  const { localIp, publicIp } = resolveDeviceNetworkIps({
+    operatingSystem: currentDev.operatingSystem,
+    osVersion: currentDev.osVersion,
+    publicIp: currentDev.publicIp ?? device.publicIp,
+    datadivas: dd,
+  });
   const hasDataDivas = Boolean(
     dd &&
       (dd.nomeFantasia ||
@@ -254,16 +268,34 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
         <div className="device-spec-item">
           <span className="spec-label">Endereço IP Local</span>
           <div className="spec-ip-box">
-            <strong className="spec-val">{sys.ip || dd?.ipMaq || 'Não detectado'}</strong>
-            {(sys.ip || dd?.ipMaq) && (
+            <strong className="spec-val">{localIp || 'Não detectado'}</strong>
+            {localIp && (
               <button
                 type="button"
                 className="spec-copy-btn"
-                title="Copiar IP"
-                onClick={() => copyIp((sys.ip || dd?.ipMaq)!)}
+                title="Copiar IP Local"
+                onClick={() => copyIp(localIp)}
               >
                 {copiedIp ? <Check size={12} /> : <Copy size={12} />}
                 <span>{copiedIp ? 'Copiado!' : 'Copiar'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="device-spec-item">
+          <span className="spec-label">Endereço IP Público</span>
+          <div className="spec-ip-box">
+            <strong className="spec-val">{publicIp || 'Não detectado'}</strong>
+            {publicIp && (
+              <button
+                type="button"
+                className="spec-copy-btn"
+                title="Copiar IP Público"
+                onClick={() => copyPublicIp(publicIp)}
+              >
+                {copiedPublicIp ? <Check size={12} /> : <Copy size={12} />}
+                <span>{copiedPublicIp ? 'Copiado!' : 'Copiar'}</span>
               </button>
             )}
           </div>

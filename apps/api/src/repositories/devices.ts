@@ -13,6 +13,7 @@ export interface DeviceRecord {
   agentVersion: string | null;
   rustdeskVersion: string | null;
   lastSeenAt: string | null;
+  publicIp?: string | null;
   enabled: boolean;
   notes?: string | null;
 }
@@ -37,13 +38,14 @@ type DeviceDocument = Models.Document & {
   agent_version?: string | null;
   rustdesk_version?: string | null;
   last_seen_at?: string | null;
+  last_ip?: string | null;
   enabled: boolean;
   notes?: string | null;
 };
 
 const selectedFields = ['$id', '$createdAt', 'organization_id', 'device_uuid', 'display_name',
   'hostname', 'operating_system', 'os_version', 'rustdesk_id', 'agent_version',
-  'rustdesk_version', 'last_seen_at', 'enabled', 'notes'];
+  'rustdesk_version', 'last_seen_at', 'last_ip', 'enabled', 'notes'];
 
 export function createDeviceRepository(databases: Databases): DeviceRepository {
   return {
@@ -68,6 +70,7 @@ export function createDeviceRepository(databases: Databases): DeviceRepository {
           operatingSystem: doc.operating_system, osVersion: doc.os_version,
           rustdeskId: doc.rustdesk_id, agentVersion: doc.agent_version ?? null,
           rustdeskVersion: doc.rustdesk_version ?? null, lastSeenAt: doc.last_seen_at ?? null,
+          ...(doc.last_ip ? { publicIp: doc.last_ip } : {}),
           enabled: doc.enabled, ...(doc.notes != null ? { notes: doc.notes } : {}),
         })),
         hasMore: page.documents.length > limit,

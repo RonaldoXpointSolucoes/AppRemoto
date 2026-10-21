@@ -29,6 +29,7 @@ export const DeviceViewSchema = z.object({
   agentVersion: z.string().min(1).max(64).nullable(),
   rustdeskVersion: z.string().min(1).max(64).nullable(),
   lastSeenAt: z.iso.datetime({ offset: true }).nullable(),
+  publicIp: z.string().min(1).max(45).nullable().optional(),
   enabled: z.boolean(),
   status: deviceStatus,
   datadivas: DataDivasInfoSchema.optional(),

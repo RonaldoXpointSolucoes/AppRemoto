@@ -1,6 +1,6 @@
 import type { DeviceView } from '@appremoto/contracts';
 import type { ReactNode } from 'react';
-import { parseSystemInfo } from './system-info';
+import { parseSystemInfo, resolveDeviceNetworkIps } from './system-info';
 
 export function formatLastSeen(value: string | null): string {
   if (!value) return 'Nunca';
@@ -17,16 +17,16 @@ export function DeviceStatus({ device, state }: { device: DeviceView; state: Dev
 
 export function DeviceRecord({ device, statusState, action }: { device: DeviceView; statusState: DeviceStatusState; action?: ReactNode }) {
   const sys = parseSystemInfo(device.operatingSystem, device.osVersion);
+  const { localIp, publicIp } = resolveDeviceNetworkIps(device);
   const dd = device.datadivas;
   const fields: [string, string][] = [
     ['Organizacao', device.organizationName],
     ['Hostname', device.hostname],
     ['Sistema operacional', sys.summary],
     ['RustDesk ID', device.rustdeskId],
+    ['IP Local', localIp || 'N/D'],
+    ['IP Público', publicIp || 'N/D'],
   ];
-  if (sys.ip || dd?.ipMaq) {
-    fields.push(['Endereço IP', sys.ip || dd?.ipMaq || '']);
-  }
   if (dd?.nomeFantasia) fields.push(['Nome Fantasia', dd.nomeFantasia]);
   if (dd?.razaoSocial) fields.push(['Razão Social', dd.razaoSocial]);
   if (dd?.cnpj) fields.push(['CNPJ / CPF', dd.cnpj]);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseSystemInfo } from './system-info';
+import { parseSystemInfo, resolveDeviceNetworkIps } from './system-info';
 
 describe('parseSystemInfo', () => {
   it('correctly maps raw Windows 10.0.22631 to Windows 11 (23H2)', () => {
@@ -43,5 +43,27 @@ describe('parseSystemInfo', () => {
     const res = parseSystemInfo('Windows Server 2022 Standard', '10.0.20348');
     expect(res.badge).toBe('Server');
     expect(res.osName).toBe('Windows Server 2022 Standard');
+  });
+
+  it('resolves both local LAN IP and public WAN IP and classifies public ipMaq accurately', () => {
+    const both = resolveDeviceNetworkIps({
+      operatingSystem: 'Windows 11 Pro',
+      osVersion: '24H2 (Build 26100) · IP 192.168.0.240',
+      publicIp: '179.199.142.157',
+    });
+    expect(both).toEqual({
+      localIp: '192.168.0.240',
+      publicIp: '179.199.142.157',
+    });
+
+    const edilza = resolveDeviceNetworkIps({
+      operatingSystem: 'Windows 10 Pro',
+      osVersion: '22H2 (Build 19045) · IP 192.168.1.45',
+      datadivas: { ipMaq: '54.232.189.113:3050' },
+    });
+    expect(edilza).toEqual({
+      localIp: '192.168.1.45',
+      publicIp: '54.232.189.113',
+    });
   });
 });

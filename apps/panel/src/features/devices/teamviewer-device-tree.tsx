@@ -34,7 +34,7 @@ import { ConnectDevice } from './connect-device';
 import type { ConnectionLogEvent } from './connection-log';
 import type { DeviceDirectoryService } from './use-devices';
 import { type DeviceStatusState, formatLastSeen } from './device-record';
-import { parseSystemInfo } from './system-info';
+import { parseSystemInfo, resolveDeviceNetworkIps } from './system-info';
 import {
   getRecentConnections,
   getDeviceGroups,
@@ -214,11 +214,14 @@ export function TeamViewerDeviceTree({
     e?.stopPropagation();
     const cleanId = formatRustDeskId(dev.rustdeskId);
     const dd = dev.datadivas;
+    const { localIp, publicIp } = resolveDeviceNetworkIps(dev);
     const shareLines = [
       `🖥️ Computador: ${dev.displayName}`,
       `🔑 ID RustDesk: ${cleanId}`,
       `💻 Hostname: ${dev.hostname}`,
       `🏢 Organização: ${dev.organizationName}`,
+      `🏠 IP Local: ${localIp || 'N/D'}${dd?.nomeMaq ? ` (${dd.nomeMaq})` : ''}`,
+      `🌐 IP Público: ${publicIp || 'N/D'}`,
     ];
     if (dd?.nomeFantasia) shareLines.push(`🏷️ Nome Fantasia: ${dd.nomeFantasia}`);
     if (dd?.razaoSocial) shareLines.push(`🏛️ Razão Social: ${dd.razaoSocial}`);
@@ -229,7 +232,6 @@ export function TeamViewerDeviceTree({
       const loc = [dd.endereco, [dd.cidade, dd.uf].filter(Boolean).join('/')].filter(Boolean).join(' — ');
       shareLines.push(`📍 Endereço: ${loc}`);
     }
-    if (dd?.ipMaq) shareLines.push(`🌐 IP Máquina: ${dd.ipMaq}${dd.nomeMaq ? ` (${dd.nomeMaq})` : ''}`);
     if (dd?.ipDataDivas) shareLines.push(`🗄️ IP DataDivas: ${dd.ipDataDivas}`);
     const shareText = shareLines.join('\n');
     try {
@@ -911,7 +913,7 @@ export function TeamViewerDeviceTree({
               folderName,
               isCustomEdited
             );
-            const localIp = sys.ip || dev.datadivas?.ipMaq || null;
+            const { localIp, publicIp } = resolveDeviceNetworkIps(dev);
             const protection = getDeviceProtectionState(dev, customMetaMap);
             const userIsAdmin = isAdmin ? isAdmin(dev.organizationId) : canManage(dev.organizationId);
             const adminOnlyBlocked = protection.adminOnlyAccess && !userIsAdmin;
@@ -1009,25 +1011,45 @@ export function TeamViewerDeviceTree({
                           <span className="tv-subtitle-meta">{presentation.subtitleSecondary}</span>
                         </>
                       )}
-                      {localIp && (
-                        <>
-                          <span className="tv-subtext-sep">·</span>
-                          <button
-                            type="button"
-                            className="tv-inline-ip-badge"
-                            title={`IP Local do PC: ${localIp} (clique para copiar)`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void navigator.clipboard.writeText(localIp).then(() => {
-                                showToast(`IP Local ${localIp} copiado!`);
-                              });
-                            }}
-                          >
-                            <Globe size={11} className="tv-ip-icon" />
-                            <span>IP: {localIp}</span>
-                          </button>
-                        </>
-                      )}
+                      <span className="tv-subtext-sep">·</span>
+                      <button
+                        type="button"
+                        className={`tv-inline-ip-badge tv-ip-local ${localIp ? '' : 'is-missing'}`}
+                        title={
+                          localIp
+                            ? `IP Local da Máquina na LAN: ${localIp} (clique para copiar)`
+                            : 'IP Local na rede interna ainda não reportado pelo agente'
+                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!localIp) return;
+                          void navigator.clipboard.writeText(localIp).then(() => {
+                            showToast(`IP Local ${localIp} copiado!`);
+                          });
+                        }}
+                      >
+                        <Laptop size={11} className="tv-ip-icon" />
+                        <span>IP Local: {localIp ?? 'N/D'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`tv-inline-ip-badge tv-ip-public ${publicIp ? '' : 'is-missing'}`}
+                        title={
+                          publicIp
+                            ? `IP Público (WAN / Internet): ${publicIp} (clique para copiar)`
+                            : 'IP Público ainda não registrado no servidor'
+                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!publicIp) return;
+                          void navigator.clipboard.writeText(publicIp).then(() => {
+                            showToast(`IP Público ${publicIp} copiado!`);
+                          });
+                        }}
+                      >
+                        <Globe size={11} className="tv-ip-icon" />
+                        <span>IP Público: {publicIp ?? 'N/D'}</span>
+                      </button>
                       <span className="tv-mobile-id-group">
                         <span className="tv-subtext-sep">·</span>
                         <span
@@ -1086,14 +1108,14 @@ export function TeamViewerDeviceTree({
                           <span className="tv-subtext-host">{dev.hostname}</span>
                           <span className="tv-subtext-sep">·</span>
                           <span className="tv-subtext-os">{sys.osName} {sys.versionLabel}</span>
-                          {(sys.ip || dev.datadivas?.ipMaq) && (
-                            <>
-                              <span className="tv-subtext-sep">·</span>
-                              <span className="tv-subtext-ip" title="IP Local na rede (ipmaq)">
-                                <Globe size={11} className="tv-ip-icon" /> {sys.ip || dev.datadivas?.ipMaq}
-                              </span>
-                            </>
-                          )}
+                          <span className="tv-subtext-sep">·</span>
+                          <span className="tv-subtext-ip" title="IP Local na rede interna (LAN)">
+                            <Laptop size={11} className="tv-ip-icon" /> IP Local: {localIp ?? 'N/D'}
+                          </span>
+                          <span className="tv-subtext-sep">·</span>
+                          <span className="tv-subtext-ip tv-subtext-ip-public" title="IP Público de saída para internet (WAN)">
+                            <Globe size={11} className="tv-ip-icon" /> IP Público: {publicIp ?? 'N/D'}
+                          </span>
                           {rec?.technicianName && (
                             <>
                               <span className="tv-subtext-sep">·</span>
@@ -1662,7 +1684,9 @@ export function TeamViewerDeviceTree({
       )}
 
       {/* MODAL 1: EDITAR DADOS DO COMPUTADOR */}
-      {editingDevice && (
+      {editingDevice && (() => {
+        const editingIps = resolveDeviceNetworkIps(editingDevice);
+        return (
         <div className="tv-modal-backdrop tv-edit-modal-backdrop">
           <div
             className="tv-modal-card tv-edit-modal-card"
@@ -1712,6 +1736,14 @@ export function TeamViewerDeviceTree({
                     <div className="tv-edit-meta-chip">
                       <span className="tv-meta-label">Organização</span>
                       <span className="tv-meta-val" title={editingDevice.organizationName}>{editingDevice.organizationName}</span>
+                    </div>
+                    <div className="tv-edit-meta-chip">
+                      <span className="tv-meta-label">IP Local (LAN)</span>
+                      <span className="tv-meta-val mono">{editingIps.localIp ?? 'N/D'}</span>
+                    </div>
+                    <div className="tv-edit-meta-chip">
+                      <span className="tv-meta-label">IP Público (WAN)</span>
+                      <span className="tv-meta-val mono">{editingIps.publicIp ?? 'N/D'}</span>
                     </div>
                   </div>
 
@@ -1933,7 +1965,8 @@ export function TeamViewerDeviceTree({
             </form>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* MODAL 2: CRIAR NOVA PASTA */}
       {isNewFolderOpen && (

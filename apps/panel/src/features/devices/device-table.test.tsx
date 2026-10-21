@@ -476,6 +476,34 @@ describe('DeviceDirectory', () => {
     expect(screen.queryByRole('dialog', { name: /Editar Computador/i })).not.toBeInTheDocument();
     expect(document.body.style.overflow).toBe('');
   });
+
+  it('always displays both IP Local and IP Público badges for every device', async () => {
+    renderDirectory(
+      service({
+        getDevices: vi.fn().mockResolvedValue({
+          devices: [
+            device({
+              id: 'dev-both',
+              displayName: 'GABRIEL-X-POINT',
+              osVersion: '24H2 (Build 26100) · IP 192.168.0.240',
+              publicIp: '179.199.142.157',
+            }),
+            device({
+              id: 'dev-none',
+              displayName: 'MARCENARIA',
+              osVersion: '10.0.19045',
+            }),
+          ],
+          nextCursor: null,
+        }),
+      })
+    );
+
+    expect((await screen.findAllByText('IP Local: 192.168.0.240')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('IP Público: 179.199.142.157').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('IP Local: N/D').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('IP Público: N/D').length).toBeGreaterThan(0);
+  });
 });
 
 

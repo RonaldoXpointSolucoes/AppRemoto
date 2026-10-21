@@ -104,16 +104,24 @@ func getPrimaryLocalIPv4() string {
 	if err != nil {
 		return ""
 	}
+	fallback := ""
 	for _, addr := range addrs {
 		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
 			if ipv4 := ipnet.IP.To4(); ipv4 != nil {
 				ipStr := ipv4.String()
 				// Ignora endereços de link-local (169.254.*)
-				if !strings.HasPrefix(ipStr, "169.254.") {
+				if strings.HasPrefix(ipStr, "169.254.") {
+					continue
+				}
+				// Prioriza IPs de rede privada local RFC 1918 (192.168.*, 10.*, 172.16-31.*)
+				if ipv4.IsPrivate() {
 					return ipStr
+				}
+				if fallback == "" {
+					fallback = ipStr
 				}
 			}
 		}
 	}
-	return ""
+	return fallback
 }

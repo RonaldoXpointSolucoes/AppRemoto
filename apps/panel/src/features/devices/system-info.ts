@@ -98,3 +98,76 @@ export function parseSystemInfo(operatingSystem: string, rawVersion: string): Pa
     summary: summaryParts.join(' · '),
   };
 }
+
+export interface DeviceNetworkIps {
+  localIp: string | null;
+  publicIp: string | null;
+}
+
+export function normalizeIpAddress(raw?: string | null): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim().replace(/^::ffff:/i, '');
+  if (!trimmed) return null;
+  const ipv4WithPort = trimmed.match(/^(\d{1,3}(?:\.\d{1,3}){3})(?::\d+)?$/);
+  if (ipv4WithPort && ipv4WithPort[1]) {
+    return ipv4WithPort[1];
+  }
+  return trimmed;
+}
+
+export function isPrivateIpv4(ip: string): boolean {
+  const clean = normalizeIpAddress(ip);
+  if (!clean) return false;
+  const parts = clean.split('.').map((p) => Number(p));
+  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+    return false;
+  }
+  const [a, b] = parts as [number, number, number, number];
+  if (a === 10) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 127 || a === 169 || a === 0) return true;
+  return false;
+}
+
+export function resolveDeviceNetworkIps(input: {
+  operatingSystem: string;
+  osVersion: string;
+  publicIp?: string | null;
+  datadivas?: {
+    ipMaq?: string;
+    ipDataDivas?: string;
+  } | null;
+}): DeviceNetworkIps {
+  const sys = parseSystemInfo(input.operatingSystem, input.osVersion);
+  const sysIp = normalizeIpAddress(sys.ip);
+  const maqIp = normalizeIpAddress(input.datadivas?.ipMaq);
+  const ddServerIp = normalizeIpAddress(input.datadivas?.ipDataDivas);
+  const apiPublicIp = normalizeIpAddress(input.publicIp);
+
+  let localIp: string | null = null;
+  let publicIp: string | null = null;
+
+  for (const candidate of [sysIp, maqIp, ddServerIp]) {
+    if (candidate && isPrivateIpv4(candidate)) {
+      localIp = candidate;
+      break;
+    }
+  }
+
+  for (const candidate of [apiPublicIp, sysIp, maqIp, ddServerIp]) {
+    if (
+      candidate &&
+      !isPrivateIpv4(candidate) &&
+      candidate !== '::1' &&
+      candidate.toLowerCase() !== 'localhost'
+    ) {
+      publicIp = candidate;
+      break;
+    }
+  }
+
+  return { localIp, publicIp };
+}
+
