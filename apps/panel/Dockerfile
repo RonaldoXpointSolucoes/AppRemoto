@@ -22,6 +22,10 @@ RUN --mount=type=bind,source=apps/panel/prebuilt/standalone.tar.gz,target=/tmp/s
     mkdir -p /app/apps/panel/public/installers /app/apps/panel/scripts && \
     cp /tmp/xpoint-setup-1.3.5.exe /app/apps/panel/public/installers/xpoint-setup-1.3.5.exe && \
     cp /tmp/xpoint-setup-1.3.5-x86.exe /app/apps/panel/public/installers/xpoint-setup-1.3.5-x86.exe && \
+    touch /app/apps/panel/public/installers/xpoint-complete-1.3.5.exe \
+          /app/apps/panel/public/installers/xpoint-complete-1.3.5-x86.exe \
+          /app/apps/panel/public/installers/complete-manifest.json \
+          /app/apps/panel/public/installers/complete-manifest-x86.json && \
     cp -r /tmp/scripts/. /app/apps/panel/scripts/ && \
     chown -R node:node /app
 
