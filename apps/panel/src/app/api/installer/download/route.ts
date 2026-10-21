@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
     const publicDir = resolvePublicDir();
     const manifestRaw = await readFile(path.join(publicDir, 'installers', 'complete-manifest.json'), 'utf8');
     const manifest = JSON.parse(manifestRaw) as { path?: string };
-    const relativePath = (manifest.path || '/installers/xpoint-complete-1.3.1.exe').replace(/^\/+/, '');
+    const relativePath = (manifest.path || '/installers/xpoint-complete-1.3.2.exe').replace(/^\/+/, '');
     const exePath = path.join(publicDir, relativePath);
     const baseBytes = await readFile(exePath);
 
