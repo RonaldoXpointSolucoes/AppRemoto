@@ -1,7 +1,7 @@
 FROM golang:1.26-alpine AS windows-installer
 WORKDIR /agent
 COPY services/agent/ ./
-RUN go mod download && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags='-s -w -H=windowsgui' -o /out/xpoint-setup-1.3.3.exe ./cmd/remote-setup && rm -rf /go/pkg /root/.cache /tmp/*
+RUN go mod download && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags='-s -w -H=windowsgui' -o /out/xpoint-setup-1.3.4.exe ./cmd/remote-setup && rm -rf /go/pkg /root/.cache /tmp/*
 
 FROM node:24-alpine AS base
 ENV PNPM_HOME=/pnpm
@@ -10,7 +10,7 @@ RUN corepack enable
 WORKDIR /app
 
 FROM base AS dependencies
-COPY --from=windows-installer /out/xpoint-setup-1.3.3.exe /tmp/xpoint-setup-1.3.3.exe
+COPY --from=windows-installer /out/xpoint-setup-1.3.4.exe /tmp/xpoint-setup-1.3.4.exe
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/panel/package.json apps/panel/package.json
@@ -25,7 +25,7 @@ ENV NEXT_PUBLIC_APPWRITE_ENDPOINT=$NEXT_PUBLIC_APPWRITE_ENDPOINT
 ENV NEXT_PUBLIC_APPWRITE_PROJECT_ID=$NEXT_PUBLIC_APPWRITE_PROJECT_ID
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 COPY . .
-COPY --from=windows-installer /out/xpoint-setup-1.3.3.exe ./apps/panel/public/installers/xpoint-setup-1.3.3.exe
+COPY --from=windows-installer /out/xpoint-setup-1.3.4.exe ./apps/panel/public/installers/xpoint-setup-1.3.4.exe
 RUN node apps/panel/scripts/package-installer.mjs
 RUN pnpm --config.verify-deps-before-run=false --filter @appremoto/panel build && rm -rf /app/apps/panel/.next/cache
 

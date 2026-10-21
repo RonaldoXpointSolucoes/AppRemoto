@@ -32,13 +32,40 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.6.4',
+    date: 'Outubro 2026',
+    title: 'Instalador Windows v1.3.4 — Sincronização CNPJ Online, Reparo Automático de Identidade & Passo 6 Resiliente',
+    highlight:
+      'Novo executável Windows v1.3.4 integrado ao painel v1.6.4: reserva de nome online por CNPJ sem alerta de contingência, auto-reparo de permissões em ProgramData\\identity e conclusão rápida do Passo 6.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Novo Executável Windows v1.3.4 Publicado',
+        description:
+          'Atualização da versão visual do instalador (v1.3.4) e do manifesto de distribuição com verificação SHA-256 e eliminação de cache.',
+        tag: 'TeamViewer',
+      },
+      {
+        title: 'Reserva e Consulta de CNPJ 100% Compatíveis Online',
+        description:
+          'Sincronização direta das rotas de contexto, sugestão, reserva e confirmação de nome por CNPJ sem exibir aviso de contingência.',
+        tag: 'Infra & Cockpit',
+      },
+      {
+        title: 'Proteção de Identidade SYSTEM & Passo 6 Instantâneo',
+        description:
+          'Prevenção de criação de arquivos de identidade pelo usuário interativo, auto-reparo de ACL para LocalSystem e confirmação rápida do Passo 6.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.6.3',
     date: 'Outubro 2026',
     title: 'Gaveta de Telemetria Panorâmica Full-Width (100% da Linha) & Refinamento Visual de Hardware/Rede',
     highlight:
       'Reestruturação completa do layout da linha de dispositivos e da gaveta expansível: os cards de Processador, Memória RAM, HD/SSD e Diagnóstico de Roteador agora ocupam toda a largura da tabela (4 colunas) em grid panorâmico lado a lado, sem esmagamento de texto.',
-    isCurrent: true,
-    items: [
+        items: [
       {
         title: 'Gaveta Expansível Full-Width (Spanning nas 4 Colunas)',
         description:
@@ -830,7 +857,7 @@ export function VersionChangelogModal({
         <div className="changelog-modal-footer">
           <div className="changelog-footer-info">
             <ShieldCheck size={15} className="text-emerald-400" />
-            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.5.4)</span>
+            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.6.4)</span>
           </div>
           <button type="button" className="tv-btn-primary" onClick={onClose}>
             Entendi, voltar ao painel
