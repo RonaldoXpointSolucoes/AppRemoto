@@ -19,7 +19,16 @@ export function SessionBoundary({ children }: { children: ReactNode }) {
     return (
       <main className="session-state" aria-live="polite">
         <p>{state.message}</p>
-        <button className="primary-button" type="button" onClick={() => void retry()}>Tentar novamente</button>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <button className="primary-button" type="button" onClick={() => void retry()}>Tentar novamente</button>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => router.replace(buildPreservedRoute('/login'))}
+          >
+            Ir para o login
+          </button>
+        </div>
       </main>
     );
   }

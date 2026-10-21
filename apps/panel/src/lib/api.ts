@@ -144,19 +144,37 @@ export function createApiClient(options: ApiClientOptions) {
     let jwt = await sessionJwt();
     for (let attempt = 0; attempt < 2; attempt++) {
       let response: Response;
+      const reqInit: RequestInit = {
+        headers: { authorization: `Bearer ${jwt}`, accept: 'application/json, application/vnd.xpoint.v2+json', ...(payload !== undefined ? { 'content-type': 'application/json' } : {}) },
+        method: payload === undefined ? 'GET' : 'POST',
+        cache: 'no-store',
+        ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
+      };
       try {
-        response = await (options.fetch ?? globalThis.fetch)(`${options.baseUrl}${path}`, {
-          headers: { authorization: `Bearer ${jwt}`, accept: 'application/json, application/vnd.xpoint.v2+json', ...(payload !== undefined ? { 'content-type': 'application/json' } : {}) },
-          method: payload === undefined ? 'GET' : 'POST',
-          cache: 'no-store',
-          ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
-        });
+        response = await (options.fetch ?? globalThis.fetch)(`${options.baseUrl}${path}`, reqInit);
       } catch {
-        throw new ApiClientError({
-          code: 'NETWORK_ERROR',
-          message: 'Nao foi possivel conectar ao servico.',
-          status: 0,
-        });
+        if (
+          !options.fetch &&
+          typeof window !== 'undefined' &&
+          window.location.protocol === 'https:' &&
+          options.baseUrl.includes('.sslip.io')
+        ) {
+          try {
+            response = await globalThis.fetch(`${window.location.origin}${path}`, reqInit);
+          } catch {
+            throw new ApiClientError({
+              code: 'NETWORK_ERROR',
+              message: 'Nao foi possivel conectar ao servico.',
+              status: 0,
+            });
+          }
+        } else {
+          throw new ApiClientError({
+            code: 'NETWORK_ERROR',
+            message: 'Nao foi possivel conectar ao servico.',
+            status: 0,
+          });
+        }
       }
 
       const body = await responseBody(response);

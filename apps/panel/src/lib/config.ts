@@ -50,9 +50,19 @@ export function parsePublicConfig(environment: PublicEnvironment): PublicConfig 
 }
 
 export function getPublicConfig(): PublicConfig {
+  const rawEndpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT;
+  const rawProjectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID;
   return parsePublicConfig({
-    NEXT_PUBLIC_APPWRITE_ENDPOINT: process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT,
-    NEXT_PUBLIC_APPWRITE_PROJECT_ID: process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID,
-    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
+    NEXT_PUBLIC_APPWRITE_ENDPOINT:
+      rawEndpoint && !rawEndpoint.includes('aogc088s00c4osck8k0ks0c4')
+        ? rawEndpoint
+        : 'https://appwrite.xpointsolucoes.com.br/v1',
+    NEXT_PUBLIC_APPWRITE_PROJECT_ID:
+      rawProjectId && rawProjectId !== '69db5246001f7f0ef0a9'
+        ? rawProjectId
+        : '6abc5640003cb361b809',
+    NEXT_PUBLIC_API_BASE_URL:
+      process.env.NEXT_PUBLIC_API_BASE_URL ||
+      'https://qyrjepou8xchzlfirsbrhwr9.179.199.142.157.sslip.io',
   });
 }

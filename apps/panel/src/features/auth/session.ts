@@ -54,19 +54,36 @@ async function postPublicAuthEndpoint(
   payload: Record<string, unknown>
 ): Promise<{ userId: string; secret: string }> {
   const cleanBase = baseUrl.replace(/\/+$/, '');
+  const reqInit: RequestInit = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(payload),
+  };
   let response: Response;
   try {
-    response = await fetch(`${cleanBase}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    response = await fetch(`${cleanBase}${path}`, reqInit);
   } catch {
-    throw new ApiClientError({
-      code: 'NETWORK_ERROR',
-      message: 'Não foi possível conectar ao servidor de autenticação.',
-      status: 0,
-    });
+    if (
+      typeof window !== 'undefined' &&
+      window.location.protocol === 'https:' &&
+      cleanBase.includes('.sslip.io')
+    ) {
+      try {
+        response = await fetch(`${window.location.origin}${path}`, reqInit);
+      } catch {
+        throw new ApiClientError({
+          code: 'NETWORK_ERROR',
+          message: 'Não foi possível conectar ao servidor de autenticação.',
+          status: 0,
+        });
+      }
+    } else {
+      throw new ApiClientError({
+        code: 'NETWORK_ERROR',
+        message: 'Não foi possível conectar ao servidor de autenticação.',
+        status: 0,
+      });
+    }
   }
 
   const data = (await response.json().catch(() => null)) as
