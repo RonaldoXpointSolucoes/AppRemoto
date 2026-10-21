@@ -1210,7 +1210,8 @@ button, a, input, select { outline-offset: 3px; }
 
 .tv-tree-header {
   display: grid;
-  grid-template-columns: minmax(260px, 2fr) minmax(130px, 1fr) 110px minmax(270px, 1.4fr);
+  grid-template-columns: minmax(340px, 1fr) 145px 96px 280px;
+  column-gap: 16px;
   padding: 12px 18px;
   background: var(--surface-muted);
   border-bottom: 1px solid var(--border);
@@ -1896,7 +1897,8 @@ button, a, input, select { outline-offset: 3px; }
 
 .tv-row {
   display: grid;
-  grid-template-columns: minmax(260px, 2fr) minmax(130px, 1fr) 110px minmax(270px, 1.4fr);
+  grid-template-columns: minmax(340px, 1fr) 145px 96px 280px;
+  column-gap: 16px;
   align-items: center;
   padding: 10px 18px 10px 48px;
   border-top: 1px solid var(--border);
@@ -2192,7 +2194,7 @@ button, a, input, select { outline-offset: 3px; }
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   gap: 14px;
-  align-items: stretch;
+  align-items: start;
 }
 
 @media (max-width: 1024px) {
@@ -2245,7 +2247,6 @@ button, a, input, select { outline-offset: 3px; }
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
-  flex: 1;
 }
 
 @media (max-width: 720px) {
@@ -2257,9 +2258,9 @@ button, a, input, select { outline-offset: 3px; }
 .tv-drawer-hw-metric-item {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 6px;
-  padding: 10px 12px;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 11px 12px;
   border-radius: 10px;
   background: rgba(15, 23, 42, 0.55);
   border: 1px solid rgba(148, 163, 184, 0.16);
@@ -2412,6 +2413,18 @@ button, a, input, select { outline-offset: 3px; }
   display: flex;
   flex-direction: column;
   gap: 5px;
+  max-height: 156px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.tv-drawer-net-peers-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.tv-drawer-net-peers-list::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
 }
 
 .tv-drawer-net-peer-pill {
