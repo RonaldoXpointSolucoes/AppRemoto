@@ -27,7 +27,7 @@ export function PwaRegister() {
         if ('caches' in window) {
           const currentPath = window.location.pathname || '/devices';
           void caches
-            .open('xpoint-remote-v4')
+            .open('xpoint-remote-v5')
             .then((cache) => cache.add(currentPath))
             .catch(() => {});
         }

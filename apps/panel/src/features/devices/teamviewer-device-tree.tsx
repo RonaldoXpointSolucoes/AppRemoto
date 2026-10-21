@@ -1013,480 +1013,145 @@ export function TeamViewerDeviceTree({
                       )}
                     </div>
 
-                    {/* Linha 2 (Subtítulo Menor Abaixo): Contexto Fantasia/Empresa + Host/Pasta + Opção "Ver detalhes" */}
+                    {/* Linha 2 (Subtítulo Menor Abaixo): Contexto Fantasia/Empresa + Barra de Telemetria Inline */}
                     <div className="tv-subtext-primary">
-                      <span
-                        className="tv-subtitle-company"
-                        title={
-                          dev.datadivas?.razaoSocial
-                            ? `${presentation.subtitlePrimary} · ${dev.datadivas.razaoSocial}`
-                            : presentation.subtitlePrimary
-                        }
-                      >
-                        {presentation.subtitlePrimary}
-                      </span>
-                      {presentation.subtitleSecondary && (
-                        <>
+                      <div className="tv-subtext-context-row">
+                        <span
+                          className="tv-subtitle-company"
+                          title={
+                            dev.datadivas?.razaoSocial
+                              ? `${presentation.subtitlePrimary} · ${dev.datadivas.razaoSocial}`
+                              : presentation.subtitlePrimary
+                          }
+                        >
+                          {presentation.subtitlePrimary}
+                        </span>
+                        {presentation.subtitleSecondary && (
+                          <>
+                            <span className="tv-subtext-sep">·</span>
+                            <span className="tv-subtitle-meta">{presentation.subtitleSecondary}</span>
+                          </>
+                        )}
+                        <span className="tv-mobile-id-group">
                           <span className="tv-subtext-sep">·</span>
-                          <span className="tv-subtitle-meta">{presentation.subtitleSecondary}</span>
-                        </>
-                      )}
-                      <span className="tv-subtext-sep">·</span>
-                      <button
-                        type="button"
-                        className={`tv-inline-ip-badge tv-ip-local ${localIp ? '' : 'is-missing'}`}
-                        title={
-                          localIp
-                            ? `IP Local da Máquina na LAN: ${localIp} (clique para copiar)`
-                            : 'IP Local na rede interna ainda não reportado pelo agente'
-                        }
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!localIp) return;
-                          void navigator.clipboard.writeText(localIp).then(() => {
-                            showToast(`IP Local ${localIp} copiado!`);
-                          });
-                        }}
-                      >
-                        <Laptop size={11} className="tv-ip-icon" />
-                        <span>IP Local: {localIp ?? 'N/D'}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className={`tv-inline-ip-badge tv-ip-public ${publicIp ? '' : 'is-missing'}`}
-                        title={
-                          publicIp
-                            ? `IP Público (WAN / Internet): ${publicIp} (clique para copiar)`
-                            : 'IP Público ainda não registrado no servidor'
-                        }
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (!publicIp) return;
-                          void navigator.clipboard.writeText(publicIp).then(() => {
-                            showToast(`IP Público ${publicIp} copiado!`);
-                          });
-                        }}
-                      >
-                        <Globe size={11} className="tv-ip-icon" />
-                        <span>IP Público: {publicIp ?? 'N/D'}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className={`tv-inline-net-topology-badge status-${netTopo.status}`}
-                        title={`${netTopo.summaryTitle} — ${netTopo.summaryDescription} (clique para abrir o mapa de rede)`}
-                        onClick={(e) => toggleDeviceDetails(dev.id, e)}
-                      >
-                        <Network size={11} className="tv-ip-icon" />
-                        <span>{netTopo.badgeLabel}</span>
-                      </button>
-                      <span className="tv-inline-hw-group" aria-label="Telemetria de Hardware">
-                        <span
-                          className={`tv-inline-hw-pill tone-${hw.cpu.tone}`}
-                          title={`Processador: ${hw.cpu.detailLabel}`}
-                        >
-                          <Cpu size={10} />
-                          <span>{hw.cpu.compactLabel}</span>
+                          <span
+                            className="tv-id-subtext"
+                            title="ID do RustDesk (toque para copiar)"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
+                                setCopiedId(dev.rustdeskId);
+                                showToast(`ID ${formatRustDeskId(dev.rustdeskId)} copiado!`);
+                                setTimeout(() => setCopiedId(null), 2500);
+                              });
+                            }}
+                          >
+                            {formatRustDeskId(dev.rustdeskId)}
+                          </span>
+                          <button
+                            type="button"
+                            className="tv-copy-id-btn"
+                            title={copiedId === dev.rustdeskId ? 'Copiado!' : 'Copiar ID do RustDesk'}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
+                                setCopiedId(dev.rustdeskId);
+                                showToast(`ID ${formatRustDeskId(dev.rustdeskId)} copiado!`);
+                                setTimeout(() => setCopiedId(null), 2500);
+                              });
+                            }}
+                          >
+                            {copiedId === dev.rustdeskId ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                          </button>
                         </span>
-                        <span
-                          className={`tv-inline-hw-pill tone-${hw.ram.tone}`}
-                          title={`Memória RAM: ${hw.ram.detailLabel}`}
-                        >
-                          <Activity size={10} />
-                          <span>{hw.ram.compactLabel}</span>
-                        </span>
-                        <span
-                          className={`tv-inline-hw-pill tone-${hw.disk.tone}`}
-                          title={`Disco / Armazenamento (HD/SSD): ${hw.disk.detailLabel}`}
-                        >
-                          <HardDrive size={10} />
-                          <span>{hw.disk.compactLabel}</span>
-                        </span>
-                      </span>
-                      <span className="tv-mobile-id-group">
-                        <span className="tv-subtext-sep">·</span>
-                        <span
-                          className="tv-id-subtext"
-                          title="ID do RustDesk (toque para copiar)"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
-                              setCopiedId(dev.rustdeskId);
-                              showToast(`ID ${formatRustDeskId(dev.rustdeskId)} copiado!`);
-                              setTimeout(() => setCopiedId(null), 2500);
-                            });
-                          }}
-                        >
-                          {formatRustDeskId(dev.rustdeskId)}
+                        <span className={`tv-mobile-inline-status ${isOnline ? 'online' : 'offline'}`}>
+                          {isOnline ? '● Online' : `Visto: ${formatLastSeen(dev.lastSeenAt)}`}
                         </span>
                         <button
                           type="button"
-                          className="tv-copy-id-btn"
-                          title={copiedId === dev.rustdeskId ? 'Copiado!' : 'Copiar ID do RustDesk'}
+                          className={`tv-details-expand-btn ${isExpanded ? 'expanded' : ''}`}
+                          aria-expanded={isExpanded}
+                          aria-label={isExpanded ? `Ocultar detalhes de ${presentation.mainTitle}` : `Ver detalhes de ${presentation.mainTitle}`}
+                          onClick={(e) => toggleDeviceDetails(dev.id, e)}
+                        >
+                          <span>{isExpanded ? 'Ocultar detalhes' : 'Ver detalhes'}</span>
+                          {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                        </button>
+                      </div>
+
+                      <div className="tv-inline-telemetry-strip">
+                        <button
+                          type="button"
+                          className={`tv-inline-ip-badge tv-ip-local ${localIp ? '' : 'is-missing'}`}
+                          title={
+                            localIp
+                              ? `IP Local da Máquina na LAN: ${localIp} (clique para copiar)`
+                              : 'IP Local na rede interna ainda não reportado pelo agente'
+                          }
                           onClick={(e) => {
                             e.stopPropagation();
-                            void navigator.clipboard.writeText(dev.rustdeskId.replace(/\s+/g, '')).then(() => {
-                              setCopiedId(dev.rustdeskId);
-                              showToast(`ID ${formatRustDeskId(dev.rustdeskId)} copiado!`);
-                              setTimeout(() => setCopiedId(null), 2500);
+                            if (!localIp) return;
+                            void navigator.clipboard.writeText(localIp).then(() => {
+                              showToast(`IP Local ${localIp} copiado!`);
                             });
                           }}
                         >
-                          {copiedId === dev.rustdeskId ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                          <Laptop size={11} className="tv-ip-icon" />
+                          <span>IP Local: {localIp ?? 'N/D'}</span>
                         </button>
-                      </span>
-                      <span className={`tv-mobile-inline-status ${isOnline ? 'online' : 'offline'}`}>
-                        {isOnline ? '● Online' : `Visto: ${formatLastSeen(dev.lastSeenAt)}`}
-                      </span>
-                      <button
-                        type="button"
-                        className={`tv-details-expand-btn ${isExpanded ? 'expanded' : ''}`}
-                        aria-expanded={isExpanded}
-                        aria-label={isExpanded ? `Ocultar detalhes de ${presentation.mainTitle}` : `Ver detalhes de ${presentation.mainTitle}`}
-                        onClick={(e) => toggleDeviceDetails(dev.id, e)}
-                      >
-                        <span>{isExpanded ? 'Ocultar detalhes' : 'Ver detalhes'}</span>
-                        {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                      </button>
-                    </div>
-
-                    {/* Gaveta Expansível: Exibida APENAS quando o usuário clica em "Detalhes" */}
-                    {isExpanded && (
-                      <div className="tv-row-expanded-drawer" role="region" aria-label={`Detalhes de ${dev.displayName}`}>
-                        {/* Bloco 1: Especificações de Sistema, Rede e Organização */}
-                        <div className="tv-subtext-secondary">
-                          <span className={`tv-badge-os ${sys.badge.toLowerCase().replace(/\s+/g, '')}`}>
-                            {sys.badge}
-                          </span>
-                          <span className="tv-subtext-host">{dev.hostname}</span>
-                          <span className="tv-subtext-sep">·</span>
-                          <span className="tv-subtext-os">{sys.osName} {sys.versionLabel}</span>
-                          <span className="tv-subtext-sep">·</span>
-                          <span className="tv-subtext-ip" title="IP Local na rede interna (LAN)">
-                            <Laptop size={11} className="tv-ip-icon" /> IP Local: {localIp ?? 'N/D'}
-                          </span>
-                          <span className="tv-subtext-sep">·</span>
-                          <span className="tv-subtext-ip tv-subtext-ip-public" title="IP Público de saída para internet (WAN)">
-                            <Globe size={11} className="tv-ip-icon" /> IP Público: {publicIp ?? 'N/D'}
-                          </span>
-                          {rec?.technicianName && (
-                            <>
-                              <span className="tv-subtext-sep">·</span>
-                              <span className="tv-subtext-tech">Técnico: {rec.technicianName}</span>
-                            </>
-                          )}
-                          {dev.organizationName && dev.organizationName !== folderName && (
-                            <>
-                              <span className="tv-subtext-sep">·</span>
-                              <span className="tv-subtext-org">{dev.organizationName}</span>
-                            </>
-                          )}
-                          {parsedNotes.notes && (
-                            <>
-                              <span className="tv-subtext-sep">·</span>
-                              <span className="tv-subtext-notes" title={parsedNotes.notes}>
-                                <FileText size={11} className="inline mr-1" />
-                                {parsedNotes.notes}
-                              </span>
-                            </>
-                          )}
-                        </div>
-
-                        {/* Bloco 1.5: Telemetria de Hardware (CPU, Memória RAM, HD) & Topologia de Rede / Roteador */}
-                        <div className="tv-drawer-telemetry-grid">
-                          <div className="tv-drawer-hw-card">
-                            <div className="tv-drawer-section-header">
-                              <Cpu size={13} className="text-sky-400" />
-                              <span>Recursos da Máquina (Processador, Memória & HD)</span>
-                            </div>
-                            <div className="tv-drawer-hw-metrics">
-                              <div className="tv-drawer-hw-metric-item">
-                                <div className="tv-drawer-hw-metric-top">
-                                  <span className="tv-drawer-hw-label">Processador (CPU)</span>
-                                  <strong className={`tv-drawer-hw-val tone-${hw.cpu.tone}`}>
-                                    {hw.cpu.usagePct !== null ? `${hw.cpu.usagePct}% em uso` : 'Sem leitura ativa'}
-                                  </strong>
-                                </div>
-                                <div className="tv-drawer-hw-bar">
-                                  <div
-                                    className={`tv-drawer-hw-bar-fill tone-${hw.cpu.tone}`}
-                                    style={{ width: `${hw.cpu.usagePct ?? 0}%` }}
-                                  />
-                                </div>
-                                <span className="tv-drawer-hw-sub">{hw.cpu.detailLabel}</span>
-                              </div>
-
-                              <div className="tv-drawer-hw-metric-item">
-                                <div className="tv-drawer-hw-metric-top">
-                                  <span className="tv-drawer-hw-label">Memória RAM</span>
-                                  <strong className={`tv-drawer-hw-val tone-${hw.ram.tone}`}>
-                                    {hw.ram.usedLabel && hw.ram.totalLabel
-                                      ? `${hw.ram.usedLabel} / ${hw.ram.totalLabel}`
-                                      : hw.ram.usagePct !== null
-                                        ? `${hw.ram.usagePct}%`
-                                        : 'Sem leitura ativa'}
-                                  </strong>
-                                </div>
-                                <div className="tv-drawer-hw-bar">
-                                  <div
-                                    className={`tv-drawer-hw-bar-fill tone-${hw.ram.tone}`}
-                                    style={{ width: `${hw.ram.usagePct ?? 0}%` }}
-                                  />
-                                </div>
-                                <span className="tv-drawer-hw-sub">{hw.ram.detailLabel}</span>
-                              </div>
-
-                              <div className="tv-drawer-hw-metric-item">
-                                <div className="tv-drawer-hw-metric-top">
-                                  <span className="tv-drawer-hw-label">Armazenamento (HD / SSD)</span>
-                                  <strong className={`tv-drawer-hw-val tone-${hw.disk.tone}`}>
-                                    {hw.disk.usedLabel && hw.disk.totalLabel
-                                      ? `${hw.disk.usedLabel} / ${hw.disk.totalLabel}`
-                                      : hw.disk.usagePct !== null
-                                        ? `${hw.disk.usagePct}%`
-                                        : 'Sem leitura ativa'}
-                                  </strong>
-                                </div>
-                                <div className="tv-drawer-hw-bar">
-                                  <div
-                                    className={`tv-drawer-hw-bar-fill tone-${hw.disk.tone}`}
-                                    style={{ width: `${hw.disk.usagePct ?? 0}%` }}
-                                  />
-                                </div>
-                                <span className="tv-drawer-hw-sub">{hw.disk.detailLabel}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className={`tv-drawer-net-card status-${netTopo.status}`}>
-                            <div className="tv-drawer-section-header">
-                              <Network size={13} />
-                              <span>Diagnóstico de Rede Local & Roteador (Visibilidade LAN)</span>
-                            </div>
-                            <p className="tv-drawer-net-title">{netTopo.summaryTitle}</p>
-                            <p className="tv-drawer-net-desc">{netTopo.summaryDescription}</p>
-                            <div className="tv-drawer-net-chips">
-                              <span className="tv-drawer-net-chip">
-                                Sub-rede: <strong>{netTopo.subnetCidr ?? 'N/D'}</strong>
-                              </span>
-                              <span className="tv-drawer-net-chip">
-                                Roteador (Gateway): <strong>{netTopo.gatewayIp ?? 'N/D'}</strong>
-                              </span>
-                              {netTopo.connectionType && (
-                                <span className="tv-drawer-net-chip">
-                                  Meio: <strong>{netTopo.connectionType}</strong>
-                                </span>
-                              )}
-                              {netTopo.configuredServerIp && (
-                                <span className="tv-drawer-net-chip">
-                                  IP Servidor BD: <strong>{netTopo.configuredServerIp}</strong>
-                                </span>
-                              )}
-                            </div>
-                            {netTopo.peers.length > 0 && (
-                              <div className="tv-drawer-net-peers">
-                                <span className="tv-drawer-net-peers-label">
-                                  Comparativo com outras máquinas deste cliente/local ({netTopo.peers.length}):
-                                </span>
-                                <div className="tv-drawer-net-peers-list">
-                                  {netTopo.peers.map((peer) => (
-                                    <div
-                                      key={peer.id}
-                                      className={`tv-drawer-net-peer-pill rel-${peer.relation}`}
-                                    >
-                                      <span className="tv-peer-name">{peer.displayName}</span>
-                                      <span className="tv-peer-ip">
-                                        {peer.localIp ? `LAN ${peer.localIp}` : 'Sem IP Local'}
-                                      </span>
-                                      <span className="tv-peer-verdict">
-                                        {peer.relation === 'same_router'
-                                          ? '✅ Mesmo Roteador (Enxerga)'
-                                          : peer.relation === 'different_router'
-                                            ? `⚠️ Outro Roteador (${peer.subnetPrefix}.x — Não enxerga)`
-                                            : '⚪ IP LAN pendente'}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Bloco 2: Dados Cadastrais DataDivas (C:\DataDivas\config.ini) */}
-                        {dev.datadivas && (
-                          <div className="tv-datadivas-strip" aria-label="Dados DataDivas do cliente">
-                            {(dev.datadivas.nomeFantasia || dev.datadivas.razaoSocial) && (
-                              <span
-                                className="tv-dd-pill tv-dd-pill-company"
-                                title={`Fantasia: ${dev.datadivas.nomeFantasia || '—'} | Razão Social: ${dev.datadivas.razaoSocial || '—'}`}
-                              >
-                                🏢 {dev.datadivas.nomeFantasia || dev.datadivas.razaoSocial}
-                                {dev.datadivas.razaoSocial &&
-                                  dev.datadivas.nomeFantasia &&
-                                  dev.datadivas.razaoSocial.toLowerCase() !== dev.datadivas.nomeFantasia.toLowerCase() && (
-                                    <span className="tv-dd-pill-sub"> · {dev.datadivas.razaoSocial}</span>
-                                  )}
-                              </span>
-                            )}
-                            {dev.datadivas.funcao && (
-                              <span
-                                className="tv-dd-pill tv-dd-pill-role"
-                                title={`Função da máquina no CNPJ: ${dev.datadivas.funcao}`}
-                              >
-                                🏷️ {dev.datadivas.funcao}
-                              </span>
-                            )}
-                            {dev.datadivas.statusRenomeacao &&
-                              dev.datadivas.statusRenomeacao !== 'NOT_REQUESTED' &&
-                              dev.datadivas.statusRenomeacao !== 'NAO_SOLICITADO' && (
-                                <span
-                                  className={`tv-dd-pill tv-dd-pill-rename-${dev.datadivas.statusRenomeacao.toLowerCase()}`}
-                                  title={
-                                    dev.datadivas.statusRenomeacao === 'PENDING_REBOOT' ||
-                                    dev.datadivas.statusRenomeacao === 'APLICADO_AGUARDANDO_REBOOT'
-                                      ? `Renomeação Windows pendente de reinicialização para ${dev.datadivas.windowsHostnameDesejado || ''}`
-                                      : dev.datadivas.statusRenomeacao === 'COMPLETED' ||
-                                          dev.datadivas.statusRenomeacao === 'CONFIRMADO'
-                                        ? `Hostname Windows sincronizado (${dev.datadivas.windowsHostnameDesejado || dev.hostname})`
-                                        : dev.datadivas.statusRenomeacao === 'BLOCKED_DOMAIN'
-                                          ? 'Computador em domínio Active Directory — renomeação Windows bloqueada'
-                                          : 'Falha ou divergência ao renomear computador no Windows'
-                                  }
-                                >
-                                  {dev.datadivas.statusRenomeacao === 'PENDING_REBOOT' ||
-                                  dev.datadivas.statusRenomeacao === 'APLICADO_AGUARDANDO_REBOOT'
-                                    ? `⏳ Reinício Pendente (${dev.datadivas.windowsHostnameDesejado || 'Windows'})`
-                                    : dev.datadivas.statusRenomeacao === 'COMPLETED' ||
-                                        dev.datadivas.statusRenomeacao === 'CONFIRMADO'
-                                      ? '✅ Hostname OK'
-                                      : dev.datadivas.statusRenomeacao === 'BLOCKED_DOMAIN'
-                                        ? '🔒 Domínio AD'
-                                        : '⚠️ Erro Renomeação'}
-                                </span>
-                              )}
-                            {dev.datadivas.cnpj && (
-                              <button
-                                type="button"
-                                className="tv-dd-pill tv-dd-pill-copyable"
-                                title="CNPJ / CPF no config.ini (clique para copiar)"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void navigator.clipboard.writeText(dev.datadivas!.cnpj!).then(() => {
-                                    showToast(`CNPJ/CPF ${dev.datadivas!.cnpj} copiado!`);
-                                  });
-                                }}
-                              >
-                                <span>CNPJ: {dev.datadivas.cnpj}</span>
-                                <Copy size={10} />
-                              </button>
-                            )}
-                            {dev.datadivas.cnpj && onOpenCnpjGroup && (
-                              <button
-                                type="button"
-                                className="tv-dd-pill tv-dd-pill-copyable"
-                                title="Abrir Gestão Inteligente de Computadores deste CNPJ"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onOpenCnpjGroup(dev.datadivas!.cnpj!);
-                                }}
-                              >
-                                <span>⚙️ Gerir CNPJ</span>
-                              </button>
-                            )}
-                            {dev.datadivas.serial && (
-                              <button
-                                type="button"
-                                className="tv-dd-pill tv-dd-pill-serial tv-dd-pill-copyable"
-                                title="Serial DataDivas no config.ini (clique para copiar)"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void navigator.clipboard.writeText(dev.datadivas!.serial!).then(() => {
-                                    showToast(`Serial ${dev.datadivas!.serial} copiado!`);
-                                  });
-                                }}
-                              >
-                                <span>Serial: {dev.datadivas.serial}</span>
-                                <Copy size={10} />
-                              </button>
-                            )}
-                            {dev.datadivas.ie && (
-                              <span className="tv-dd-pill" title="Inscrição Estadual (IE)">
-                                IE: {dev.datadivas.ie}
-                              </span>
-                            )}
-                            {dev.datadivas.ipDataDivas && (
-                              <button
-                                type="button"
-                                className="tv-dd-pill tv-dd-pill-copyable"
-                                title={`IP DataDivas: ${dev.datadivas.ipDataDivas}${dev.datadivas.banco ? ` (${dev.datadivas.banco})` : ''} — clique para copiar`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void navigator.clipboard.writeText(dev.datadivas!.ipDataDivas!).then(() => {
-                                    showToast(`IP DataDivas ${dev.datadivas!.ipDataDivas} copiado!`);
-                                  });
-                                }}
-                              >
-                                <span>IP DataDivas: {dev.datadivas.ipDataDivas}</span>
-                                <Copy size={10} />
-                              </button>
-                            )}
-                            {(dev.datadivas.endereco || dev.datadivas.cidade || dev.datadivas.uf) && (
-                              <span
-                                className="tv-dd-pill tv-dd-pill-address"
-                                title={[
-                                  dev.datadivas.endereco,
-                                  [dev.datadivas.cidade, dev.datadivas.uf].filter(Boolean).join('/'),
-                                ]
-                                  .filter(Boolean)
-                                  .join(' — ')}
-                              >
-                                📍{' '}
-                                {[
-                                  dev.datadivas.endereco,
-                                  [dev.datadivas.cidade, dev.datadivas.uf].filter(Boolean).join('/'),
-                                ]
-                                  .filter(Boolean)
-                                  .join(' · ')}
-                              </span>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Bloco 3: Barra de Ações Rápidas da Gaveta de Detalhes */}
-                        <div className="tv-expanded-quick-actions">
-                          <button
-                            type="button"
-                            className="tv-expanded-action-btn primary"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDetails(dev);
-                            }}
+                        <button
+                          type="button"
+                          className={`tv-inline-ip-badge tv-ip-public ${publicIp ? '' : 'is-missing'}`}
+                          title={
+                            publicIp
+                              ? `IP Público (WAN / Internet): ${publicIp} (clique para copiar)`
+                              : 'IP Público ainda não registrado no servidor'
+                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!publicIp) return;
+                            void navigator.clipboard.writeText(publicIp).then(() => {
+                              showToast(`IP Público ${publicIp} copiado!`);
+                            });
+                          }}
+                        >
+                          <Globe size={11} className="tv-ip-icon" />
+                          <span>IP Público: {publicIp ?? 'N/D'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={`tv-inline-net-topology-badge status-${netTopo.status}`}
+                          title={`${netTopo.summaryTitle} — ${netTopo.summaryDescription} (clique para abrir o mapa de rede)`}
+                          onClick={(e) => toggleDeviceDetails(dev.id, e)}
+                        >
+                          <Network size={11} className="tv-ip-icon" />
+                          <span>{netTopo.badgeLabel}</span>
+                        </button>
+                        <span className="tv-inline-hw-group" aria-label="Telemetria de Hardware">
+                          <span
+                            className={`tv-inline-hw-pill tone-${hw.cpu.tone}`}
+                            title={`Processador: ${hw.cpu.detailLabel}`}
                           >
-                            <Sliders size={12} />
-                            <span>Diagnóstico & Histórico</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="tv-expanded-action-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void handleOpenEditDevice(dev);
-                            }}
+                            <Cpu size={10} />
+                            <span>{hw.cpu.compactLabel}</span>
+                          </span>
+                          <span
+                            className={`tv-inline-hw-pill tone-${hw.ram.tone}`}
+                            title={`Memória RAM: ${hw.ram.detailLabel}`}
                           >
-                            <Pencil size={12} />
-                            <span>Editar Nome / Pasta</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="tv-expanded-action-btn"
-                            onClick={(e) => void handleShareDeviceCard(dev, e)}
+                            <Activity size={10} />
+                            <span>{hw.ram.compactLabel}</span>
+                          </span>
+                          <span
+                            className={`tv-inline-hw-pill tone-${hw.disk.tone}`}
+                            title={`Disco / Armazenamento (HD/SSD): ${hw.disk.detailLabel}`}
                           >
-                            <Share2 size={12} />
-                            <span>Compartilhar Ficha</span>
-                          </button>
-                        </div>
+                            <HardDrive size={10} />
+                            <span>{hw.disk.compactLabel}</span>
+                          </span>
+                        </span>
                       </div>
-                    )}
+                    </div>
                   </div>
                 </div>
 
@@ -1696,6 +1361,346 @@ export function TeamViewerDeviceTree({
                     </div>
                   </div>
                 </div>
+
+                {/* Gaveta Expansível Full-Width: Ocupa todas as 4 colunas da linha quando "Ver detalhes" está ativo */}
+                {isExpanded && (
+                  <div className="tv-row-expanded-drawer" role="region" aria-label={`Detalhes de ${dev.displayName}`}>
+                    {/* Cabeçalho da Gaveta: Especificações de Sistema + Ações Rápidas */}
+                    <div className="tv-drawer-header-bar">
+                      <div className="tv-subtext-secondary">
+                        <span className={`tv-badge-os ${sys.badge.toLowerCase().replace(/\s+/g, '')}`}>
+                          {sys.badge}
+                        </span>
+                        <span className="tv-subtext-host">{dev.hostname}</span>
+                        <span className="tv-subtext-sep">·</span>
+                        <span className="tv-subtext-os">{sys.osName} {sys.versionLabel}</span>
+                        <span className="tv-subtext-sep">·</span>
+                        <span className="tv-subtext-ip" title="IP Local na rede interna (LAN)">
+                          <Laptop size={11} className="tv-ip-icon" /> IP Local: {localIp ?? 'N/D'}
+                        </span>
+                        <span className="tv-subtext-sep">·</span>
+                        <span className="tv-subtext-ip tv-subtext-ip-public" title="IP Público de saída para internet (WAN)">
+                          <Globe size={11} className="tv-ip-icon" /> IP Público: {publicIp ?? 'N/D'}
+                        </span>
+                        {rec?.technicianName && (
+                          <>
+                            <span className="tv-subtext-sep">·</span>
+                            <span className="tv-subtext-tech">Técnico: {rec.technicianName}</span>
+                          </>
+                        )}
+                        {dev.organizationName && dev.organizationName !== folderName && (
+                          <>
+                            <span className="tv-subtext-sep">·</span>
+                            <span className="tv-subtext-org">{dev.organizationName}</span>
+                          </>
+                        )}
+                        {parsedNotes.notes && (
+                          <>
+                            <span className="tv-subtext-sep">·</span>
+                            <span className="tv-subtext-notes" title={parsedNotes.notes}>
+                              <FileText size={11} className="inline mr-1" />
+                              {parsedNotes.notes}
+                            </span>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="tv-expanded-quick-actions">
+                        <button
+                          type="button"
+                          className="tv-expanded-action-btn primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDetails(dev);
+                          }}
+                        >
+                          <Sliders size={12} />
+                          <span>Diagnóstico & Histórico</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="tv-expanded-action-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleOpenEditDevice(dev);
+                          }}
+                        >
+                          <Pencil size={12} />
+                          <span>Editar Nome / Pasta</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="tv-expanded-action-btn"
+                          onClick={(e) => void handleShareDeviceCard(dev, e)}
+                        >
+                          <Share2 size={12} />
+                          <span>Compartilhar Ficha</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Grid Panorâmico 2 Colunas: Telemetria de Hardware (CPU, RAM, HD) + Topologia de Rede / Roteador */}
+                    <div className="tv-drawer-telemetry-grid">
+                      <div className="tv-drawer-hw-card">
+                        <div className="tv-drawer-section-header">
+                          <Cpu size={13} className="text-sky-400" />
+                          <span>Recursos da Máquina (Processador, Memória & HD)</span>
+                        </div>
+                        <div className="tv-drawer-hw-metrics">
+                          <div className="tv-drawer-hw-metric-item">
+                            <div className="tv-drawer-hw-metric-top">
+                              <span className="tv-drawer-hw-label">Processador (CPU)</span>
+                              <strong className={`tv-drawer-hw-val tone-${hw.cpu.tone}`}>
+                                {hw.cpu.usagePct !== null ? `${hw.cpu.usagePct}% em uso` : 'Sem leitura ativa'}
+                              </strong>
+                            </div>
+                            <div className="tv-drawer-hw-bar">
+                              <div
+                                className={`tv-drawer-hw-bar-fill tone-${hw.cpu.tone}`}
+                                style={{ width: `${hw.cpu.usagePct ?? 0}%` }}
+                              />
+                            </div>
+                            <span className="tv-drawer-hw-sub">{hw.cpu.detailLabel}</span>
+                          </div>
+
+                          <div className="tv-drawer-hw-metric-item">
+                            <div className="tv-drawer-hw-metric-top">
+                              <span className="tv-drawer-hw-label">Memória RAM</span>
+                              <strong className={`tv-drawer-hw-val tone-${hw.ram.tone}`}>
+                                {hw.ram.usedLabel && hw.ram.totalLabel
+                                  ? `${hw.ram.usedLabel} / ${hw.ram.totalLabel}`
+                                  : hw.ram.usagePct !== null
+                                    ? `${hw.ram.usagePct}%`
+                                    : 'Sem leitura ativa'}
+                              </strong>
+                            </div>
+                            <div className="tv-drawer-hw-bar">
+                              <div
+                                className={`tv-drawer-hw-bar-fill tone-${hw.ram.tone}`}
+                                style={{ width: `${hw.ram.usagePct ?? 0}%` }}
+                              />
+                            </div>
+                            <span className="tv-drawer-hw-sub">{hw.ram.detailLabel}</span>
+                          </div>
+
+                          <div className="tv-drawer-hw-metric-item">
+                            <div className="tv-drawer-hw-metric-top">
+                              <span className="tv-drawer-hw-label">Armazenamento (HD / SSD)</span>
+                              <strong className={`tv-drawer-hw-val tone-${hw.disk.tone}`}>
+                                {hw.disk.usedLabel && hw.disk.totalLabel
+                                  ? `${hw.disk.usedLabel} / ${hw.disk.totalLabel}`
+                                  : hw.disk.usagePct !== null
+                                    ? `${hw.disk.usagePct}%`
+                                    : 'Sem leitura ativa'}
+                              </strong>
+                            </div>
+                            <div className="tv-drawer-hw-bar">
+                              <div
+                                className={`tv-drawer-hw-bar-fill tone-${hw.disk.tone}`}
+                                style={{ width: `${hw.disk.usagePct ?? 0}%` }}
+                              />
+                            </div>
+                            <span className="tv-drawer-hw-sub">{hw.disk.detailLabel}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className={`tv-drawer-net-card status-${netTopo.status}`}>
+                        <div className="tv-drawer-section-header">
+                          <Network size={13} />
+                          <span>Diagnóstico de Rede Local & Roteador (Visibilidade LAN)</span>
+                        </div>
+                        <p className="tv-drawer-net-title">{netTopo.summaryTitle}</p>
+                        <p className="tv-drawer-net-desc">{netTopo.summaryDescription}</p>
+                        <div className="tv-drawer-net-chips">
+                          <span className="tv-drawer-net-chip">
+                            Sub-rede: <strong>{netTopo.subnetCidr ?? 'N/D'}</strong>
+                          </span>
+                          <span className="tv-drawer-net-chip">
+                            Roteador (Gateway): <strong>{netTopo.gatewayIp ?? 'N/D'}</strong>
+                          </span>
+                          {netTopo.connectionType && (
+                            <span className="tv-drawer-net-chip">
+                              Meio: <strong>{netTopo.connectionType}</strong>
+                            </span>
+                          )}
+                          {netTopo.configuredServerIp && (
+                            <span className="tv-drawer-net-chip">
+                              IP Servidor BD: <strong>{netTopo.configuredServerIp}</strong>
+                            </span>
+                          )}
+                        </div>
+                        {netTopo.peers.length > 0 && (
+                          <div className="tv-drawer-net-peers">
+                            <span className="tv-drawer-net-peers-label">
+                              Comparativo com outras máquinas deste cliente/local ({netTopo.peers.length}):
+                            </span>
+                            <div className="tv-drawer-net-peers-list">
+                              {netTopo.peers.map((peer) => (
+                                <div
+                                  key={peer.id}
+                                  className={`tv-drawer-net-peer-pill rel-${peer.relation}`}
+                                >
+                                  <span className="tv-peer-name">{peer.displayName}</span>
+                                  <span className="tv-peer-ip">
+                                    {peer.localIp ? `LAN ${peer.localIp}` : 'Sem IP Local'}
+                                  </span>
+                                  <span className="tv-peer-verdict">
+                                    {peer.relation === 'same_router'
+                                      ? '✅ Mesmo Roteador (Enxerga)'
+                                      : peer.relation === 'different_router'
+                                        ? `⚠️ Outro Roteador (${peer.subnetPrefix}.x — Não enxerga)`
+                                        : '⚪ IP LAN pendente'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Dados Cadastrais DataDivas (C:\DataDivas\config.ini) */}
+                    {dev.datadivas && (
+                      <div className="tv-datadivas-strip" aria-label="Dados DataDivas do cliente">
+                        {(dev.datadivas.nomeFantasia || dev.datadivas.razaoSocial) && (
+                          <span
+                            className="tv-dd-pill tv-dd-pill-company"
+                            title={`Fantasia: ${dev.datadivas.nomeFantasia || '—'} | Razão Social: ${dev.datadivas.razaoSocial || '—'}`}
+                          >
+                            🏢 {dev.datadivas.nomeFantasia || dev.datadivas.razaoSocial}
+                            {dev.datadivas.razaoSocial &&
+                              dev.datadivas.nomeFantasia &&
+                              dev.datadivas.razaoSocial.toLowerCase() !== dev.datadivas.nomeFantasia.toLowerCase() && (
+                                <span className="tv-dd-pill-sub"> · {dev.datadivas.razaoSocial}</span>
+                              )}
+                          </span>
+                        )}
+                        {dev.datadivas.funcao && (
+                          <span
+                            className="tv-dd-pill tv-dd-pill-role"
+                            title={`Função da máquina no CNPJ: ${dev.datadivas.funcao}`}
+                          >
+                            🏷️ {dev.datadivas.funcao}
+                          </span>
+                        )}
+                        {dev.datadivas.statusRenomeacao &&
+                          dev.datadivas.statusRenomeacao !== 'NOT_REQUESTED' &&
+                          dev.datadivas.statusRenomeacao !== 'NAO_SOLICITADO' && (
+                            <span
+                              className={`tv-dd-pill tv-dd-pill-rename-${dev.datadivas.statusRenomeacao.toLowerCase()}`}
+                              title={
+                                dev.datadivas.statusRenomeacao === 'PENDING_REBOOT' ||
+                                dev.datadivas.statusRenomeacao === 'APLICADO_AGUARDANDO_REBOOT'
+                                  ? `Renomeação Windows pendente de reinicialização para ${dev.datadivas.windowsHostnameDesejado || ''}`
+                                  : dev.datadivas.statusRenomeacao === 'COMPLETED' ||
+                                      dev.datadivas.statusRenomeacao === 'CONFIRMADO'
+                                    ? `Hostname Windows sincronizado (${dev.datadivas.windowsHostnameDesejado || dev.hostname})`
+                                    : dev.datadivas.statusRenomeacao === 'BLOCKED_DOMAIN'
+                                      ? 'Computador em domínio Active Directory — renomeação Windows bloqueada'
+                                      : 'Falha ou divergência ao renomear computador no Windows'
+                              }
+                            >
+                              {dev.datadivas.statusRenomeacao === 'PENDING_REBOOT' ||
+                              dev.datadivas.statusRenomeacao === 'APLICADO_AGUARDANDO_REBOOT'
+                                ? `⏳ Reinício Pendente (${dev.datadivas.windowsHostnameDesejado || 'Windows'})`
+                                : dev.datadivas.statusRenomeacao === 'COMPLETED' ||
+                                    dev.datadivas.statusRenomeacao === 'CONFIRMADO'
+                                  ? '✅ Hostname OK'
+                                  : dev.datadivas.statusRenomeacao === 'BLOCKED_DOMAIN'
+                                    ? '🔒 Domínio AD'
+                                    : '⚠️ Erro Renomeação'}
+                            </span>
+                          )}
+                        {dev.datadivas.cnpj && (
+                          <button
+                            type="button"
+                            className="tv-dd-pill tv-dd-pill-copyable"
+                            title="CNPJ / CPF no config.ini (clique para copiar)"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void navigator.clipboard.writeText(dev.datadivas!.cnpj!).then(() => {
+                                showToast(`CNPJ/CPF ${dev.datadivas!.cnpj} copiado!`);
+                              });
+                            }}
+                          >
+                            <span>CNPJ: {dev.datadivas.cnpj}</span>
+                            <Copy size={10} />
+                          </button>
+                        )}
+                        {dev.datadivas.cnpj && onOpenCnpjGroup && (
+                          <button
+                            type="button"
+                            className="tv-dd-pill tv-dd-pill-copyable"
+                            title="Abrir Gestão Inteligente de Computadores deste CNPJ"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenCnpjGroup(dev.datadivas!.cnpj!);
+                            }}
+                          >
+                            <span>⚙️ Gerir CNPJ</span>
+                          </button>
+                        )}
+                        {dev.datadivas.serial && (
+                          <button
+                            type="button"
+                            className="tv-dd-pill tv-dd-pill-serial tv-dd-pill-copyable"
+                            title="Serial DataDivas no config.ini (clique para copiar)"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void navigator.clipboard.writeText(dev.datadivas!.serial!).then(() => {
+                                showToast(`Serial ${dev.datadivas!.serial} copiado!`);
+                              });
+                            }}
+                          >
+                            <span>Serial: {dev.datadivas.serial}</span>
+                            <Copy size={10} />
+                          </button>
+                        )}
+                        {dev.datadivas.ie && (
+                          <span className="tv-dd-pill" title="Inscrição Estadual (IE)">
+                            IE: {dev.datadivas.ie}
+                          </span>
+                        )}
+                        {dev.datadivas.ipDataDivas && (
+                          <button
+                            type="button"
+                            className="tv-dd-pill tv-dd-pill-copyable"
+                            title={`IP DataDivas: ${dev.datadivas.ipDataDivas}${dev.datadivas.banco ? ` (${dev.datadivas.banco})` : ''} — clique para copiar`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void navigator.clipboard.writeText(dev.datadivas!.ipDataDivas!).then(() => {
+                                showToast(`IP DataDivas ${dev.datadivas!.ipDataDivas} copiado!`);
+                              });
+                            }}
+                          >
+                            <span>IP DataDivas: {dev.datadivas.ipDataDivas}</span>
+                            <Copy size={10} />
+                          </button>
+                        )}
+                        {(dev.datadivas.endereco || dev.datadivas.cidade || dev.datadivas.uf) && (
+                          <span
+                            className="tv-dd-pill tv-dd-pill-address"
+                            title={[
+                              dev.datadivas.endereco,
+                              [dev.datadivas.cidade, dev.datadivas.uf].filter(Boolean).join('/'),
+                            ]
+                              .filter(Boolean)
+                              .join(' — ')}
+                          >
+                            📍{' '}
+                            {[
+                              dev.datadivas.endereco,
+                              [dev.datadivas.cidade, dev.datadivas.uf].filter(Boolean).join('/'),
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })

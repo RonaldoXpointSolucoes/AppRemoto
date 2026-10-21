@@ -32,12 +32,39 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.6.3',
+    date: 'Outubro 2026',
+    title: 'Gaveta de Telemetria Panorâmica Full-Width (100% da Linha) & Refinamento Visual de Hardware/Rede',
+    highlight:
+      'Reestruturação completa do layout da linha de dispositivos e da gaveta expansível: os cards de Processador, Memória RAM, HD/SSD e Diagnóstico de Roteador agora ocupam toda a largura da tabela (4 colunas) em grid panorâmico lado a lado, sem esmagamento de texto.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Gaveta Expansível Full-Width (Spanning nas 4 Colunas)',
+        description:
+          'A gaveta de detalhes agora se expande por toda a largura da linha (abaixo de Dispositivo, ID RustDesk, Status e Acesso Rápido), eliminando o espaço vazio à direita e organizando o cabeçalho de sistema junto aos botões de ação.',
+        tag: 'UI/UX',
+      },
+      {
+        title: 'Cards de Recursos (CPU, RAM & HD) com Badges Sem Quebra',
+        description:
+          'Os 3 indicadores de hardware contam com largura generosa, badges monoespaçados sem quebra de linha (white-space: nowrap) e barras de progresso com gradiente dinâmico.',
+        tag: 'TeamViewer',
+      },
+      {
+        title: 'Alinhamento Superior do Avatar & Barra de Telemetria Inline',
+        description:
+          'O ícone do monitor permanece ancorado no topo da linha e as pílulas rápidas (IP Local, IP Público, Roteador e CPU/RAM/HD) ficam organizadas em uma faixa dedicada abaixo do subtítulo.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.6.2',
     date: 'Outubro 2026',
     title: 'Blindagem de Produção: Sincronização Resiliente, Abertura/Encerramento de Sessão & Auto-Update PWA',
     highlight:
       'Eliminação definitiva do alerta recorrente de falha ao atualizar dispositivos, correção dos fluxos de início e encerramento de sessão remota sem recarregar a página e atualização automática de cache PWA.',
-    isCurrent: true,
     items: [
       {
         title: 'Sincronização em Segundo Plano Silenciosa & Tolerante a Falhas',
@@ -714,7 +741,7 @@ export function VersionChangelogModal({
             <div className="changelog-title-group">
               <div className="changelog-title-row">
                 <h2 id="changelog-modal-title">Novidades da Plataforma</h2>
-                <span className="changelog-current-pill">v1.5.4 · ATUAL</span>
+                <span className="changelog-current-pill">v1.6.3 · ATUAL</span>
               </div>
               <p className="changelog-subtitle">
                 Histórico de atualizações, recursos de mobilidade e melhorias de UI/UX do XPoint Remote
