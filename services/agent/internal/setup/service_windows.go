@@ -211,7 +211,6 @@ func runAgent(ctx context.Context) (err error) {
 		r.Record(6, "HEARTBEAT_CONFIRMED", "OK", nil)
 		return nil
 	}
-	var lastCmdID, lastCmdStatus, lastCmdResult string
 	operation = "HEARTBEAT_SCHEDULER"
 	scheduler, e := heartbeat.NewScheduler(func(c context.Context) error {
 		if !onlineConfirmed {
@@ -225,14 +224,8 @@ func runAgent(ctx context.Context) (err error) {
 		if curOSVer != "" {
 			osver = curOSVer
 		}
-		dd := EnrichDataDivasWithNamingState(CollectDataDivasInfo(), ps)
-		if lastCmdID != "" && dd != nil {
-			dd.ComandoID = lastCmdID
-			dd.ComandoStatus = lastCmdStatus
-			dd.ComandoResultado = lastCmdResult
-		}
-		req := api.HeartbeatRequest{AgentVersion: Version, RustDeskVersion: info.Version, RustDeskID: info.ID, Hostname: curHost, OperatingSystem: osName, OSVersion: osver, DataDivas: dd}
-		hbRes, e := apiClient.Heartbeat(c, result.DeviceToken, req)
+		req := api.HeartbeatRequest{AgentVersion: Version, RustDeskVersion: info.Version, RustDeskID: info.ID, Hostname: curHost, OperatingSystem: osName, OSVersion: osver, DataDivas: EnrichDataDivasWithNamingState(CollectDataDivasInfo(), ps)}
+		_, e := apiClient.Heartbeat(c, result.DeviceToken, req)
 		if e != nil && !onlineConfirmed && freshBootstrap {
 			for attempt := 0; attempt < 2 && e != nil; attempt++ {
 				select {
@@ -240,7 +233,7 @@ func runAgent(ctx context.Context) (err error) {
 					return c.Err()
 				case <-time.After(1500 * time.Millisecond):
 				}
-				hbRes, e = apiClient.Heartbeat(c, result.DeviceToken, req)
+				_, e = apiClient.Heartbeat(c, result.DeviceToken, req)
 			}
 			if e != nil {
 				_ = confirmOnline()
@@ -252,15 +245,6 @@ func runAgent(ctx context.Context) (err error) {
 				r.Record(6, "HEARTBEAT_RETRY", "WAIT", e)
 			}
 			return e
-		}
-		if lastCmdID != "" {
-			lastCmdID, lastCmdStatus, lastCmdResult = "", "", ""
-		}
-		if hbRes.PendingCommand != nil && hbRes.PendingCommand.Action != "" {
-			st, msg := ExecuteSafeRemoteCommand(hbRes.PendingCommand.Action)
-			lastCmdID = hbRes.PendingCommand.ID
-			lastCmdStatus = st
-			lastCmdResult = msg
 		}
 		return confirmOnline()
 	}, nil, heartbeat.Options{Interval: time.Duration(result.HeartbeatIntervalSeconds) * time.Second})

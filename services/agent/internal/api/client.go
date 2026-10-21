@@ -54,11 +54,6 @@ type DataDivasInfo struct {
 	RedeSubrede             string `json:"redeSubrede,omitempty"`
 	RedeGateway             string `json:"redeGateway,omitempty"`
 	RedeTipo                string `json:"redeTipo,omitempty"`
-	ComandoPendente         string `json:"comandoPendente,omitempty"`
-	ComandoID               string `json:"comandoId,omitempty"`
-	ComandoSolicitadoEm     string `json:"comandoSolicitadoEm,omitempty"`
-	ComandoStatus           string `json:"comandoStatus,omitempty"`
-	ComandoResultado        string `json:"comandoResultado,omitempty"`
 }
 
 type EnrollRequest struct {
@@ -91,16 +86,9 @@ type HeartbeatRequest struct {
 	DataDivas       *DataDivasInfo `json:"datadivas,omitempty"`
 }
 
-type PendingCommand struct {
-	ID          string `json:"id"`
-	Action      string `json:"action"`
-	RequestedAt string `json:"requestedAt"`
-}
-
 type HeartbeatResponse struct {
-	DeviceID       string          `json:"deviceId"`
-	LastSeenAt     time.Time       `json:"lastSeenAt"`
-	PendingCommand *PendingCommand `json:"pendingCommand,omitempty"`
+	DeviceID   string    `json:"deviceId"`
+	LastSeenAt time.Time `json:"lastSeenAt"`
 }
 
 type DeviceSyncRequest struct {
