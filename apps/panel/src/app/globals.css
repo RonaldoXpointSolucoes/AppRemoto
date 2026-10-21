@@ -2078,6 +2078,319 @@ button, a, input, select { outline-offset: 3px; }
   border-color: rgba(5, 150, 105, 0.24);
 }
 
+.tv-inline-net-topology-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 5px;
+  font-size: 0.71rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid rgba(99, 102, 241, 0.28);
+  background: rgba(99, 102, 241, 0.08);
+  color: #818cf8;
+}
+
+.tv-inline-net-topology-badge.status-same_router {
+  border-color: rgba(16, 185, 129, 0.34);
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+}
+
+.tv-inline-net-topology-badge.status-isolated_router {
+  border-color: rgba(245, 158, 11, 0.48);
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.12);
+}
+
+.tv-inline-net-topology-badge.status-no_lan_ip {
+  border-color: rgba(148, 163, 184, 0.25);
+  background: rgba(148, 163, 184, 0.07);
+  color: var(--text-muted);
+  border-style: dashed;
+}
+
+[data-theme="light"] .tv-inline-net-topology-badge {
+  color: #4f46e5;
+  background: rgba(79, 70, 229, 0.08);
+  border-color: rgba(79, 70, 229, 0.24);
+}
+
+[data-theme="light"] .tv-inline-net-topology-badge.status-same_router {
+  color: #047857;
+  background: rgba(5, 150, 105, 0.1);
+  border-color: rgba(5, 150, 105, 0.28);
+}
+
+[data-theme="light"] .tv-inline-net-topology-badge.status-isolated_router {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(217, 119, 6, 0.38);
+}
+
+.tv-inline-hw-group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tv-inline-hw-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.69rem;
+  font-weight: 600;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(148, 163, 184, 0.07);
+  color: var(--text-muted);
+}
+
+.tv-inline-hw-pill.tone-ok {
+  border-color: rgba(56, 189, 248, 0.28);
+  background: rgba(56, 189, 248, 0.09);
+  color: #7dd3fc;
+}
+
+.tv-inline-hw-pill.tone-warn {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.12);
+  color: #fcd34d;
+}
+
+.tv-inline-hw-pill.tone-critical {
+  border-color: rgba(244, 63, 94, 0.42);
+  background: rgba(244, 63, 94, 0.14);
+  color: #fda4af;
+}
+
+[data-theme="light"] .tv-inline-hw-pill.tone-ok {
+  color: #0369a1;
+  background: rgba(2, 132, 199, 0.08);
+  border-color: rgba(2, 132, 199, 0.24);
+}
+
+[data-theme="light"] .tv-inline-hw-pill.tone-warn {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(217, 119, 6, 0.3);
+}
+
+[data-theme="light"] .tv-inline-hw-pill.tone-critical {
+  color: #be123c;
+  background: rgba(244, 63, 94, 0.12);
+  border-color: rgba(225, 29, 72, 0.32);
+}
+
+.tv-drawer-telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+}
+
+.tv-drawer-hw-card,
+.tv-drawer-net-card {
+  padding: 9px 11px;
+  border-radius: 9px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.48);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+[data-theme="light"] .tv-drawer-hw-card,
+[data-theme="light"] .tv-drawer-net-card {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+.tv-drawer-net-card.status-isolated_router {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.tv-drawer-net-card.status-same_router {
+  border-color: rgba(16, 185, 129, 0.32);
+}
+
+.tv-drawer-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text);
+}
+
+.tv-drawer-hw-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .tv-drawer-hw-metrics {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tv-drawer-hw-metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: rgba(148, 163, 184, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.tv-drawer-hw-metric-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  font-size: 0.69rem;
+}
+
+.tv-drawer-hw-label {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.tv-drawer-hw-val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.7rem;
+  color: var(--text);
+}
+
+.tv-drawer-hw-bar {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+  overflow: hidden;
+}
+
+.tv-drawer-hw-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #38bdf8;
+  transition: width 0.25s ease;
+}
+
+.tv-drawer-hw-bar-fill.tone-warn {
+  background: #f59e0b;
+}
+
+.tv-drawer-hw-bar-fill.tone-critical {
+  background: #f43f5e;
+}
+
+.tv-drawer-hw-sub {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  line-height: 1.25;
+}
+
+.tv-drawer-net-title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.tv-drawer-net-desc {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.tv-drawer-net-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.tv-drawer-net-chip {
+  font-size: 0.68rem;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: var(--text-muted);
+}
+
+.tv-drawer-net-chip strong {
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.tv-drawer-net-peers {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(148, 163, 184, 0.2);
+}
+
+.tv-drawer-net-peers-label {
+  font-size: 0.67rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.tv-drawer-net-peers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tv-drawer-net-peer-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.69rem;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.tv-drawer-net-peer-pill.rel-same_router {
+  border-color: rgba(16, 185, 129, 0.28);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.tv-drawer-net-peer-pill.rel-different_router {
+  border-color: rgba(245, 158, 11, 0.42);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.tv-peer-name {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tv-peer-ip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--text-muted);
+}
+
+.tv-peer-verdict {
+  font-weight: 700;
+}
+
 /* Subtítulo Linha 2: Riqueza de detalhes em tipografia menor */
 .tv-subtext,
 .tv-subtext-secondary {

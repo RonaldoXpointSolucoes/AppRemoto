@@ -42,6 +42,18 @@ type DataDivasInfo struct {
 	UltimaSincronizacao     string `json:"ultimaSincronizacao,omitempty"`
 	ReservaID               string `json:"reservaId,omitempty"`
 	SubstituiuDeviceID      string `json:"substituiuDeviceId,omitempty"`
+	CPUModelo               string `json:"cpuModelo,omitempty"`
+	CPUUsoPct               string `json:"cpuUsoPct,omitempty"`
+	RAMTotalGb              string `json:"ramTotalGb,omitempty"`
+	RAMUsadaGb              string `json:"ramUsadaGb,omitempty"`
+	RAMUsoPct               string `json:"ramUsoPct,omitempty"`
+	DiscoTotalGb            string `json:"discoTotalGb,omitempty"`
+	DiscoUsadoGb            string `json:"discoUsadoGb,omitempty"`
+	DiscoLivreGb            string `json:"discoLivreGb,omitempty"`
+	DiscoUsoPct             string `json:"discoUsoPct,omitempty"`
+	RedeSubrede             string `json:"redeSubrede,omitempty"`
+	RedeGateway             string `json:"redeGateway,omitempty"`
+	RedeTipo                string `json:"redeTipo,omitempty"`
 }
 
 type EnrollRequest struct {

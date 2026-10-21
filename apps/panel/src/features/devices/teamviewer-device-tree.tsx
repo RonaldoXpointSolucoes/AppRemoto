@@ -29,12 +29,21 @@ import {
   KeyRound,
   Lock,
   ShieldAlert,
+  Cpu,
+  HardDrive,
+  Activity,
+  Network,
 } from 'lucide-react';
 import { ConnectDevice } from './connect-device';
 import type { ConnectionLogEvent } from './connection-log';
 import type { DeviceDirectoryService } from './use-devices';
 import { type DeviceStatusState, formatLastSeen } from './device-record';
-import { parseSystemInfo, resolveDeviceNetworkIps } from './system-info';
+import {
+  parseSystemInfo,
+  resolveDeviceNetworkIps,
+  resolveDeviceHardwareTelemetry,
+  analyzeDeviceNetworkTopology,
+} from './system-info';
 import {
   getRecentConnections,
   getDeviceGroups,
@@ -215,6 +224,8 @@ export function TeamViewerDeviceTree({
     const cleanId = formatRustDeskId(dev.rustdeskId);
     const dd = dev.datadivas;
     const { localIp, publicIp } = resolveDeviceNetworkIps(dev);
+    const hw = resolveDeviceHardwareTelemetry(dev);
+    const netTopo = analyzeDeviceNetworkTopology(dev, allDevices.length ? allDevices : devices);
     const shareLines = [
       `🖥️ Computador: ${dev.displayName}`,
       `🔑 ID RustDesk: ${cleanId}`,
@@ -222,7 +233,11 @@ export function TeamViewerDeviceTree({
       `🏢 Organização: ${dev.organizationName}`,
       `🏠 IP Local: ${localIp || 'N/D'}${dd?.nomeMaq ? ` (${dd.nomeMaq})` : ''}`,
       `🌐 IP Público: ${publicIp || 'N/D'}`,
+      `📡 Roteador / Sub-rede: ${netTopo.badgeLabel}`,
     ];
+    if (hw.hasAnyHardwareData) {
+      shareLines.push(`⚙️ Hardware: ${hw.cpu.compactLabel} · ${hw.ram.compactLabel} · ${hw.disk.compactLabel}`);
+    }
     if (dd?.nomeFantasia) shareLines.push(`🏷️ Nome Fantasia: ${dd.nomeFantasia}`);
     if (dd?.razaoSocial) shareLines.push(`🏛️ Razão Social: ${dd.razaoSocial}`);
     if (dd?.cnpj) shareLines.push(`🪪 CNPJ/CPF: ${dd.cnpj}`);
@@ -914,6 +929,11 @@ export function TeamViewerDeviceTree({
               isCustomEdited
             );
             const { localIp, publicIp } = resolveDeviceNetworkIps(dev);
+            const hw = resolveDeviceHardwareTelemetry(dev);
+            const netTopo = analyzeDeviceNetworkTopology(
+              dev,
+              allDevices.length ? allDevices : devices
+            );
             const protection = getDeviceProtectionState(dev, customMetaMap);
             const userIsAdmin = isAdmin ? isAdmin(dev.organizationId) : canManage(dev.organizationId);
             const adminOnlyBlocked = protection.adminOnlyAccess && !userIsAdmin;
@@ -1050,6 +1070,38 @@ export function TeamViewerDeviceTree({
                         <Globe size={11} className="tv-ip-icon" />
                         <span>IP Público: {publicIp ?? 'N/D'}</span>
                       </button>
+                      <button
+                        type="button"
+                        className={`tv-inline-net-topology-badge status-${netTopo.status}`}
+                        title={`${netTopo.summaryTitle} — ${netTopo.summaryDescription} (clique para abrir o mapa de rede)`}
+                        onClick={(e) => toggleDeviceDetails(dev.id, e)}
+                      >
+                        <Network size={11} className="tv-ip-icon" />
+                        <span>{netTopo.badgeLabel}</span>
+                      </button>
+                      <span className="tv-inline-hw-group" aria-label="Telemetria de Hardware">
+                        <span
+                          className={`tv-inline-hw-pill tone-${hw.cpu.tone}`}
+                          title={`Processador: ${hw.cpu.detailLabel}`}
+                        >
+                          <Cpu size={10} />
+                          <span>{hw.cpu.compactLabel}</span>
+                        </span>
+                        <span
+                          className={`tv-inline-hw-pill tone-${hw.ram.tone}`}
+                          title={`Memória RAM: ${hw.ram.detailLabel}`}
+                        >
+                          <Activity size={10} />
+                          <span>{hw.ram.compactLabel}</span>
+                        </span>
+                        <span
+                          className={`tv-inline-hw-pill tone-${hw.disk.tone}`}
+                          title={`Disco / Armazenamento (HD/SSD): ${hw.disk.detailLabel}`}
+                        >
+                          <HardDrive size={10} />
+                          <span>{hw.disk.compactLabel}</span>
+                        </span>
+                      </span>
                       <span className="tv-mobile-id-group">
                         <span className="tv-subtext-sep">·</span>
                         <span
@@ -1137,6 +1189,127 @@ export function TeamViewerDeviceTree({
                               </span>
                             </>
                           )}
+                        </div>
+
+                        {/* Bloco 1.5: Telemetria de Hardware (CPU, Memória RAM, HD) & Topologia de Rede / Roteador */}
+                        <div className="tv-drawer-telemetry-grid">
+                          <div className="tv-drawer-hw-card">
+                            <div className="tv-drawer-section-header">
+                              <Cpu size={13} className="text-sky-400" />
+                              <span>Recursos da Máquina (Processador, Memória & HD)</span>
+                            </div>
+                            <div className="tv-drawer-hw-metrics">
+                              <div className="tv-drawer-hw-metric-item">
+                                <div className="tv-drawer-hw-metric-top">
+                                  <span className="tv-drawer-hw-label">Processador (CPU)</span>
+                                  <strong className={`tv-drawer-hw-val tone-${hw.cpu.tone}`}>
+                                    {hw.cpu.usagePct !== null ? `${hw.cpu.usagePct}% em uso` : 'Sem leitura ativa'}
+                                  </strong>
+                                </div>
+                                <div className="tv-drawer-hw-bar">
+                                  <div
+                                    className={`tv-drawer-hw-bar-fill tone-${hw.cpu.tone}`}
+                                    style={{ width: `${hw.cpu.usagePct ?? 0}%` }}
+                                  />
+                                </div>
+                                <span className="tv-drawer-hw-sub">{hw.cpu.detailLabel}</span>
+                              </div>
+
+                              <div className="tv-drawer-hw-metric-item">
+                                <div className="tv-drawer-hw-metric-top">
+                                  <span className="tv-drawer-hw-label">Memória RAM</span>
+                                  <strong className={`tv-drawer-hw-val tone-${hw.ram.tone}`}>
+                                    {hw.ram.usedLabel && hw.ram.totalLabel
+                                      ? `${hw.ram.usedLabel} / ${hw.ram.totalLabel}`
+                                      : hw.ram.usagePct !== null
+                                        ? `${hw.ram.usagePct}%`
+                                        : 'Sem leitura ativa'}
+                                  </strong>
+                                </div>
+                                <div className="tv-drawer-hw-bar">
+                                  <div
+                                    className={`tv-drawer-hw-bar-fill tone-${hw.ram.tone}`}
+                                    style={{ width: `${hw.ram.usagePct ?? 0}%` }}
+                                  />
+                                </div>
+                                <span className="tv-drawer-hw-sub">{hw.ram.detailLabel}</span>
+                              </div>
+
+                              <div className="tv-drawer-hw-metric-item">
+                                <div className="tv-drawer-hw-metric-top">
+                                  <span className="tv-drawer-hw-label">Armazenamento (HD / SSD)</span>
+                                  <strong className={`tv-drawer-hw-val tone-${hw.disk.tone}`}>
+                                    {hw.disk.usedLabel && hw.disk.totalLabel
+                                      ? `${hw.disk.usedLabel} / ${hw.disk.totalLabel}`
+                                      : hw.disk.usagePct !== null
+                                        ? `${hw.disk.usagePct}%`
+                                        : 'Sem leitura ativa'}
+                                  </strong>
+                                </div>
+                                <div className="tv-drawer-hw-bar">
+                                  <div
+                                    className={`tv-drawer-hw-bar-fill tone-${hw.disk.tone}`}
+                                    style={{ width: `${hw.disk.usagePct ?? 0}%` }}
+                                  />
+                                </div>
+                                <span className="tv-drawer-hw-sub">{hw.disk.detailLabel}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className={`tv-drawer-net-card status-${netTopo.status}`}>
+                            <div className="tv-drawer-section-header">
+                              <Network size={13} />
+                              <span>Diagnóstico de Rede Local & Roteador (Visibilidade LAN)</span>
+                            </div>
+                            <p className="tv-drawer-net-title">{netTopo.summaryTitle}</p>
+                            <p className="tv-drawer-net-desc">{netTopo.summaryDescription}</p>
+                            <div className="tv-drawer-net-chips">
+                              <span className="tv-drawer-net-chip">
+                                Sub-rede: <strong>{netTopo.subnetCidr ?? 'N/D'}</strong>
+                              </span>
+                              <span className="tv-drawer-net-chip">
+                                Roteador (Gateway): <strong>{netTopo.gatewayIp ?? 'N/D'}</strong>
+                              </span>
+                              {netTopo.connectionType && (
+                                <span className="tv-drawer-net-chip">
+                                  Meio: <strong>{netTopo.connectionType}</strong>
+                                </span>
+                              )}
+                              {netTopo.configuredServerIp && (
+                                <span className="tv-drawer-net-chip">
+                                  IP Servidor BD: <strong>{netTopo.configuredServerIp}</strong>
+                                </span>
+                              )}
+                            </div>
+                            {netTopo.peers.length > 0 && (
+                              <div className="tv-drawer-net-peers">
+                                <span className="tv-drawer-net-peers-label">
+                                  Comparativo com outras máquinas deste cliente/local ({netTopo.peers.length}):
+                                </span>
+                                <div className="tv-drawer-net-peers-list">
+                                  {netTopo.peers.map((peer) => (
+                                    <div
+                                      key={peer.id}
+                                      className={`tv-drawer-net-peer-pill rel-${peer.relation}`}
+                                    >
+                                      <span className="tv-peer-name">{peer.displayName}</span>
+                                      <span className="tv-peer-ip">
+                                        {peer.localIp ? `LAN ${peer.localIp}` : 'Sem IP Local'}
+                                      </span>
+                                      <span className="tv-peer-verdict">
+                                        {peer.relation === 'same_router'
+                                          ? '✅ Mesmo Roteador (Enxerga)'
+                                          : peer.relation === 'different_router'
+                                            ? `⚠️ Outro Roteador (${peer.subnetPrefix}.x — Não enxerga)`
+                                            : '⚪ IP LAN pendente'}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         {/* Bloco 2: Dados Cadastrais DataDivas (C:\DataDivas\config.ini) */}

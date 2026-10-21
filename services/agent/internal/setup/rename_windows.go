@@ -133,8 +133,10 @@ func LoadNamingState(ps Paths) (PersistedNamingState, error) {
 }
 
 func EnrichDataDivasWithNamingState(info *api.DataDivasInfo, ps Paths) *api.DataDivasInfo {
+	info = EnrichDataDivasWithTelemetry(info)
 	state, err := LoadNamingState(ps)
 	if err != nil {
+		info.UltimaSincronizacao = time.Now().UTC().Format(time.RFC3339)
 		return info
 	}
 	if info == nil {

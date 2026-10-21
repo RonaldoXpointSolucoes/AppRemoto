@@ -62,6 +62,18 @@ const DATADIVAS_KEYS: (keyof DataDivasInfo)[] = [
   'ultimaSincronizacao',
   'reservaId',
   'substituiuDeviceId',
+  'cpuModelo',
+  'cpuUsoPct',
+  'ramTotalGb',
+  'ramUsadaGb',
+  'ramUsoPct',
+  'discoTotalGb',
+  'discoUsadoGb',
+  'discoLivreGb',
+  'discoUsoPct',
+  'redeSubrede',
+  'redeGateway',
+  'redeTipo',
 ];
 
 const DATADIVAS_TAG_REGEX = /\n?\[datadivas_b64:([A-Za-z0-9_-]+)\]\s*$/;

@@ -12,7 +12,12 @@ import { buildRustDeskPeerAliasPowerShellCommand, probeRustDeskApp } from './rus
 import { downloadConnectionLog, localEvent, stageLabels, type ConnectionLogEvent } from './connection-log';
 import type { DeviceDirectoryService } from './use-devices';
 import { formatLastSeen } from './device-record';
-import { parseSystemInfo, resolveDeviceNetworkIps } from './system-info';
+import {
+  parseSystemInfo,
+  resolveDeviceNetworkIps,
+  resolveDeviceHardwareTelemetry,
+  analyzeDeviceNetworkTopology,
+} from './system-info';
 import { resolveCoherentDevicePresentation } from './device-presentation';
 import { parseDeviceNotes, encodeDeviceNotes, hashDeviceAccessPassword, saveDeviceCustomMetadata } from './teamviewer-storage';
 
@@ -193,6 +198,15 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
     publicIp: currentDev.publicIp ?? device.publicIp,
     datadivas: dd,
   });
+  const hw = resolveDeviceHardwareTelemetry({ datadivas: dd });
+  const netTopo = analyzeDeviceNetworkTopology(
+    {
+      ...currentDev,
+      publicIp: currentDev.publicIp ?? device.publicIp,
+      datadivas: dd,
+    },
+    []
+  );
   const hasDataDivas = Boolean(
     dd &&
       (dd.nomeFantasia ||
@@ -304,6 +318,28 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
         <div className="device-spec-item">
           <span className="spec-label">Hostname da Máquina</span>
           <strong className="spec-val">{currentDev.hostname}</strong>
+        </div>
+
+        <div className="device-spec-item">
+          <span className="spec-label">Roteador / Sub-rede Local</span>
+          <strong className="spec-val">
+            {netTopo.subnetCidr ? `${netTopo.subnetCidr} (GW ${netTopo.gatewayIp})` : 'Não detectado'}
+          </strong>
+        </div>
+
+        <div className="device-spec-item">
+          <span className="spec-label">Processador (CPU)</span>
+          <strong className="spec-val">{hw.cpu.detailLabel}</strong>
+        </div>
+
+        <div className="device-spec-item">
+          <span className="spec-label">Memória RAM</span>
+          <strong className="spec-val">{hw.ram.detailLabel}</strong>
+        </div>
+
+        <div className="device-spec-item">
+          <span className="spec-label">Armazenamento (HD / SSD)</span>
+          <strong className="spec-val">{hw.disk.detailLabel}</strong>
         </div>
       </div>
 

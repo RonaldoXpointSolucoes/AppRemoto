@@ -32,12 +32,39 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.6.1',
+    date: 'Outubro 2026',
+    title: 'Telemetria de Hardware (CPU, Memória RAM, HD) & Diagnóstico de Roteadores / Mesma Rede',
+    highlight:
+      'Monitoramento em tempo real de Processador, Memória RAM e Disco (HD/SSD) enviado pelo agente Windows e motor inteligente de detecção de topologia de rede para identificar se as máquinas estão no mesmo roteador ou em roteadores separados.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Monitoramento de Processador (CPU), Memória RAM e HD/Disco',
+        description:
+          'Exibição direta na linha de cada computador e em barras visuais na gaveta de detalhes mostrando quanto tem no total e quanto está em uso de Memória RAM, Processador e HD.',
+        tag: 'Infra & Cockpit',
+      },
+      {
+        title: 'Detector de Isolamento de Roteadores (Mesma Rede vs Outro Roteador)',
+        description:
+          'Compara automaticamente a faixa LAN, Gateway e IP do Servidor DataDivas entre máquinas do mesmo cliente/local, alertando quando um PC está em um roteador (ex: 192.168.1.x) e outro em outro roteador (ex: 192.168.0.x).',
+        tag: 'TeamViewer',
+      },
+      {
+        title: 'Coleta Nativa Win32 no Agente Windows',
+        description:
+          'O serviço XPointRemoteAgent coleta uso de CPU, RAM total/em uso, espaço de disco C: e Gateway da interface de rede a cada ciclo de heartbeat.',
+        tag: 'Novo',
+      },
+    ],
+  },
+  {
     version: 'v1.6.0',
     date: 'Outubro 2026',
     title: 'Exibição Permanente de IP Local (LAN) e IP Público (WAN) em Todos os Dispositivos',
     highlight:
       'Agora todo computador exibe simultaneamente seu IP Local (rede interna RFC 1918) e seu IP Público (WAN de internet) na listagem principal, gaveta expansível, modal de edição, diagnóstico e ficha compartilhável.',
-    isCurrent: true,
     items: [
       {
         title: 'Duplo Badge Permanente: IP Local + IP Público na Listagem',

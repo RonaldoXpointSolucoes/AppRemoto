@@ -23,6 +23,18 @@ export const DataDivasInfoSchema = z.object({
   ultimaSincronizacao: optField(64),
   reservaId: optField(64),
   substituiuDeviceId: optField(64),
+  cpuModelo: optField(96),
+  cpuUsoPct: optField(16),
+  ramTotalGb: optField(24),
+  ramUsadaGb: optField(24),
+  ramUsoPct: optField(16),
+  discoTotalGb: optField(24),
+  discoUsadoGb: optField(24),
+  discoLivreGb: optField(24),
+  discoUsoPct: optField(16),
+  redeSubrede: optField(48),
+  redeGateway: optField(48),
+  redeTipo: optField(32),
 }).strict();
 export type DataDivasInfo = z.infer<typeof DataDivasInfoSchema>;
 

@@ -217,6 +217,13 @@ func runAgent(ctx context.Context) (err error) {
 			r.Record(6, "HEARTBEAT_REQUEST", "START", nil)
 		}
 		curHost, _ := os.Hostname()
+		curOSName, curOSVer := CollectSystemInfo()
+		if curOSName != "" {
+			osName = curOSName
+		}
+		if curOSVer != "" {
+			osver = curOSVer
+		}
 		req := api.HeartbeatRequest{AgentVersion: Version, RustDeskVersion: info.Version, RustDeskID: info.ID, Hostname: curHost, OperatingSystem: osName, OSVersion: osver, DataDivas: EnrichDataDivasWithNamingState(CollectDataDivasInfo(), ps)}
 		_, e := apiClient.Heartbeat(c, result.DeviceToken, req)
 		if e != nil && !onlineConfirmed && freshBootstrap {
