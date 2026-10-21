@@ -32,12 +32,39 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.5.9',
+    date: 'Outubro 2026',
+    title: 'Modal de Edição Compacto com Scroll Isolado & Bloqueio de Fechamento Externo',
+    highlight:
+      'Reestruturação completa do modal Editar Computador com cabeçalho e rodapé fixos, rolagem interna isolada sem mover o fundo, contraste perfeito no modo claro/escuro e fechamento exclusivo pelo botão Fechar.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Cabeçalho e Rodapé Fixos com Rolagem Interna Isolada',
+        description:
+          'O título, botão Fechar e botões Salvar/Cancelar permanecem sempre visíveis em qualquer resolução de notebook ou monitor, enquanto a rolagem ocorre apenas no corpo interno sem mexer a lista de trás.',
+        tag: 'UI/UX',
+      },
+      {
+        title: 'Proteção contra Fechamento por Clique Fora',
+        description:
+          'Clicar fora do modal de edição não fecha mais a janela acidentalmente; o fechamento ocorre exclusivamente pelos botões Fechar ou Cancelar.',
+        tag: 'TeamViewer',
+      },
+      {
+        title: 'Layout Compacto em Grid & Contraste Modo Claro/Escuro',
+        description:
+          'Metadados em chips horizontais, campos Nome de Exibição e Pasta lado a lado e cartão de Controle de Acesso com contraste nítido nos temas Claro e Escuro.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.5.8',
     date: 'Outubro 2026',
     title: 'Estabilização do Passo 6 do Instalador & Recuperação Automática de Heartbeat Guards',
     highlight:
       'Eliminação do travamento no Passo 6 (HEARTBEAT_RETRY / HEARTBEAT_UNAVAILABLE), expiração automática de heartbeat_guards órfãos no Appwrite e contador contínuo na janela de progresso.',
-    isCurrent: true,
     items: [
       {
         title: 'Expiração Automática de Heartbeat Guards Órfãos na API',

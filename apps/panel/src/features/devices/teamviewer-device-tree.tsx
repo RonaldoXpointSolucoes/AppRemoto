@@ -182,6 +182,19 @@ export function TeamViewerDeviceTree({
   // Toast / Feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Bloqueia a rolagem da tela de fundo enquanto qualquer modal estiver aberto
+  useEffect(() => {
+    const hasModalOpen = Boolean(
+      editingDevice || isNewFolderOpen || folderToRename || folderToDelete || actionSheetDevice
+    );
+    if (!hasModalOpen || typeof document === 'undefined') return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [editingDevice, isNewFolderOpen, folderToRename, folderToDelete, actionSheetDevice]);
+
   function showToast(msg: string) {
     setToastMessage(msg);
     setTimeout(() => {
@@ -1650,258 +1663,251 @@ export function TeamViewerDeviceTree({
 
       {/* MODAL 1: EDITAR DADOS DO COMPUTADOR */}
       {editingDevice && (
-        <div className="tv-modal-backdrop" onClick={() => !isSavingDevice && setEditingDevice(null)}>
+        <div className="tv-modal-backdrop tv-edit-modal-backdrop">
           <div
-            className="tv-modal-card"
+            className="tv-modal-card tv-edit-modal-card"
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-device-title"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="tv-sheet-drag-handle" aria-hidden="true" />
-            <div className="tv-modal-header">
+            <div className="tv-modal-header tv-edit-modal-header">
               <div className="tv-modal-title-wrap">
-                <Pencil size={18} className="text-primary" />
-                <h3 id="edit-device-title">Editar Computador</h3>
+                <span className="tv-edit-modal-icon-badge" aria-hidden="true">
+                  <Pencil size={16} />
+                </span>
+                <div className="tv-edit-modal-title-text">
+                  <h3 id="edit-device-title">Editar Computador</h3>
+                  <span className="tv-edit-modal-subtitle">
+                    {editingDevice.hostname} • {formatRustDeskId(editingDevice.rustdeskId)}
+                  </span>
+                </div>
               </div>
               <button
                 type="button"
-                className="tv-modal-close-btn"
+                className="tv-modal-close-btn tv-edit-close-btn"
                 disabled={isSavingDevice}
                 onClick={() => setEditingDevice(null)}
+                aria-label="Fechar"
+                title="Fechar janela de edição"
               >
-                <X size={18} />
+                <X size={16} />
+                <span>Fechar</span>
               </button>
             </div>
 
-            <form onSubmit={handleSaveDevice} className="tv-modal-body">
-              <div className="tv-modal-meta-box">
-                <div className="tv-modal-meta-item">
-                  <span className="tv-meta-label">RustDesk ID:</span>
-                  <span className="tv-meta-val mono">{formatRustDeskId(editingDevice.rustdeskId)}</span>
-                </div>
-                <div className="tv-modal-meta-item">
-                  <span className="tv-meta-label">Hostname:</span>
-                  <span className="tv-meta-val">{editingDevice.hostname}</span>
-                </div>
-                <div className="tv-modal-meta-item">
-                  <span className="tv-meta-label">Organização:</span>
-                  <span className="tv-meta-val">{editingDevice.organizationName}</span>
-                </div>
-                {editingDevice.datadivas?.nomeFantasia && (
-                  <div className="tv-modal-meta-item">
-                    <span className="tv-meta-label">Nome Fantasia:</span>
-                    <span className="tv-meta-val">{editingDevice.datadivas.nomeFantasia}</span>
+            <form onSubmit={handleSaveDevice} className="tv-edit-modal-form">
+              <div className="tv-modal-body tv-edit-modal-scroll-area">
+                <div className="tv-modal-meta-box tv-edit-meta-box">
+                  <div className="tv-edit-meta-primary-grid">
+                    <div className="tv-edit-meta-chip">
+                      <span className="tv-meta-label">RustDesk ID</span>
+                      <span className="tv-meta-val mono">{formatRustDeskId(editingDevice.rustdeskId)}</span>
+                    </div>
+                    <div className="tv-edit-meta-chip">
+                      <span className="tv-meta-label">Hostname</span>
+                      <span className="tv-meta-val" title={editingDevice.hostname}>{editingDevice.hostname}</span>
+                    </div>
+                    <div className="tv-edit-meta-chip">
+                      <span className="tv-meta-label">Organização</span>
+                      <span className="tv-meta-val" title={editingDevice.organizationName}>{editingDevice.organizationName}</span>
+                    </div>
                   </div>
-                )}
-                {editingDevice.datadivas?.razaoSocial && (
-                  <div className="tv-modal-meta-item">
-                    <span className="tv-meta-label">Razão Social:</span>
-                    <span className="tv-meta-val">{editingDevice.datadivas.razaoSocial}</span>
-                  </div>
-                )}
-                {editingDevice.datadivas?.cnpj && (
-                  <div className="tv-modal-meta-item">
-                    <span className="tv-meta-label">CNPJ / CPF:</span>
-                    <span className="tv-meta-val mono">{editingDevice.datadivas.cnpj}</span>
-                  </div>
-                )}
-                {editingDevice.datadivas?.serial && (
-                  <div className="tv-modal-meta-item">
-                    <span className="tv-meta-label">Serial:</span>
-                    <span className="tv-meta-val mono">{editingDevice.datadivas.serial}</span>
-                  </div>
-                )}
-                {editingDevice.datadivas?.ie && (
-                  <div className="tv-modal-meta-item">
-                    <span className="tv-meta-label">IE:</span>
-                    <span className="tv-meta-val mono">{editingDevice.datadivas.ie}</span>
-                  </div>
-                )}
-                {editingDevice.datadivas?.ipMaq && (
-                  <div className="tv-modal-meta-item">
-                    <span className="tv-meta-label">IP Máquina:</span>
-                    <span className="tv-meta-val mono">{editingDevice.datadivas.ipMaq}</span>
-                  </div>
-                )}
-                {editingDevice.datadivas?.ipDataDivas && (
-                  <div className="tv-modal-meta-item">
-                    <span className="tv-meta-label">IP DataDivas:</span>
-                    <span className="tv-meta-val mono">{editingDevice.datadivas.ipDataDivas}</span>
-                  </div>
-                )}
-              </div>
 
-              {deviceSaveError && (
-                <div className="tv-modal-error" role="alert">
-                  {deviceSaveError}
-                </div>
-              )}
-
-              <div className="tv-form-field">
-                <label htmlFor="edit-name-input" className="tv-field-label">
-                  Nome de Exibição:
-                </label>
-                <input
-                  id="edit-name-input"
-                  type="text"
-                  className="tv-text-input"
-                  value={editDisplayName}
-                  onChange={(e) => setEditDisplayName(e.target.value)}
-                  placeholder="Ex: Balcão Caixa 01, Servidor Dell..."
-                  required
-                  autoFocus
-                />
-                <span className="tv-field-hint">
-                  Este é o nome principal que aparecerá na listagem e na busca do painel.
-                </span>
-              </div>
-
-              <div className="tv-form-field">
-                <label htmlFor="edit-folder-select" className="tv-field-label">
-                  Pasta / Grupo:
-                </label>
-                <select
-                  id="edit-folder-select"
-                  className="tv-select-input"
-                  value={editFolderId}
-                  onChange={(e) => setEditFolderId(e.target.value)}
-                >
-                  {groups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      📁 {g.name}
-                    </option>
-                  ))}
-                </select>
-                <span className="tv-field-hint">
-                  Selecione a pasta onde esta máquina deve ficar agrupada. As alterações são salvas permanentemente.
-                </span>
-              </div>
-
-              <div className="tv-form-field">
-                <label htmlFor="edit-notes-input" className="tv-field-label">
-                  Observações e Anotações Técnicas:
-                </label>
-                <textarea
-                  id="edit-notes-input"
-                  className="tv-textarea-input"
-                  rows={3}
-                  value={editNotes}
-                  onChange={(e) => setEditNotes(e.target.value)}
-                  placeholder="Ex: Máquina do gerente, atendimento prioritário, suporte autorizado..."
-                />
-                <span className="tv-field-hint">
-                  Informações visíveis aos técnicos sobre esta estação de trabalho.
-                </span>
-              </div>
-
-              <div
-                style={{
-                  marginTop: 4,
-                  padding: '12px 14px',
-                  borderRadius: 10,
-                  background: 'rgba(15, 23, 42, 0.55)',
-                  border: '1px solid rgba(245, 158, 11, 0.28)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 12,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.84rem', fontWeight: 700, color: '#fcd34d' }}>
-                    <Lock size={14} />
-                    Controle de Acesso & Senha da Máquina
-                  </span>
-                  {editAccessPasswordHash && !editClearAccessPassword && (
-                    <span
-                      style={{
-                        fontSize: '0.72rem',
-                        padding: '2px 8px',
-                        borderRadius: 999,
-                        background: 'rgba(16, 185, 129, 0.16)',
-                        color: '#6ee7b7',
-                        border: '1px solid rgba(16, 185, 129, 0.35)',
-                        fontWeight: 600,
-                      }}
-                    >
-                      🔑 Senha Ativa
-                    </span>
+                  {(editingDevice.datadivas?.nomeFantasia ||
+                    editingDevice.datadivas?.razaoSocial ||
+                    editingDevice.datadivas?.cnpj ||
+                    editingDevice.datadivas?.serial ||
+                    editingDevice.datadivas?.ie ||
+                    editingDevice.datadivas?.ipMaq ||
+                    editingDevice.datadivas?.ipDataDivas) && (
+                    <div className="tv-edit-meta-secondary-grid">
+                      {editingDevice.datadivas?.nomeFantasia && (
+                        <div className="tv-modal-meta-item">
+                          <span className="tv-meta-label">Nome Fantasia:</span>
+                          <span className="tv-meta-val">{editingDevice.datadivas.nomeFantasia}</span>
+                        </div>
+                      )}
+                      {editingDevice.datadivas?.razaoSocial && (
+                        <div className="tv-modal-meta-item">
+                          <span className="tv-meta-label">Razão Social:</span>
+                          <span className="tv-meta-val">{editingDevice.datadivas.razaoSocial}</span>
+                        </div>
+                      )}
+                      {editingDevice.datadivas?.cnpj && (
+                        <div className="tv-modal-meta-item">
+                          <span className="tv-meta-label">CNPJ / CPF:</span>
+                          <span className="tv-meta-val mono">{editingDevice.datadivas.cnpj}</span>
+                        </div>
+                      )}
+                      {editingDevice.datadivas?.serial && (
+                        <div className="tv-modal-meta-item">
+                          <span className="tv-meta-label">Serial:</span>
+                          <span className="tv-meta-val mono">{editingDevice.datadivas.serial}</span>
+                        </div>
+                      )}
+                      {editingDevice.datadivas?.ie && (
+                        <div className="tv-modal-meta-item">
+                          <span className="tv-meta-label">IE:</span>
+                          <span className="tv-meta-val mono">{editingDevice.datadivas.ie}</span>
+                        </div>
+                      )}
+                      {editingDevice.datadivas?.ipMaq && (
+                        <div className="tv-modal-meta-item">
+                          <span className="tv-meta-label">IP Máquina:</span>
+                          <span className="tv-meta-val mono">{editingDevice.datadivas.ipMaq}</span>
+                        </div>
+                      )}
+                      {editingDevice.datadivas?.ipDataDivas && (
+                        <div className="tv-modal-meta-item">
+                          <span className="tv-meta-label">IP DataDivas:</span>
+                          <span className="tv-meta-val mono">{editingDevice.datadivas.ipDataDivas}</span>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
 
-                <div className="tv-form-field" style={{ margin: 0 }}>
-                  <label htmlFor="edit-access-password-input" className="tv-field-label">
-                    Senha de Acesso (exigida ao clicar em Conectar):
-                  </label>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <input
-                      id="edit-access-password-input"
-                      type="password"
-                      className="tv-text-input"
-                      value={editNewAccessPassword}
-                      onChange={(e) => {
-                        setEditNewAccessPassword(e.target.value);
-                        if (e.target.value.trim()) setEditClearAccessPassword(false);
-                      }}
-                      placeholder={
-                        editAccessPasswordHash && !editClearAccessPassword
-                          ? 'Digite nova senha para alterar (ou deixe em branco para manter)...'
-                          : 'Ex: definir senha de acesso para esta máquina (opcional)...'
-                      }
-                      autoComplete="new-password"
-                    />
-                    {editAccessPasswordHash && !editClearAccessPassword && (
-                      <button
-                        type="button"
-                        className="tv-btn-secondary"
-                        style={{ whiteSpace: 'nowrap', padding: '8px 10px', fontSize: '0.78rem' }}
-                        onClick={() => {
-                          setEditClearAccessPassword(true);
-                          setEditNewAccessPassword('');
-                        }}
-                        title="Remover exigência de senha de acesso desta máquina"
-                      >
-                        Remover Senha
-                      </button>
-                    )}
+                {deviceSaveError && (
+                  <div className="tv-modal-error" role="alert">
+                    {deviceSaveError}
                   </div>
+                )}
+
+                <div className="tv-edit-form-row">
+                  <div className="tv-form-field">
+                    <label htmlFor="edit-name-input" className="tv-field-label">
+                      Nome de Exibição:
+                    </label>
+                    <input
+                      id="edit-name-input"
+                      type="text"
+                      className="tv-text-input"
+                      value={editDisplayName}
+                      onChange={(e) => setEditDisplayName(e.target.value)}
+                      placeholder="Ex: Balcão Caixa 01, Servidor Dell..."
+                      required
+                      autoFocus
+                    />
+                    <span className="tv-field-hint">
+                      Nome principal na listagem e na busca do painel.
+                    </span>
+                  </div>
+
+                  <div className="tv-form-field">
+                    <label htmlFor="edit-folder-select" className="tv-field-label">
+                      Pasta / Grupo:
+                    </label>
+                    <select
+                      id="edit-folder-select"
+                      className="tv-select-input"
+                      value={editFolderId}
+                      onChange={(e) => setEditFolderId(e.target.value)}
+                    >
+                      {groups.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          📁 {g.name}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="tv-field-hint">
+                      Pasta onde esta máquina ficará agrupada.
+                    </span>
+                  </div>
+                </div>
+
+                <div className="tv-form-field">
+                  <label htmlFor="edit-notes-input" className="tv-field-label">
+                    Observações e Anotações Técnicas:
+                  </label>
+                  <textarea
+                    id="edit-notes-input"
+                    className="tv-textarea-input"
+                    rows={2}
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    placeholder="Ex: Máquina do gerente, atendimento prioritário, suporte autorizado..."
+                  />
                   <span className="tv-field-hint">
-                    {editClearAccessPassword
-                      ? '⚠️ A senha de acesso será removida ao salvar (voltará para conexão direta em 1 clique).'
-                      : 'Se definida, o sistema exigirá esta senha antes de abrir a conexão remota (a senha interna automática do RustDesk permanece intacta).'}
+                    Informações visíveis aos técnicos sobre esta estação de trabalho.
                   </span>
                 </div>
 
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 9,
-                    cursor: 'pointer',
-                    padding: '8px 10px',
-                    borderRadius: 8,
-                    background: editAdminOnlyAccess ? 'rgba(244, 63, 94, 0.12)' : 'rgba(30, 41, 59, 0.45)',
-                    border: editAdminOnlyAccess ? '1px solid rgba(244, 63, 94, 0.35)' : '1px solid rgba(148, 163, 184, 0.15)',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={editAdminOnlyAccess}
-                    onChange={(e) => setEditAdminOnlyAccess(e.target.checked)}
-                    style={{ marginTop: 3 }}
-                  />
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ fontSize: '0.84rem', fontWeight: 600, color: editAdminOnlyAccess ? '#fda4af' : 'var(--text-primary)' }}>
-                      🛡️ Acesso restrito somente a Administrador
+                <div className="tv-edit-security-card">
+                  <div className="tv-edit-security-header">
+                    <span className="tv-edit-security-title">
+                      <Lock size={14} />
+                      Controle de Acesso & Senha da Máquina
                     </span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.35 }}>
-                      Quando marcado, apenas usuários com perfil de Administrador podem iniciar conexão remota nesta máquina.
+                    {editAccessPasswordHash && !editClearAccessPassword && (
+                      <span className="tv-edit-security-badge">
+                        🔑 Senha Ativa
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="tv-form-field" style={{ margin: 0 }}>
+                    <label htmlFor="edit-access-password-input" className="tv-field-label">
+                      Senha de Acesso (exigida ao clicar em Conectar):
+                    </label>
+                    <div className="tv-edit-password-input-row">
+                      <input
+                        id="edit-access-password-input"
+                        type="password"
+                        className="tv-text-input"
+                        value={editNewAccessPassword}
+                        onChange={(e) => {
+                          setEditNewAccessPassword(e.target.value);
+                          if (e.target.value.trim()) setEditClearAccessPassword(false);
+                        }}
+                        placeholder={
+                          editAccessPasswordHash && !editClearAccessPassword
+                            ? 'Digite nova senha para alterar (ou deixe em branco para manter)...'
+                            : 'Ex: definir senha de acesso para esta máquina (opcional)...'
+                        }
+                        autoComplete="new-password"
+                      />
+                      {editAccessPasswordHash && !editClearAccessPassword && (
+                        <button
+                          type="button"
+                          className="tv-btn-secondary tv-edit-remove-pwd-btn"
+                          onClick={() => {
+                            setEditClearAccessPassword(true);
+                            setEditNewAccessPassword('');
+                          }}
+                          title="Remover exigência de senha de acesso desta máquina"
+                        >
+                          Remover Senha
+                        </button>
+                      )}
+                    </div>
+                    <span className="tv-field-hint">
+                      {editClearAccessPassword
+                        ? '⚠️ A senha de acesso será removida ao salvar (voltará para conexão direta em 1 clique).'
+                        : 'Se definida, o sistema exigirá esta senha antes de abrir a conexão remota (a senha interna automática do RustDesk permanece intacta).'}
                     </span>
                   </div>
-                </label>
+
+                  <label className={`tv-edit-admin-toggle ${editAdminOnlyAccess ? 'is-active' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={editAdminOnlyAccess}
+                      onChange={(e) => setEditAdminOnlyAccess(e.target.checked)}
+                    />
+                    <div className="tv-edit-admin-toggle-content">
+                      <span className="tv-edit-admin-toggle-title">
+                        🛡️ Acesso restrito somente a Administrador
+                      </span>
+                      <span className="tv-edit-admin-toggle-desc">
+                        Quando marcado, apenas usuários com perfil de Administrador podem iniciar conexão remota nesta máquina.
+                      </span>
+                    </div>
+                  </label>
+                </div>
               </div>
 
-              <div className="tv-modal-actions">
+              <div className="tv-modal-actions tv-edit-modal-footer">
                 <button
                   type="button"
                   className="tv-btn-secondary"

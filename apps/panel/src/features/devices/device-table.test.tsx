@@ -441,6 +441,41 @@ describe('DeviceDirectory', () => {
       localStorage.clear();
     }
   });
+
+  it('locks background scroll when the edit device modal opens and only closes via explicit close buttons (never on backdrop click)', async () => {
+    renderDirectory(
+      service({
+        getMe: vi.fn().mockResolvedValue({
+          id: 'tech-admin',
+          displayName: 'Admin',
+          globalRole: 'super_admin',
+          authorization: [],
+        }),
+      })
+    );
+
+    await screen.findAllByText('Recepcao 01');
+    const editButtons = screen.getAllByTitle('Editar nome, pasta e observações');
+    expect(editButtons.length).toBeGreaterThan(0);
+
+    await userEvent.click(editButtons[0]);
+
+    const dialog = await screen.findByRole('dialog', { name: /Editar Computador/i });
+    expect(dialog).toBeInTheDocument();
+    expect(document.body.style.overflow).toBe('hidden');
+
+    // Clicar fora do card (no backdrop) NÃO deve fechar o modal
+    const backdrop = dialog.parentElement as HTMLElement;
+    expect(backdrop).toHaveClass('tv-edit-modal-backdrop');
+    fireEvent.click(backdrop);
+    expect(screen.getByRole('dialog', { name: /Editar Computador/i })).toBeInTheDocument();
+
+    // Só deve fechar ao clicar explicitamente no botão Fechar
+    const closeBtn = within(dialog).getByRole('button', { name: 'Fechar' });
+    await userEvent.click(closeBtn);
+    expect(screen.queryByRole('dialog', { name: /Editar Computador/i })).not.toBeInTheDocument();
+    expect(document.body.style.overflow).toBe('');
+  });
 });
 
 

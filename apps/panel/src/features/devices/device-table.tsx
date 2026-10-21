@@ -594,10 +594,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.5.8"
-              aria-label="Ver novidades da versão v1.5.8"
+              title="Clique para ver todas as novidades da versão v1.5.9"
+              aria-label="Ver novidades da versão v1.5.9"
             >
-              v1.5.8
+              v1.5.9
             </button>
           </div>
 
