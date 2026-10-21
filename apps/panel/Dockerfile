@@ -1,4 +1,5 @@
 FROM node:24-alpine AS runner
+RUN apk add --no-cache curl
 ARG NEXT_PUBLIC_APPWRITE_ENDPOINT
 ARG NEXT_PUBLIC_APPWRITE_PROJECT_ID
 ARG NEXT_PUBLIC_API_BASE_URL
@@ -23,6 +24,6 @@ RUN tar -xzf /tmp/standalone.tar.gz -C /app && \
     chown -R node:node /app
 
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD node -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD curl --fail --silent --show-error http://127.0.0.1:3000/health || exit 1
 USER node
 CMD ["node", "apps/panel/server.js"]
