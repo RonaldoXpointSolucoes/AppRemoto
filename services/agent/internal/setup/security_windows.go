@@ -5,6 +5,7 @@ package setup
 import (
 	"errors"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/svc/mgr"
 	"io"
 	"os"
 	"path/filepath"
@@ -20,12 +21,18 @@ type Paths struct{ Binary, Data, Agent, RustDesk string }
 
 func paths() (Paths, error) {
 	pf, e := windows.KnownFolderPath(windows.FOLDERID_ProgramFiles, 0)
-	if e != nil {
-		return Paths{}, e
+	if e != nil || pf == "" {
+		pf = os.Getenv("ProgramFiles")
+		if pf == "" {
+			pf = `C:\Program Files`
+		}
 	}
 	pd, e := windows.KnownFolderPath(windows.FOLDERID_ProgramData, 0)
-	if e != nil {
-		return Paths{}, e
+	if e != nil || pd == "" {
+		pd = os.Getenv("ProgramData")
+		if pd == "" {
+			pd = `C:\ProgramData`
+		}
 	}
 	return Paths{filepath.Join(pf, "XPointRemoteAgent"), filepath.Join(pd, "XPointRemoteAgent"), filepath.Join(pd, "XPointRemoteAgent", "identity"), filepath.Join(pf, "RustDesk", "RustDesk.exe")}, nil
 }
@@ -33,7 +40,26 @@ func ptr(s string) *uint16 { v, _ := windows.UTF16PtrFromString(s); return v }
 func Message(s string) {
 	windows.NewLazySystemDLL("user32.dll").NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(ptr(s))), uintptr(unsafe.Pointer(ptr("XPoint Remote"))), 0x40)
 }
-func Elevated() bool { return windows.GetCurrentProcessToken().IsElevated() }
+func Elevated() bool {
+	if windows.GetCurrentProcessToken().IsElevated() {
+		return true
+	}
+	if adminSID, err := windows.StringToSid("S-1-5-32-544"); err == nil {
+		if member, err := windows.Token(0).IsMember(adminSID); err == nil && member {
+			return true
+		}
+	}
+	if systemSID, err := windows.StringToSid("S-1-5-18"); err == nil {
+		if member, err := windows.Token(0).IsMember(systemSID); err == nil && member {
+			return true
+		}
+	}
+	if m, err := mgr.Connect(); err == nil {
+		_ = m.Disconnect()
+		return true
+	}
+	return false
+}
 func Elevate(uninstall bool) error {
 	exe, e := os.Executable()
 	if e != nil {
@@ -108,6 +134,9 @@ func trustedHandle(h windows.Handle, readable ...bool) error {
 			return errStage
 		}
 		if a.Header.AceType == windows.ACCESS_DENIED_ACE_TYPE {
+			continue
+		}
+		if a.Header.AceFlags&windows.INHERIT_ONLY_ACE != 0 {
 			continue
 		}
 		if a.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE {

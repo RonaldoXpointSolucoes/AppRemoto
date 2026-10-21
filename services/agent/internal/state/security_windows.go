@@ -473,6 +473,9 @@ func validateDirectorySecurityDescriptor(descriptor *windows.SECURITY_DESCRIPTOR
 		if ace.Header.AceType == windows.ACCESS_DENIED_ACE_TYPE {
 			continue
 		}
+		if ace.Header.AceFlags&windows.INHERIT_ONLY_ACE != 0 {
+			continue
+		}
 		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE {
 			return errors.New("identity directory DACL contains an unsupported allow entry")
 		}

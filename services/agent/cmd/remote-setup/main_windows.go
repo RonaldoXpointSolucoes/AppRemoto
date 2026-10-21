@@ -18,7 +18,8 @@ func main() {
 		return
 	}
 	uninstall := len(os.Args) == 2 && os.Args[1] == "--uninstall"
-	if len(os.Args) > 2 || (len(os.Args) == 2 && !uninstall && os.Args[1] != "--elevated") {
+	alreadyElevatedArg := len(os.Args) == 2 && os.Args[1] == "--elevated"
+	if len(os.Args) > 2 || (len(os.Args) == 2 && !uninstall && !alreadyElevatedArg) {
 		setup.Message("Argumentos invalidos.")
 		os.Exit(2)
 	}
@@ -41,6 +42,12 @@ func main() {
 	}
 	defer report.Close()
 	if !setup.Elevated() {
+		if alreadyElevatedArg {
+			report.Record(1, "UAC", "ERROR", errors.New("process remained non-elevated after runas"))
+			report.Close()
+			setup.Message("A configuracao requer permissoes de Administrador. Clique com o botao direito no instalador e selecione 'Executar como administrador'. Codigo: UAC. Log: " + report.Path())
+			os.Exit(1)
+		}
 		report.Record(1, "UAC", "START", nil)
 		if err := setup.Elevate(uninstall); err != nil {
 			report.Record(1, "UAC", "ERROR", err)

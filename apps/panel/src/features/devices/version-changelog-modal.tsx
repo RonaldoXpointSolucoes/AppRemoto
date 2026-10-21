@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.6.7',
+    date: 'Outubro 2026',
+    title: 'Estabilização Completa Windows 7 (UAC, Job Objects & Certificados TLS) (EXE v1.3.7)',
+    highlight:
+      'Correção definitiva do loop de elevação UAC no Windows 7 (quando EnableLUA=0), compatibilidade com limite de Job Object único do Windows 7 e certificados raiz ISRG Root X1 embutidos.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Detecção Nativa de Administrador no Windows 7 (Sem Loop UAC)',
+        description:
+          'Validação combinada de TokenElevation, grupo local Administradores (CheckTokenMembership) e Service Control Manager com trava anti-reexecução (--elevated).',
+        tag: 'TeamViewer',
+      },
+      {
+        title: 'Suporte a Job Objects e Certificados Raiz TLS no Windows 7 SP1',
+        description:
+          'Execução resiliente sob o Program Compatibility Assistant do Windows 7 (CREATE_BREAKAWAY_FROM_JOB) e cadeia ISRG Root X1 embutida para máquinas sem atualizações recentes.',
+        tag: 'Infra & Cockpit',
+      },
+    ],
+  },
+  {
     version: 'v1.6.6',
     date: 'Outubro 2026',
     title: 'Instalador Exclusivo Windows 7 (SP1 · 32 e 64 bits) & Tripla Opção de Download (EXE v1.3.6)',
     highlight:
       'Suporte dedicado ao Windows 7 SP1 (32 e 64 bits) com camada de compatibilidade nativa de runtime Win32 (RtlGenRandom e fallback LoadLibraryExW), RustDesk 1.4.9 Sciter integrado e botões dedicados de download e link direto.',
-    isCurrent: true,
     items: [
       {
         title: 'Novo Instalador Exclusivo para Windows 7 (32 e 64 bits)',
@@ -810,7 +831,7 @@ export function VersionChangelogModal({
             <div className="changelog-title-group">
               <div className="changelog-title-row">
                 <h2 id="changelog-modal-title">Novidades da Plataforma</h2>
-                <span className="changelog-current-pill">v1.6.6 · ATUAL</span>
+                <span className="changelog-current-pill">v1.6.7 · ATUAL</span>
               </div>
               <p className="changelog-subtitle">
                 Histórico de atualizações, recursos de mobilidade e melhorias de UI/UX do XPoint Remote
@@ -899,7 +920,7 @@ export function VersionChangelogModal({
         <div className="changelog-modal-footer">
           <div className="changelog-footer-info">
             <ShieldCheck size={15} className="text-emerald-400" />
-            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.6.6)</span>
+            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.6.7)</span>
           </div>
           <button type="button" className="tv-btn-primary" onClick={onClose}>
             Entendi, voltar ao painel

@@ -204,7 +204,7 @@ func NewClient(baseURL string, options Options) (*Client, error) {
 	}
 	httpClient := options.HTTPClient
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = &http.Client{Transport: DefaultHTTPTransport()}
 	}
 	clientCopy := *httpClient
 	clientCopy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }

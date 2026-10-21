@@ -131,8 +131,13 @@ func (r *windowsExecRunner) run(ctx context.Context, executable string, requireT
 		StdErr:    stderrWrite,
 	}
 	var process windows.ProcessInformation
-	if err := windows.CreateProcess(application, &commandLine[0], nil, nil, true,
-		windows.CREATE_SUSPENDED, nil, nil, &startup, &process); err != nil {
+	createErr := windows.CreateProcess(application, &commandLine[0], nil, nil, true,
+		windows.CREATE_SUSPENDED|windows.CREATE_BREAKAWAY_FROM_JOB, nil, nil, &startup, &process)
+	if createErr != nil {
+		createErr = windows.CreateProcess(application, &commandLine[0], nil, nil, true,
+			windows.CREATE_SUSPENDED, nil, nil, &startup, &process)
+	}
+	if createErr != nil {
 		return CommandResult{}, errors.New("start command failed")
 	}
 	if processCreatedHook != nil {
@@ -140,9 +145,10 @@ func (r *windowsExecRunner) run(ctx context.Context, executable string, requireT
 	}
 	defer windows.CloseHandle(process.Process)
 	defer windows.CloseHandle(process.Thread)
+	assignedToJob := true
 	if err := windows.AssignProcessToJobObject(job, process.Process); err != nil {
-		_ = windows.TerminateProcess(process.Process, 1)
-		return CommandResult{}, errors.New("contain command process tree")
+		assignedToJob = false
+		closeJob()
 	}
 
 	stdoutFile := os.NewFile(uintptr(stdoutRead), "rustdesk-stdout")
@@ -159,8 +165,12 @@ func (r *windowsExecRunner) run(ctx context.Context, executable string, requireT
 	input = 0
 
 	if _, err := windows.ResumeThread(process.Thread); err != nil {
-		_ = windows.TerminateJobObject(job, 1)
-		closeJob()
+		if assignedToJob {
+			_ = windows.TerminateJobObject(job, 1)
+			closeJob()
+		} else {
+			_ = windows.TerminateProcess(process.Process, 1)
+		}
 		closeCaptureFiles(stdoutFile, stderrFile)
 		return CommandResult{}, errors.New("resume command failed")
 	}
@@ -172,8 +182,12 @@ func (r *windowsExecRunner) run(ctx context.Context, executable string, requireT
 	case waited = <-waitDone:
 	case <-ctx.Done():
 		cancelled = true
-		_ = windows.TerminateJobObject(job, 1)
-		closeJob()
+		if assignedToJob {
+			_ = windows.TerminateJobObject(job, 1)
+			closeJob()
+		} else {
+			_ = windows.TerminateProcess(process.Process, 1)
+		}
 		select {
 		case waited = <-waitDone:
 		case <-time.After(processCleanupTimeout):
@@ -182,11 +196,19 @@ func (r *windowsExecRunner) run(ctx context.Context, executable string, requireT
 		}
 	}
 	if r.waitInstaller && !cancelled && waited.err == nil && waited.exitCode == 0 {
-		if err := waitInstallerChildren(ctx, job, process.ProcessId); err != nil {
-			_ = windows.TerminateJobObject(job, 1)
-			closeJob()
-			closeCaptureFiles(stdoutFile, stderrFile)
-			return CommandResult{}, err
+		if assignedToJob {
+			if err := waitInstallerChildren(ctx, job, process.ProcessId); err != nil {
+				_ = windows.TerminateJobObject(job, 1)
+				closeJob()
+				closeCaptureFiles(stdoutFile, stderrFile)
+				return CommandResult{}, err
+			}
+		} else {
+			select {
+			case <-ctx.Done():
+				return CommandResult{}, ctx.Err()
+			case <-time.After(2 * time.Second):
+			}
 		}
 	}
 	closeJob()

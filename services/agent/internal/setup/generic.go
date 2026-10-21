@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/RonaldoXpointSolucoes/AppRemoto/services/agent/internal/api"
 	"io"
 	"net/http"
 	"strings"
@@ -245,7 +246,11 @@ func prepareInstallation(ctx context.Context, client *http.Client, endpoint stri
 }
 
 func preparationHTTPClient() *http.Client {
-	return &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirect refused") }}
+	return &http.Client{
+		Timeout:       30 * time.Second,
+		Transport:     api.DefaultHTTPTransport(),
+		CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirect refused") },
+	}
 }
 
 func reusePreparation(saved preparationState, p GenericProvisioning, input InstallationInput, existingOrganization string, credentials bool, now time.Time) bool {
