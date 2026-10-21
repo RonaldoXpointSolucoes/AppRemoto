@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.6.8',
+    date: 'Outubro 2026',
+    title: 'Design System Mobile-First SaaS Premium & Cartões de Telemetria 100% Responsivos',
+    highlight:
+      'Refatoração completa da experiência mobile com zero overflow horizontal no cabeçalho, barra de mobilidade em linha única, botões de ação ancorados no topo direito e faixa de telemetria full-width.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Cartões Mobile Enxutos com Telemetria Full-Width',
+        description:
+          'Botões de conexão e menu posicionados no topo direito do card e faixa de IP Local, IP Público, Topologia de Rede e Hardware (CPU/RAM/HD) distribuída em 100% da largura.',
+        tag: 'Mobilidade',
+      },
+      {
+        title: 'Header Mobile Anti-Overflow & Chips em Linha Única',
+        description:
+          'Cabeçalho superior compacto sem corte do botão Sair, filtros Prontos/Fixados sem quebra de texto vertical e remoção de sobreposição do FAB sobre a lista.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.6.7',
     date: 'Outubro 2026',
     title: 'Estabilização Completa Windows 7 (UAC, Job Objects & Certificados TLS) (EXE v1.3.7)',
     highlight:
       'Correção definitiva do loop de elevação UAC no Windows 7 (quando EnableLUA=0), compatibilidade com limite de Job Object único do Windows 7 e certificados raiz ISRG Root X1 embutidos.',
-    isCurrent: true,
     items: [
       {
         title: 'Detecção Nativa de Administrador no Windows 7 (Sem Loop UAC)',
@@ -831,7 +852,7 @@ export function VersionChangelogModal({
             <div className="changelog-title-group">
               <div className="changelog-title-row">
                 <h2 id="changelog-modal-title">Novidades da Plataforma</h2>
-                <span className="changelog-current-pill">v1.6.7 · ATUAL</span>
+                <span className="changelog-current-pill">v1.6.8 · ATUAL</span>
               </div>
               <p className="changelog-subtitle">
                 Histórico de atualizações, recursos de mobilidade e melhorias de UI/UX do XPoint Remote
@@ -920,7 +941,7 @@ export function VersionChangelogModal({
         <div className="changelog-modal-footer">
           <div className="changelog-footer-info">
             <ShieldCheck size={15} className="text-emerald-400" />
-            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.6.7)</span>
+            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.6.8)</span>
           </div>
           <button type="button" className="tv-btn-primary" onClick={onClose}>
             Entendi, voltar ao painel

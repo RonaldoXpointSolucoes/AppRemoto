@@ -1146,7 +1146,7 @@ export function TeamViewerDeviceTree({
                         </span>
                         {presentation.subtitleSecondary && (
                           <>
-                            <span className="tv-subtext-sep">·</span>
+                            <span className="tv-subtext-sep tv-subtext-sep-meta">·</span>
                             <span className="tv-subtitle-meta">{presentation.subtitleSecondary}</span>
                           </>
                         )}

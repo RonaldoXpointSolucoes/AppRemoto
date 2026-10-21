@@ -9255,3 +9255,339 @@ button, a, input, select { outline-offset: 3px; }
 
 
 
+
+/* ==========================================================================
+   REFINAMENTO MOBILE-FIRST SAAS PREMIUM (v1.6.8)
+   Zero overflow horizontal, cartões enxutos de 100% de largura para telemetria,
+   chips de mobilidade em linha única e botões de ação no topo direito do card
+   ========================================================================== */
+@media (max-width: 768px) {
+  .tv-main-content {
+    padding: 10px 10px 92px;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  .tv-mobile-top-bar {
+    padding: 9px 12px;
+    gap: 8px;
+    width: 100%;
+    max-width: 100vw;
+    overflow: hidden;
+    border-radius: 14px;
+    margin-bottom: 10px;
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+  }
+
+  .tv-mobile-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .tv-mobile-logo-box {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    flex-shrink: 0;
+  }
+
+  .tv-mobile-brand-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .tv-mobile-title {
+    font-size: 0.88rem;
+    font-weight: 800;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  .tv-mobile-brand-meta .version-badge {
+    font-size: 0.6rem;
+    padding: 1px 6px;
+    line-height: 1.2;
+  }
+
+  .tv-mobile-top-actions {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+
+  .tv-mobile-top-actions .tv-mobile-logout-btn,
+  .tv-mobile-top-actions .tv-mobile-theme-btn,
+  .tv-mobile-top-actions .theme-toggle-button {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0;
+    border-radius: 10px;
+  }
+
+  .tv-top-toolbar {
+    margin-bottom: 10px;
+    gap: 8px;
+  }
+
+  .tv-quick-search-box {
+    min-height: 42px;
+    border-radius: 12px;
+    padding: 0 12px;
+  }
+
+  .tv-quick-search-box input {
+    font-size: 0.82rem;
+  }
+
+  .tv-tree-header-bar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px 12px 10px;
+    gap: 10px;
+  }
+
+  .tv-tree-header-title {
+    width: 100%;
+    gap: 10px;
+  }
+
+  .tv-tree-header-actions {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .tv-filter-pills {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    gap: 5px;
+    padding: 4px;
+    width: 100%;
+    border-radius: 11px;
+  }
+
+  .tv-filter-pills::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tv-filter-pill {
+    flex-shrink: 0;
+    white-space: nowrap;
+    height: 30px;
+    padding: 0 10px;
+    font-size: 0.74rem;
+    border-radius: 8px;
+  }
+
+  /* Barra de Mobilidade em Linha Única sem quebra vertical de pílulas */
+  .tv-mobility-strip {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding: 8px 10px;
+    overflow: hidden;
+  }
+
+  .tv-mobility-chips {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+
+  .tv-mobility-chip {
+    height: 30px;
+    padding: 0 9px;
+    font-size: 0.71rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+    border-radius: 999px;
+    gap: 5px;
+  }
+
+  .tv-mobility-controls {
+    flex: 1 1 0%;
+    min-width: 0;
+    margin-left: 0;
+    display: flex;
+    align-items: center;
+  }
+
+  .tv-sort-control {
+    width: 100%;
+    min-width: 0;
+    height: 30px;
+    padding: 0 8px;
+    border-radius: 999px;
+    gap: 4px;
+  }
+
+  .tv-sort-select {
+    width: 100%;
+    min-width: 0;
+    font-size: 0.7rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Cartão de Dispositivo Mobile Enxuto com Ações no Topo Direito e Telemetria Full-Width */
+  .tv-row {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 12px 12px 11px;
+    gap: 6px;
+    min-height: 0;
+  }
+
+  .tv-col-name {
+    width: 100%;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .tv-avatar-circle {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .tv-name-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .tv-name-header {
+    padding-right: 82px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+    min-height: 22px;
+  }
+
+  .tv-display-name {
+    flex: 0 1 auto;
+    font-size: 0.89rem;
+    font-weight: 800;
+    line-height: 1.22;
+    letter-spacing: -0.015em;
+  }
+
+  .tv-subtext-primary {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .tv-subtext-context-row {
+    padding-right: 82px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+    line-height: 1.3;
+    font-size: 0.74rem;
+  }
+
+  .tv-subtitle-meta,
+  .tv-subtext-sep-meta {
+    display: none !important;
+  }
+
+  .tv-col-actions {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: auto;
+    margin: 0;
+    z-index: 2;
+  }
+
+  .tv-btn-connect-tv {
+    width: 38px;
+    height: 38px;
+    min-height: 38px;
+    border-radius: 10px;
+  }
+
+  .tv-menu-container .tv-icon-action-btn {
+    width: 32px;
+    height: 38px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--surface-muted);
+  }
+
+  .tv-inline-telemetry-strip {
+    margin-left: -46px;
+    width: calc(100% + 46px);
+    margin-top: 3px;
+    padding-top: 8px;
+    border-top: 1px dashed rgba(148, 163, 184, 0.22);
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .tv-inline-ip-badge,
+  .tv-inline-net-topology-badge,
+  .tv-inline-hw-pill {
+    font-size: 0.67rem;
+    padding: 2px 7px;
+    border-radius: 6px;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tv-inline-hw-group {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .tv-row-expanded-drawer {
+    margin-top: 8px;
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  /* Oculta FAB redundante que sobrepunha os botões de ação dos cards no mobile (a barra inferior já possui o CTA central Conectar) */
+  .tv-mobile-fab {
+    display: none !important;
+  }
+}

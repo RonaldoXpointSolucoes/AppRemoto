@@ -1,4 +1,4 @@
-const CACHE_NAME = 'xpoint-remote-v10';
+const CACHE_NAME = 'xpoint-remote-v1-6-8';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -42,7 +42,7 @@ function buildSelfHealingHtml() {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-  <title>XPoint Remote — Retomando sessão...</title>
+  <title>XPoint Remote â€” Retomando sessÃ£o...</title>
   <style>
     body {
       margin: 0;
@@ -82,7 +82,7 @@ function buildSelfHealingHtml() {
   <div class="card">
     <div class="spinner"></div>
     <h1>Retomando XPoint Remote...</h1>
-    <p>Sincronizando painel após retorno do aplicativo RustDesk.</p>
+    <p>Sincronizando painel apÃ³s retorno do aplicativo RustDesk.</p>
   </div>
   <script>
     (function() {

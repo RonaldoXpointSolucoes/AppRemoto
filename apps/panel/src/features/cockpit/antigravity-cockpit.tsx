@@ -177,10 +177,10 @@ export function AntigravityCockpit({
                 type="button"
                 className="text-[11px] font-mono text-cyan-400 bg-cyan-950/50 border border-cyan-800/50 px-2 py-0.5 rounded-full font-bold hover:bg-cyan-900/60 hover:border-cyan-500/60 transition-all cursor-pointer"
                 onClick={onOpenChangelog}
-                title="Clique para ver todas as novidades da versão v1.6.7"
-                aria-label="Ver novidades da versão v1.6.7"
+                title="Clique para ver todas as novidades da versão v1.6.8"
+                aria-label="Ver novidades da versão v1.6.8"
               >
-                v1.6.7
+                v1.6.8
               </button>
               <div className="cockpit-status-online">
                 <span className="cockpit-pulse-dot" />
