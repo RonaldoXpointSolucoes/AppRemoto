@@ -168,12 +168,25 @@ export function createCnpjNamingService(deps: CnpjNamingDependencies): CnpjNamin
     if (!/^[A-Za-z0-9_-]{43}$/.test(capability)) {
       throw new CnpjNamingError('NAMING_ACCESS_DENIED', 'Invalid installer capability', 403);
     }
+    const providedHash = hashToken(capability);
+    if (installerId === 'auto') {
+      const rows = await installers.list();
+      const matched = rows.find((r) => r.active && r.revokedAt === null && r.tokenHash === providedHash);
+      if (
+        !matched ||
+        hashToken(deriveInstallerSecret(matched.id)) !== matched.tokenHash ||
+        !timingSafeEqual(Buffer.from(providedHash, 'hex'), Buffer.from(matched.tokenHash, 'hex')) ||
+        !(await installers.issuerIsSuperAdmin(matched.createdByUserId))
+      ) {
+        throw new CnpjNamingError('NAMING_ACCESS_DENIED', 'Installer authorization inactive', 403);
+      }
+      return;
+    }
     const row = await installers.get(installerId);
     if (!row || !row.active || row.revokedAt !== null || !(await installers.issuerIsSuperAdmin(row.createdByUserId))) {
       throw new CnpjNamingError('NAMING_ACCESS_DENIED', 'Installer authorization inactive', 403);
     }
     const expectedHash = hashToken(deriveInstallerSecret(row.id));
-    const providedHash = hashToken(capability);
     if (
       expectedHash !== row.tokenHash ||
       !timingSafeEqual(Buffer.from(providedHash, 'hex'), Buffer.from(row.tokenHash, 'hex'))

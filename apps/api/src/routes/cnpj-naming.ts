@@ -22,6 +22,12 @@ function extractBearerCapability(request: FastifyRequest): string | null {
   return match?.[1] ?? null;
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 export function registerCnpjNamingRoutes(
   app: FastifyInstance,
   service: CnpjNamingService,
@@ -59,9 +65,82 @@ export function registerCnpjNamingRoutes(
         .code(403)
         .send({ error: { code: 'NAMING_ACCESS_DENIED', message: 'Access denied' } });
     }
-    const body = InstallationContextRequestSchema.safeParse(request.body);
+    const raw = asRecord(request.body);
+    const isGoAgent = typeof raw.installerId !== 'string';
+    const candidate = isGoAgent
+      ? {
+          installerId: 'auto',
+          cnpj: raw.cnpj,
+          ...(typeof raw.razaoSocial === 'string' && raw.razaoSocial ? { razaoSocial: raw.razaoSocial } : {}),
+          ...(typeof raw.nomeFantasia === 'string' && raw.nomeFantasia ? { nomeFantasia: raw.nomeFantasia } : {}),
+          ...(typeof raw.serial === 'string' && raw.serial ? { serial: raw.serial } : {}),
+          ...(typeof raw.deviceUuid === 'string' && raw.deviceUuid ? { deviceUuid: raw.deviceUuid } : {}),
+          ...(typeof raw.rustdeskId === 'string' && raw.rustdeskId ? { rustdeskId: raw.rustdeskId } : {}),
+          ...(typeof (raw.currentWindowsHostname ?? raw.windowsHostnameAtual) === 'string' &&
+          (raw.currentWindowsHostname ?? raw.windowsHostnameAtual)
+            ? { currentWindowsHostname: (raw.currentWindowsHostname ?? raw.windowsHostnameAtual) as string }
+            : {}),
+        }
+      : request.body;
+    const body = InstallationContextRequestSchema.safeParse(candidate);
     if (!body.success) return invalid(reply);
-    return perform(reply, () => service.getInstallationContext(capability, body.data, request.ip));
+    return perform(reply, async () => {
+      const result = await service.getInstallationContext(capability, body.data, request.ip);
+      if (!isGoAgent) return result;
+      const goComputers = result.computers.map((c) => ({
+        ...c,
+        organizationId: result.groupId,
+        nome: c.displayName,
+        nomeNormalizado: c.windowsHostnameDesejado || c.displayName,
+        funcao: c.role,
+        funcaoLabel: c.roleLabel,
+        situacao:
+          c.status === 'ONLINE'
+            ? 'online'
+            : c.status === 'OFFLINE'
+              ? 'offline'
+              : c.status === 'RESERVED'
+                ? 'reservado'
+                : 'substituido',
+        statusRenomeacao: c.renameStatus,
+        ...(c.windowsHostnameDesejado ? { windowsHostnameDesejado: c.windowsHostnameDesejado } : {}),
+        ...(c.lastSeenAt ? { lastSeenAt: c.lastSeenAt } : {}),
+      }));
+      const onlineCount = result.computers.filter((c) => c.status === 'ONLINE').length;
+      const offlineCount = result.computers.filter((c) => c.status === 'OFFLINE').length;
+      const existingDevice = goComputers.find((c) => c.deviceId === result.matchedDeviceId) ?? null;
+      return {
+        ...result,
+        group: {
+          organizationId: result.groupId,
+          cnpj: result.cnpj,
+          cnpjFormatado: result.formattedCnpj,
+          razaoSocial: result.razaoSocial ?? result.organizationName,
+          nomeFantasia: result.nomeFantasia ?? result.organizationName,
+          status: 'ativo',
+          totalComputadores: result.totalComputers,
+          onlineCount,
+          offlineCount,
+        },
+        computers: goComputers,
+        detectedOperation: result.operationMode,
+        existingDevice,
+        defaultRole: result.recommendedRole,
+        defaultSuggestion: {
+          suggestedName: result.recommendedName,
+          normalizedName: result.recommendedName,
+          role: result.recommendedRole,
+          roleLabel:
+            result.catalog.find((r) => r.code === result.recommendedRole)?.label ??
+            result.recommendedRole,
+          available: true,
+          reason: result.recommendationExplanation,
+          occupiedNumbers: [],
+          occupiedNames: [],
+        },
+        serverTime: new Date().toISOString(),
+      };
+    });
   });
 
   app.post('/v1/agent/installation/suggest-name', options, async (request, reply) => {
@@ -71,9 +150,34 @@ export function registerCnpjNamingRoutes(
         .code(403)
         .send({ error: { code: 'NAMING_ACCESS_DENIED', message: 'Access denied' } });
     }
-    const body = SuggestNameRequestSchema.safeParse(request.body);
+    const raw = asRecord(request.body);
+    const isGoAgent = typeof raw.installerId !== 'string';
+    const candidate = isGoAgent
+      ? {
+          installerId: 'auto',
+          cnpj: raw.cnpj,
+          role: raw.role,
+          ...(typeof raw.customName === 'string' && raw.customName ? { customName: raw.customName } : {}),
+          ...(typeof raw.deviceUuid === 'string' && raw.deviceUuid ? { deviceUuid: raw.deviceUuid } : {}),
+          ...(typeof (raw.replaceDeviceId ?? raw.replacesDeviceId) === 'string' &&
+          (raw.replaceDeviceId ?? raw.replacesDeviceId)
+            ? { replaceDeviceId: (raw.replaceDeviceId ?? raw.replacesDeviceId) as string }
+            : {}),
+        }
+      : request.body;
+    const body = SuggestNameRequestSchema.safeParse(candidate);
     if (!body.success) return invalid(reply);
-    return perform(reply, () => service.suggestName(capability, null, body.data));
+    return perform(reply, async () => {
+      const result = await service.suggestName(capability, null, body.data);
+      if (!isGoAgent) return result;
+      return {
+        ...result,
+        normalizedName: result.suggestedName,
+        reason: result.explanation,
+        occupiedNumbers: [],
+        occupiedNames: [],
+      };
+    });
   });
 
   app.post('/v1/agent/installation/reserve-name', options, async (request, reply) => {
@@ -83,14 +187,67 @@ export function registerCnpjNamingRoutes(
         .code(403)
         .send({ error: { code: 'NAMING_ACCESS_DENIED', message: 'Access denied' } });
     }
-    const body = ReserveNameRequestSchema.safeParse(request.body);
+    const raw = asRecord(request.body);
+    const isGoAgent = typeof raw.installerId !== 'string';
+    const candidate = isGoAgent
+      ? {
+          installerId: 'auto',
+          cnpj: raw.cnpj,
+          ...(typeof raw.razaoSocial === 'string' && raw.razaoSocial ? { razaoSocial: raw.razaoSocial } : {}),
+          ...(typeof raw.nomeFantasia === 'string' && raw.nomeFantasia ? { nomeFantasia: raw.nomeFantasia } : {}),
+          ...(typeof raw.serial === 'string' && raw.serial ? { serial: raw.serial } : {}),
+          role: raw.role,
+          desiredName: raw.desiredName ?? raw.normalizedName,
+          ...(typeof raw.deviceUuid === 'string' && raw.deviceUuid ? { deviceUuid: raw.deviceUuid } : {}),
+          ...(typeof raw.rustdeskId === 'string' && raw.rustdeskId ? { rustdeskId: raw.rustdeskId } : {}),
+          ...(typeof (raw.currentWindowsHostname ?? raw.windowsHostnameAtual) === 'string' &&
+          (raw.currentWindowsHostname ?? raw.windowsHostnameAtual)
+            ? { currentWindowsHostname: (raw.currentWindowsHostname ?? raw.windowsHostnameAtual) as string }
+            : {}),
+          ...(typeof raw.operationMode === 'string' && raw.operationMode ? { operationMode: raw.operationMode } : {}),
+          ...(typeof (raw.replaceDeviceId ?? raw.replacesDeviceId) === 'string' &&
+          (raw.replaceDeviceId ?? raw.replacesDeviceId)
+            ? { replaceDeviceId: (raw.replaceDeviceId ?? raw.replacesDeviceId) as string }
+            : {}),
+        }
+      : request.body;
+    const body = ReserveNameRequestSchema.safeParse(candidate);
     if (!body.success) return invalid(reply);
-    return perform(reply, () => service.reserveName(capability, body.data, request.ip));
+    return perform(reply, async () => {
+      const result = await service.reserveName(capability, body.data, request.ip);
+      if (!isGoAgent) return result;
+      if (!result.reserved) {
+        return reply
+          .code(409)
+          .send({ error: { code: 'NAME_ALREADY_IN_USE', message: result.explanation } });
+      }
+      return {
+        ...result,
+        organizationId: result.groupId,
+      };
+    });
   });
 
   app.post('/v1/agent/installation/confirm-name', options, async (request, reply) => {
     const capability = extractBearerCapability(request);
-    const body = ConfirmNameRequestSchema.safeParse(request.body);
+    const raw = asRecord(request.body);
+    const isGoAgent = typeof raw.installerId !== 'string' && typeof raw.actualWindowsHostname !== 'string';
+    const statusStr = typeof raw.statusRenomeacao === 'string' ? raw.statusRenomeacao : '';
+    const candidate = isGoAgent
+      ? {
+          ...(capability ? { installerId: 'auto' } : {}),
+          cnpj: raw.cnpj,
+          deviceUuid: raw.deviceUuid,
+          ...(typeof raw.reservationId === 'string' && raw.reservationId ? { reservationId: raw.reservationId } : {}),
+          desiredName: raw.desiredName ?? raw.windowsHostnameDesejado ?? raw.normalizedName,
+          actualWindowsHostname: raw.actualWindowsHostname ?? raw.windowsHostnameAtual,
+          ...(typeof raw.role === 'string' && raw.role ? { role: raw.role } : {}),
+          renameApplied: statusStr === 'CONFIRMADO' || statusStr === 'APLICADO_AGUARDANDO_REBOOT',
+          rebootRequired: statusStr === 'APLICADO_AGUARDANDO_REBOOT',
+          ...(typeof raw.erroRenomeacao === 'string' && raw.erroRenomeacao ? { errorDetail: raw.erroRenomeacao } : {}),
+        }
+      : request.body;
+    const body = ConfirmNameRequestSchema.safeParse(candidate);
     if (!body.success) return invalid(reply);
     return perform(reply, () => service.confirmName(capability, body.data, request.ip));
   });
