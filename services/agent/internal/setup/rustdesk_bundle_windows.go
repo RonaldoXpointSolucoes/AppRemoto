@@ -68,7 +68,11 @@ func installBundledRustDesk(ctx context.Context, r io.ReaderAt, b Bundle, ps Pat
 	defer windows.CloseHandle(sh)
 	operation = "RUSTDESK_BUNDLE_EXTRACT"
 	report.Record(2, operation, "START", nil)
-	payload := filepath.Join(staging, "rustdesk-"+RustDeskVersion+"-x86_64.exe")
+	payloadFilename := "rustdesk-" + RustDeskVersion + "-x86_64.exe"
+	if b.Size == RustDeskSizeX86 {
+		payloadFilename = "rustdesk-" + RustDeskVersion + "-x86-sciter.exe"
+	}
+	payload := filepath.Join(staging, payloadFilename)
 	data, e := io.ReadAll(io.NewSectionReader(r, b.Offset, b.Size))
 	if e != nil {
 		return "", e
@@ -78,13 +82,17 @@ func installBundledRustDesk(ctx context.Context, r io.ReaderAt, b Bundle, ps Pat
 		return "", e
 	}
 	defer os.Remove(payload)
-	verified, e := readPrivate(payload, RustDeskSize)
+	expectedHash, ok := expectedRustDeskSHA256(b.Size)
+	if !ok {
+		return "", ErrBundle
+	}
+	verified, e := readPrivate(payload, b.Size)
 	if e != nil {
 		return "", e
 	}
 	sum := sha256.Sum256(verified)
 	clear(verified)
-	if hex.EncodeToString(sum[:]) != RustDeskSHA256 {
+	if hex.EncodeToString(sum[:]) != expectedHash {
 		return "", ErrBundle
 	}
 	report.Record(2, "RUSTDESK_BUNDLE_VERIFY", "OK", nil)

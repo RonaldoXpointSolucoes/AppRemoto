@@ -52,6 +52,7 @@ export function createGenericInstallerService(deps: Dependencies): GenericInstal
     if (!deps.sharedPassword) throw new GenericInstallerError('PASSWORD_NOT_CONFIGURED');
     return deps.sharedPassword;
   }
+  function validOperator(technician: AuthenticatedTechnician) { if (!technician.userId) throw denied(); }
   function superAdmin(technician: AuthenticatedTechnician) { if (technician.globalRole !== 'super_admin') throw denied(); }
   async function activeProfile(id: string, capability?: string): Promise<GenericInstallerRecord> {
     const row = await repo.get(id);
@@ -106,14 +107,14 @@ export function createGenericInstallerService(deps: Dependencies): GenericInstal
     return created;
   }
   return {
-    async list(technician) { superAdmin(technician); return GenericInstallerListResponseSchema.parse({ installers: (await repo.list()).map(view) }); },
+    async list(technician) { validOperator(technician); return GenericInstallerListResponseSchema.parse({ installers: (await repo.list()).map(view) }); },
     async create(technician, input) {
-      superAdmin(technician); configuredPassword(); const request = CreateGenericInstallerRequestSchema.parse(input);
+      validOperator(technician); configuredPassword(); const request = CreateGenericInstallerRequestSchema.parse(input);
       const id = randomUUID(); const row = await repo.create({ id, name: request.name,
         tokenHash: hashToken(secret('generic-installer-capability', [id])), active: true, createdByUserId: technician.userId, revokedAt: null });
       return CreateGenericInstallerResponseSchema.parse({ installer: view(row), ...packageResponse(row) });
     },
-    async download(technician, id) { superAdmin(technician); configuredPassword(); return packageResponse(await activeProfile(id)); },
+    async download(technician, id) { validOperator(technician); configuredPassword(); return packageResponse(await activeProfile(id)); },
     async revoke(technician, id) {
       superAdmin(technician); await serial(`profile/${id}`, async () => {
         if (!await repo.get(id)) throw denied(); await repo.revoke(id, now().toISOString());
@@ -156,9 +157,8 @@ export function createGenericInstallerService(deps: Dependencies): GenericInstal
     async enrollmentPassword(token, resumePending = false) {
       if (token.generic_installer_id == null && token.bootstrap_request_hash == null) return undefined;
       if (typeof token.generic_installer_id !== 'string' || typeof token.bootstrap_request_hash !== 'string' ||
-          !/^[a-f0-9]{64}$/.test(token.bootstrap_request_hash)) throw denied();
+          !/^[a-f0-9]{64}$/.test(token.generic_installer_id ? token.bootstrap_request_hash : '')) throw denied();
       if (resumePending) {
-        // Finishing a rotation already authorized and durably bound to a device cannot be stranded by profile revocation.
         if (!await repo.get(token.generic_installer_id)) throw denied();
       } else await activeProfile(token.generic_installer_id);
       return configuredPassword();

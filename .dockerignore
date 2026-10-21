@@ -19,6 +19,6 @@ tests
 infra
 services/**/.local
 services/**/*.exe
-!services/agent/prebuilt/xpoint-setup-1.3.4.exe
+!services/agent/prebuilt/*.exe
 apps/panel/public/installers
 **/*.test.ts

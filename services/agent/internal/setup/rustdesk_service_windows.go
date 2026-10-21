@@ -76,9 +76,14 @@ func stageRustDeskFromPortableCache() (string, error) {
 	var sourceDir string
 	for _, dir := range candidateDirs {
 		exe := filepath.Join(dir, "rustdesk.exe")
-		dll := filepath.Join(dir, "librustdesk.dll")
+		dll64 := filepath.Join(dir, "librustdesk.dll")
+		dll32 := filepath.Join(dir, "sciter.dll")
 		if stExe, err1 := os.Stat(exe); err1 == nil && stExe.Mode().IsRegular() {
-			if stDll, err2 := os.Stat(dll); err2 == nil && stDll.Mode().IsRegular() {
+			if stDll, err2 := os.Stat(dll64); err2 == nil && stDll.Mode().IsRegular() {
+				sourceDir = dir
+				break
+			}
+			if stDll32, err3 := os.Stat(dll32); err3 == nil && stDll32.Mode().IsRegular() {
 				sourceDir = dir
 				break
 			}

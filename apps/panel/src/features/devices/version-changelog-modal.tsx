@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.6.5',
+    date: 'Outubro 2026',
+    title: 'Instalador Exclusivo Windows 32 bits (x86) & Dupla Opção de Download no Painel (EXE v1.3.5)',
+    highlight:
+      'Suporte completo a computadores e PDVs com Windows 32 bits (x86): novo instalador dedicado com RustDesk 1.4.9 x86 integrado, link direto de download 32 bits e seleção clara entre 64 bits e 32 bits no painel.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Novo Instalador Exclusivo Windows 32 bits (x86)',
+        description:
+          'Compilação nativa GOARCH=386 (xpoint-complete-1.3.5-x86.exe) empacotada com o binário oficial RustDesk 1.4.9 x86 Sciter e verificação SHA-256.',
+        tag: 'TeamViewer',
+      },
+      {
+        title: 'Dupla Opção de Download e Link Direto (64 bits & 32 bits)',
+        description:
+          'Tela de instalação agora exibe os cards de Windows 64 bits (Recomendado) e Windows 32 bits (PCs 32 bits) com botões dedicados para baixar o executável ou copiar o link direto.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.6.4',
     date: 'Outubro 2026',
     title: 'Telemetria Leve de Baixo Consumo (Zero Sobrecarga) & Comandos Remotos de Manutenção Segura',
     highlight:
       'Otimização inteligente de escrita no servidor (throttling por delta de uso ≥10% ou janela de 3 minutos), cache local no agente Windows e central de comandos remotos seguros (Reiniciar PC, Desligar Tela/Bloquear, Limpar DNS e Sincronizar Leitura Agora).',
-    isCurrent: true,
     items: [
       {
         title: 'Escrita Inteligente no Servidor (85% Menos Gravações em Banco)',
@@ -768,7 +789,7 @@ export function VersionChangelogModal({
             <div className="changelog-title-group">
               <div className="changelog-title-row">
                 <h2 id="changelog-modal-title">Novidades da Plataforma</h2>
-                <span className="changelog-current-pill">v1.6.4 · ATUAL</span>
+                <span className="changelog-current-pill">v1.6.5 · ATUAL</span>
               </div>
               <p className="changelog-subtitle">
                 Histórico de atualizações, recursos de mobilidade e melhorias de UI/UX do XPoint Remote
@@ -857,7 +878,7 @@ export function VersionChangelogModal({
         <div className="changelog-modal-footer">
           <div className="changelog-footer-info">
             <ShieldCheck size={15} className="text-emerald-400" />
-            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.6.4)</span>
+            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.6.5)</span>
           </div>
           <button type="button" className="tv-btn-primary" onClick={onClose}>
             Entendi, voltar ao painel

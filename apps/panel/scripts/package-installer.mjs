@@ -1,14 +1,13 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { artifactManifest, assembleInstaller, installerVersion, rustDesk, verifyRustDesk } from './installer-artifacts.mjs';
+import { artifactManifest, assembleInstaller, installerVersion, rustDesk, rustDeskX86, verifyRustDesk } from './installer-artifacts.mjs';
 
 const directory = new URL('../public/installers/', import.meta.url);
 mkdirSync(directory, { recursive: true });
-const cached = process.env.RUSTDESK_INSTALLER_FILE || fileURLToPath(new URL(`../../../.local/installer-cache/rustdesk-${rustDesk.version}-x86_64.exe`, import.meta.url));
 
-async function downloadPayload() {
-  let url = new URL(rustDesk.url);
+async function downloadPayload(spec) {
+  let url = new URL(spec.url);
   const allowed = new Set(['github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com']);
   const signal = AbortSignal.timeout(120_000);
   for (let redirects = 0; redirects <= 5; redirects++) {
@@ -26,23 +25,25 @@ async function downloadPayload() {
     let length = 0;
     for await (const chunk of response.body) {
       length += chunk.byteLength;
-      if (length > rustDesk.bytes) throw new Error('RustDesk release exceeds pinned size');
+      if (length > spec.bytes) throw new Error('RustDesk release exceeds pinned size');
       chunks.push(Buffer.from(chunk));
     }
     const payload = Buffer.concat(chunks);
-    verifyRustDesk(payload);
+    verifyRustDesk(payload, spec);
     return payload;
   }
   throw new Error('Too many RustDesk release redirects');
 }
 
-let payload;
-if (existsSync(cached)) {
-  payload = readFileSync(cached);
-  verifyRustDesk(payload);
-} else {
-  if (process.env.RUSTDESK_INSTALLER_FILE) throw new Error('Configured RustDesk installer file is missing');
-  payload = await downloadPayload();
+async function resolvePayload(spec, cacheFilename, envOverride) {
+  const cached = envOverride || fileURLToPath(new URL(`../../../.local/installer-cache/${cacheFilename}`, import.meta.url));
+  if (existsSync(cached)) {
+    const payload = readFileSync(cached);
+    verifyRustDesk(payload, spec);
+    return payload;
+  }
+  if (envOverride) throw new Error('Configured RustDesk installer file is missing');
+  const payload = await downloadPayload(spec);
   if (process.env.NO_INSTALLER_CACHE !== '1') {
     try {
       mkdirSync(dirname(cached), { recursive: true });
@@ -51,11 +52,25 @@ if (existsSync(cached)) {
       // Ignore cache write errors in constrained environments
     }
   }
+  return payload;
 }
-const baseName = `xpoint-setup-${installerVersion}.exe`;
-const completeName = `xpoint-complete-${installerVersion}.exe`;
-const complete = assembleInstaller(readFileSync(new URL(baseName, directory)), payload);
-writeFileSync(new URL(completeName, directory), complete);
-writeFileSync(new URL('complete-manifest.json', directory), JSON.stringify(artifactManifest(complete, completeName)) + '\n');
+
+const payload64 = await resolvePayload(rustDesk, `rustdesk-${rustDesk.version}-x86_64.exe`, process.env.RUSTDESK_INSTALLER_FILE);
+const baseName64 = `xpoint-setup-${installerVersion}.exe`;
+const completeName64 = `xpoint-complete-${installerVersion}.exe`;
+const complete64 = assembleInstaller(readFileSync(new URL(baseName64, directory)), payload64, rustDesk);
+writeFileSync(new URL(completeName64, directory), complete64);
+writeFileSync(new URL('complete-manifest.json', directory), JSON.stringify(artifactManifest(complete64, completeName64)) + '\n');
+
+const baseUrlX86 = new URL(`xpoint-setup-${installerVersion}-x86.exe`, directory);
+if (existsSync(baseUrlX86)) {
+  const payload32 = await resolvePayload(rustDeskX86, `rustdesk-${rustDeskX86.version}-x86-sciter.exe`, process.env.RUSTDESK_INSTALLER_X86_FILE);
+  const completeName32 = `xpoint-complete-${installerVersion}-x86.exe`;
+  const complete32 = assembleInstaller(readFileSync(baseUrlX86), payload32, rustDeskX86);
+  writeFileSync(new URL(completeName32, directory), complete32);
+  writeFileSync(new URL('complete-manifest-x86.json', directory), JSON.stringify(artifactManifest(complete32, completeName32)) + '\n');
+  console.log(`Complete Windows 32-bit installer verified (${complete32.length} bytes; RustDesk ${rustDeskX86.version})`);
+}
+
 await import('./write-installer-manifest.mjs');
-console.log(`Complete Windows installer verified (${complete.length} bytes; RustDesk ${rustDesk.version})`);
+console.log(`Complete Windows 64-bit installer verified (${complete64.length} bytes; RustDesk ${rustDesk.version})`);

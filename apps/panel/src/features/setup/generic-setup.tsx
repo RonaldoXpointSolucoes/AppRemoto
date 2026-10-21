@@ -10,7 +10,7 @@ import { ApiClientError, createApiClient, type TechnicianView } from '../../lib/
 import { createAppwriteSessionClient } from '../../lib/appwrite';
 import { getPublicConfig } from '../../lib/config';
 import { expireSession, onSessionClear, sessionEpoch } from '../auth/session-cache';
-import { createGenericInstallerPackage, downloadGenericInstaller, loadCompleteInstallerArtifact } from './generic-installer-package';
+import { createGenericInstallerPackage, downloadGenericInstaller, loadCompleteInstallerArtifact, type InstallerArch } from './generic-installer-package';
 
 export interface GenericInstallerService {
   getMe(): Promise<TechnicianView>;
@@ -38,13 +38,15 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
   const [loading, setLoading] = useState(true);
   const [admin, setAdmin] = useState(false);
   const [ready, setReady] = useState(false);
+  const [sessionCleared, setSessionCleared] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [busyArch, setBusyArch] = useState<InstallerArch | null>(null);
   const [installers, setInstallers] = useState<GenericInstallerView[]>([]);
   const [selected, setSelected] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
-  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedArch, setCopiedArch] = useState<InstallerArch | null>(null);
   const current = () => active.current && sessionEpoch(client) === epoch;
   async function terminal(failure: unknown) {
     if (!(failure instanceof ApiClientError && failure.status === 401)) return false;
@@ -60,7 +62,8 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
     active.current = true;
     const unsubscribe = onSessionClear(client, () => {
       active.current = false; releaseDownload.current?.(); releaseDownload.current = undefined;
-      setInstallers([]); setSelected(''); setAdmin(false); setReady(false); setMessage(''); setError(''); setBusy(false);
+      setSessionCleared(true);
+      setInstallers([]); setSelected(''); setAdmin(false); setReady(false); setMessage(''); setError(''); setBusy(false); setBusyArch(null);
     });
     return () => { active.current = false; unsubscribe(); releaseDownload.current?.(); releaseDownload.current = undefined; };
   }, [client]);
@@ -72,7 +75,6 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
         const me = await service.getMe();
         if (cancelled || !current()) return;
         setAdmin(me.globalRole === 'super_admin');
-        if (me.globalRole !== 'super_admin') return;
         const result = await service.getGenericInstallers();
         if (!cancelled && current()) acceptList(result.installers);
       } catch (failure) {
@@ -81,21 +83,28 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
     })();
     return () => { cancelled = true; };
   }, [service, revision, epoch]);
-  async function download() {
-    if (!current() || !admin || !ready || lock.current) return;
-    lock.current = true; setBusy(true); setError(''); setMessage('');
+  async function download(arch: InstallerArch = 'x64') {
+    if (!current() || !ready || lock.current) return;
+    lock.current = true; setBusy(true); setBusyArch(arch); setError(''); setMessage('');
     try {
       // Verify the bundled executable before asking the API for an enrollment capability.
-      const base = await loadCompleteInstallerArtifact();
+      const base = arch === 'x86'
+        ? await loadCompleteInstallerArtifact(fetch, 'x86')
+        : await loadCompleteInstallerArtifact();
       if (!current()) return;
       const existing = installers.find((item) => item.id === selected && item.active && !item.revokedAt);
       const result: { package: GenericInstallerPackage; installer?: GenericInstallerView } = existing ? await service.getGenericInstallerPackage(existing.id) : await service.createGenericInstaller('Instalador geral XPoint');
       try {
         if (!current()) return;
         const blob = createGenericInstallerPackage(base, result.package);
-        releaseDownload.current?.(); releaseDownload.current = downloadGenericInstaller(blob);
+        releaseDownload.current?.();
+        releaseDownload.current = arch === 'x86' ? downloadGenericInstaller(blob, 'x86') : downloadGenericInstaller(blob);
         if (result.installer) acceptList([result.installer, ...installers]);
-        setMessage('Arquivo preparado. Use o mesmo instalador nos computadores dos clientes.');
+        setMessage(
+          arch === 'x86'
+            ? 'Arquivo 32 bits preparado. Use este instalador em computadores Windows 32 bits (x86).'
+            : 'Arquivo preparado. Use o mesmo instalador nos computadores dos clientes.'
+        );
       } finally { result.package.installerToken = ''; }
     } catch (failure) {
       if (!current() || await terminal(failure)) return;
@@ -105,11 +114,11 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
       // A response may be lost after issuance. Refresh metadata before offering another issue.
       try { const fresh = await service.getGenericInstallers(); if (current()) acceptList(fresh.installers); }
       catch (next) { if (current() && !await terminal(next)) setReady(false); }
-    } finally { lock.current = false; if (current()) setBusy(false); }
+    } finally { lock.current = false; if (current()) { setBusy(false); setBusyArch(null); } }
   }
-  async function copyDownloadLink() {
-    if (!current() || !admin || !ready || lock.current) return;
-    lock.current = true; setBusy(true); setError(''); setMessage('');
+  async function copyDownloadLink(arch: InstallerArch = 'x64') {
+    if (!current() || !ready || lock.current) return;
+    lock.current = true; setBusy(true); setBusyArch(arch); setError(''); setMessage('');
     try {
       const existing = installers.find((item) => item.id === selected && item.active && !item.revokedAt);
       const result: { package: GenericInstallerPackage; installer?: GenericInstallerView } = existing
@@ -127,14 +136,30 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
         for (const b of bytes) binary += String.fromCharCode(b);
         const encoded = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
         const origin = typeof window !== 'undefined' ? window.location.origin : 'https://remoto.xpointsolucoes.com.br';
-        const downloadUrl = `${origin}/api/installer/download?p=${encoded}`;
-        if (typeof navigator !== 'undefined' && navigator.clipboard) {
-          await navigator.clipboard.writeText(downloadUrl);
+        const archQuery = arch === 'x86' ? '&arch=x86' : '';
+        const downloadUrl = `${origin}/api/installer/download?p=${encoded}${archQuery}`;
+        if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+          try {
+            await navigator.clipboard.writeText(downloadUrl);
+          } catch {
+            if (typeof document !== 'undefined') {
+              const input = document.createElement('textarea');
+              input.value = downloadUrl;
+              document.body.appendChild(input);
+              input.select();
+              document.execCommand('copy');
+              document.body.removeChild(input);
+            }
+          }
         }
         if (result.installer) acceptList([result.installer, ...installers]);
-        setCopiedLink(true);
-        setTimeout(() => setCopiedLink(false), 3500);
-        setMessage('Link de download copiado! Envie para o cliente baixar o instalador pronto.');
+        setCopiedArch(arch);
+        setTimeout(() => setCopiedArch(null), 3500);
+        setMessage(
+          arch === 'x86'
+            ? 'Link de download 32 bits copiado! Envie para o cliente com Windows 32 bits (x86).'
+            : 'Link de download copiado! Envie para o cliente baixar o instalador pronto.'
+        );
       } finally {
         result.package.installerToken = '';
       }
@@ -149,7 +174,7 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
       catch (next) { if (current() && !await terminal(next)) setReady(false); }
     } finally {
       lock.current = false;
-      if (current()) setBusy(false);
+      if (current()) { setBusy(false); setBusyArch(null); }
     }
   }
   async function revoke(installer: GenericInstallerView) {
@@ -168,19 +193,34 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
   const available = installers.filter((item) => item.active && !item.revokedAt);
   return <section className="automatic-setup" aria-labelledby="generic-setup-title">
     <div className="setup-introduction">
-      <p className="eyebrow">Instalador completo 1.3.4 · Windows 64 bits · UI Enterprise Segura</p>
+      <p className="eyebrow">Instalador completo 1.3.5 · Windows 64 bits & 32 bits · UI Enterprise Segura</p>
       <h1 id="generic-setup-title">Um instalador para todos os computadores.</h1>
       <p>Baixe uma vez e use o mesmo arquivo nos computadores dos clientes. Se o RustDesk já estiver instalado, ele aplica os padrões da XPoint. Se não estiver, instala tudo com interface moderna de alta confiança, lê automaticamente os dados do <code>C:\DataDivas\config.ini</code>, sugere a função e numeração sequencial por CNPJ e permite renomear o Windows sem reiniciar à força.</p>
     </div>
-    {loading ? <p role="status">Carregando instalador…</p> : !admin ? <p role="status">Peça a um administrador o instalador completo. Depois de receber o arquivo, você pode instalar sem entrar no painel.</p> : <div className="installer-form">
+    {loading && <p role="status">Carregando instalador…</p>}
+    {!sessionCleared && <div className="installer-form">
       {available.length > 1 && <div className="installer-field"><label htmlFor="generic-installer-selection">Autorização do instalador</label>
         <select id="generic-installer-selection" value={selected} disabled={busy} onChange={(event) => setSelected(event.target.value)}>
           {available.map((item) => <option key={item.id} value={item.id}>{item.name} · {new Date(item.createdAt).toLocaleDateString('pt-BR')}</option>)}
         </select></div>}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}><button type="button" className="primary-button guide-link" disabled={busy || !ready} onClick={() => void download()}>
-        {busy ? <LoaderCircle aria-hidden="true" size={18} /> : <Download aria-hidden="true" size={18} />}
-        {busy ? 'Preparando…' : 'Baixar instalador completo'}</button><button type="button" className="command-button guide-link" disabled={busy || !ready} onClick={() => void copyDownloadLink()} title="Copia o link direto de download do instalador completo para enviar ao cliente">{copiedLink ? <Check aria-hidden="true" size={18} className="text-emerald-400" /> : <Copy aria-hidden="true" size={18} />}{copiedLink ? 'Link copiado!' : 'Copiar link de download'}
-      </button></div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+        <button type="button" className="primary-button guide-link" disabled={busy || !ready} onClick={() => void download('x64')}>
+          {busy && busyArch === 'x64' ? <LoaderCircle aria-hidden="true" size={18} /> : <Download aria-hidden="true" size={18} />}
+          {busy && busyArch === 'x64' ? 'Preparando…' : 'Baixar instalador completo'}
+        </button>
+        <button type="button" className="command-button guide-link" disabled={busy || !ready} onClick={() => void copyDownloadLink('x64')} title="Copia o link direto de download do instalador completo 64 bits para enviar ao cliente">
+          {copiedArch === 'x64' ? <Check aria-hidden="true" size={18} className="text-emerald-400" /> : <Copy aria-hidden="true" size={18} />}
+          {copiedArch === 'x64' ? 'Link copiado!' : 'Copiar link de download'}
+        </button>
+        <button type="button" className="command-button guide-link" disabled={busy || !ready} onClick={() => void download('x86')} title="Baixa o instalador exclusivo para computadores Windows 32 bits (x86)">
+          {busy && busyArch === 'x86' ? <LoaderCircle aria-hidden="true" size={18} /> : <Download aria-hidden="true" size={18} />}
+          {busy && busyArch === 'x86' ? 'Preparando 32 bits…' : 'Baixar instalador 32 bits'}
+        </button>
+        <button type="button" className="command-button guide-link" disabled={busy || !ready} onClick={() => void copyDownloadLink('x86')} title="Copia o link direto do instalador 32 bits (x86) para enviar ao cliente">
+          {copiedArch === 'x86' ? <Check aria-hidden="true" size={18} className="text-emerald-400" /> : <Copy aria-hidden="true" size={18} />}
+          {copiedArch === 'x86' ? 'Link 32 bits copiado!' : 'Copiar link 32 bits'}
+        </button>
+      </div>
       <p className="field-hint">Empresa, grupo por CNPJ e função padronizada do computador são sugeridos automaticamente durante a instalação. Não é necessário abrir nem entrar no painel no computador do cliente.</p>
     </div>}
     {error && <p className="error-state" role="alert">{error}</p>}

@@ -6,6 +6,8 @@ const config = { schemaVersion: 2 as const, installerId: 'installer-test', insta
 const base = new Uint8Array([77, 90, 1, 2, 3]);
 const manifest = { version: '1.3.1', path: '/installers/xpoint-complete-1.3.1.exe',
   sha256: createHash('sha256').update(base).digest('hex'), bytes: base.length };
+const manifestX86 = { version: '1.3.5', path: '/installers/xpoint-complete-1.3.5-x86.exe',
+  sha256: createHash('sha256').update(base).digest('hex'), bytes: base.length };
 
 describe('complete installation package', () => {
   it('preserves the bundled executable and adds only the enrollment capability in a bounded V2 overlay', async () => {
@@ -38,6 +40,12 @@ describe('complete installation package', () => {
     expect(await loadCompleteInstallerArtifact(fetcher)).toEqual(base);
     expect(fetcher).toHaveBeenNthCalledWith(1, '/installers/complete-manifest.json', { cache: 'no-store', credentials: 'omit' });
     expect(fetcher).toHaveBeenNthCalledWith(2, manifest.path, { cache: 'no-store', credentials: 'omit' });
+  });
+  it('loads and verifies the 32-bit x86 installer artifact when arch is x86', async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(manifestX86))).mockResolvedValueOnce(new Response(base));
+    expect(await loadCompleteInstallerArtifact(fetcher, 'x86')).toEqual(base);
+    expect(fetcher).toHaveBeenNthCalledWith(1, '/installers/complete-manifest-x86.json', { cache: 'no-store', credentials: 'omit' });
+    expect(fetcher).toHaveBeenNthCalledWith(2, manifestX86.path, { cache: 'no-store', credentials: 'omit' });
   });
   it('rejects a mismatching executable digest', async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ ...manifest, sha256: '0'.repeat(64) }))).mockResolvedValueOnce(new Response(base));

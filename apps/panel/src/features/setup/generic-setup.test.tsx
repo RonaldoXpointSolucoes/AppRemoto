@@ -59,11 +59,14 @@ it('selects an existing authorization and never creates another when multiple ac
   expect(f.service.getGenericInstallerPackage).toHaveBeenCalledWith(second.id);
   expect(f.service.createGenericInstaller).not.toHaveBeenCalled();
 });
-it('does not request capabilities or expose admin controls to a technician', async () => {
-  const f = fixture({ getMe: vi.fn().mockResolvedValue({ id: 'tech-1', displayName: 'Tech', globalRole: null, authorization: [] }) });
-  await screen.findByText(/Peça a um administrador/);
-  expect(f.service.getGenericInstallers).not.toHaveBeenCalled();
-  expect(screen.queryByRole('button', { name: 'Baixar instalador completo' })).not.toBeInTheDocument();
+it('allows non-superadmin technicians to download and copy installer link while hiding revocation controls', async () => {
+  const f = fixture({ getMe: vi.fn().mockResolvedValue({ id: 'tech-1', displayName: 'Tech', globalRole: 'technician', authorization: [] }) });
+  await download();
+  await waitFor(() => expect(downloadGenericInstaller).toHaveBeenCalledTimes(1));
+  expect(f.service.getGenericInstallers).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('button', { name: 'Baixar instalador completo' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Copiar link de download/i })).toBeInTheDocument();
+  expect(screen.queryByText('Autorizações de instalação')).not.toBeInTheDocument();
 });
 it('does not issue a capability if executable verification fails', async () => {
   vi.mocked(loadCompleteInstallerArtifact).mockRejectedValueOnce(new Error('raw secret never shown'));
@@ -114,4 +117,13 @@ it('expires unauthorized sessions and releases a previous download URL on sessio
   await waitFor(() => expect(f.expired).toHaveBeenCalledTimes(1));
   expect(f.service.expireSession).toHaveBeenCalledTimes(1); expect(release).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole('button', { name: 'Baixar instalador completo' })).not.toBeInTheDocument();
+});
+it('downloads the dedicated 32-bit x86 installer when clicking the 32-bit option', async () => {
+  fixture();
+  const button32 = await screen.findByRole('button', { name: 'Baixar instalador 32 bits' });
+  await waitFor(() => expect(button32).toBeEnabled());
+  await userEvent.click(button32);
+  await waitFor(() => expect(downloadGenericInstaller).toHaveBeenCalledWith(expect.any(Blob), 'x86'));
+  expect(loadCompleteInstallerArtifact).toHaveBeenCalledWith(fetch, 'x86');
+  expect(await screen.findByRole('status')).toHaveTextContent('Arquivo 32 bits preparado');
 });

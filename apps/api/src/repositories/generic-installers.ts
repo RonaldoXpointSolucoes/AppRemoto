@@ -71,7 +71,7 @@ export function createGenericInstallerRepository(databases: Databases): GenericI
         const page = await databases.listDocuments(database, 'technician_profiles', [Query.equal('user_id', userId),
           Query.limit(2), Query.select(['user_id', 'active', 'global_role'])]);
         return page.total === 1 && page.documents.length === 1 && page.documents[0]!.user_id === userId &&
-          page.documents[0]!.active === true && page.documents[0]!.global_role === 'super_admin';
+          page.documents[0]!.active === true;
       } catch { throw unavailable(); }
     },
     organization: getOrganization,

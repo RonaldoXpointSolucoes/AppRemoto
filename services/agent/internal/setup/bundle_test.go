@@ -9,15 +9,19 @@ import (
 	"time"
 )
 
-func syntheticBundle() []byte {
-	b := make([]byte, 16+RustDeskSize+16+int64(len(BundleMarker)))
+func syntheticBundleWithSize(payloadSize int64) []byte {
+	b := make([]byte, 16+payloadSize+16+int64(len(BundleMarker)))
 	copy(b, "MZfake-runtime")
 	copy(b[16:], "MZ")
 	footer := b[len(b)-16-len(BundleMarker):]
 	binary.LittleEndian.PutUint64(footer, 16)
-	binary.LittleEndian.PutUint64(footer[8:], uint64(RustDeskSize))
+	binary.LittleEndian.PutUint64(footer[8:], uint64(payloadSize))
 	copy(footer[16:], BundleMarker)
 	return b
+}
+
+func syntheticBundle() []byte {
+	return syntheticBundleWithSize(RustDeskSize)
 }
 
 func genericPackage(base []byte, value string) []byte {
@@ -37,6 +41,14 @@ func TestBundleSeparatesRuntimeAndRejectsAlteration(t *testing.T) {
 	if VerifyBundle(bytes.NewReader(b), bundle) == nil {
 		t.Fatal("altered installer accepted")
 	}
+	b32 := syntheticBundleWithSize(RustDeskSizeX86)
+	bundle32, err32 := ReadBundle(bytes.NewReader(b32), int64(len(b32)))
+	if err32 != nil || bundle32.RuntimeSize != 16 || bundle32.Offset != 16 || bundle32.Size != RustDeskSizeX86 {
+		t.Fatal("valid 32-bit bundle size rejected")
+	}
+	if VerifyBundle(bytes.NewReader(b32), bundle32) == nil {
+		t.Fatal("altered 32-bit installer accepted")
+	}
 	for _, change := range []func([]byte){func(v []byte) { v[len(v)-len(BundleMarker)-16] = 255 }, func(v []byte) { v[16] = 'x' }, func(v []byte) { v[len(v)-1] = 'x' }} {
 		copyOf := append([]byte(nil), b...)
 		change(copyOf)
@@ -52,6 +64,11 @@ func TestGenericOverlayIsStrictAndRequiresCompleteBundle(t *testing.T) {
 	p, err := ReadPackage(bytes.NewReader(b), int64(len(b)), time.Now())
 	if err != nil || p.Generic.InstallerID != "installer-1" || p.Bundle.RuntimeSize != 16 {
 		t.Fatal("generic bundle rejected")
+	}
+	b32 := genericPackage(syntheticBundleWithSize(RustDeskSizeX86), value)
+	p32, err32 := ReadPackage(bytes.NewReader(b32), int64(len(b32)), time.Now())
+	if err32 != nil || p32.Generic.InstallerID != "installer-1" || p32.Bundle.Size != RustDeskSizeX86 {
+		t.Fatal("generic 32-bit bundle rejected")
 	}
 	for _, bad := range []string{strings.Replace(value, `"schemaVersion":2`, `"schemaVersion":1`, 1), strings.Replace(value, `"schemaVersion":2`, `"schemaVersion":2,"schemaVersion":2`, 1), strings.Replace(value, `"installerId":"installer-1"`, `"installerId":"../bad"`, 1), strings.TrimSuffix(value, "}") + `,"password":"bad"}`} {
 		x := genericPackage([]byte("MZ"), bad)

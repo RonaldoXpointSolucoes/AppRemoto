@@ -25,6 +25,9 @@ function decodeBase64Url(input: string): string {
 
 export async function GET(request: NextRequest) {
   const encodedPkg = request.nextUrl.searchParams.get('p');
+  const archParam = request.nextUrl.searchParams.get('arch');
+  const isX86 = archParam === 'x86' || archParam === '32';
+
   if (!encodedPkg) {
     return NextResponse.json(
       { error: { code: 'MISSING_PACKAGE', message: 'Link de instalador inválido ou incompleto.' } },
@@ -52,9 +55,13 @@ export async function GET(request: NextRequest) {
 
   try {
     const publicDir = resolvePublicDir();
-    const manifestRaw = await readFile(path.join(publicDir, 'installers', 'complete-manifest.json'), 'utf8');
+    const manifestName = isX86 ? 'complete-manifest-x86.json' : 'complete-manifest.json';
+    const defaultExePath = isX86 ? '/installers/xpoint-complete-1.3.5-x86.exe' : '/installers/xpoint-complete-1.3.5.exe';
+    const downloadFilename = isX86 ? 'XPoint-Instalar-Completo-32bits.exe' : 'XPoint-Instalar-Completo.exe';
+
+    const manifestRaw = await readFile(path.join(publicDir, 'installers', manifestName), 'utf8');
     const manifest = JSON.parse(manifestRaw) as { path?: string };
-    const relativePath = (manifest.path || '/installers/xpoint-complete-1.3.4.exe').replace(/^\/+/, '');
+    const relativePath = (manifest.path || defaultExePath).replace(/^\/+/, '');
     const exePath = path.join(publicDir, relativePath);
     const baseBytes = await readFile(exePath);
 
@@ -75,7 +82,7 @@ export async function GET(request: NextRequest) {
       status: 200,
       headers: {
         'content-type': 'application/octet-stream',
-        'content-disposition': 'attachment; filename="XPoint-Instalar-Completo.exe"',
+        'content-disposition': `attachment; filename="${downloadFilename}"`,
         'content-length': String(fullBuffer.byteLength),
         'cache-control': 'no-store',
       },

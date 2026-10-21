@@ -14,9 +14,22 @@ const GenericMarker = "XPOINT_GENERIC_V1"
 const RustDeskVersion = "1.4.9"
 const RustDeskSize int64 = 24472432
 const RustDeskSHA256 = "eaedeb0088e687bf46f7c46a9c6ea5493ce51f3134dfd6acbedb47b5b9136274"
+const RustDeskSizeX86 int64 = 11951472
+const RustDeskSHA256X86 = "28e89fc56598978799b87b3d177464a112da174fceb61512919c514a7e90ea20"
 const maxRuntimeSize int64 = 64 << 20
 
 var ErrBundle = errors.New("invalid bundled RustDesk distribution")
+
+func expectedRustDeskSHA256(size int64) (string, bool) {
+	switch size {
+	case RustDeskSize:
+		return RustDeskSHA256, true
+	case RustDeskSizeX86:
+		return RustDeskSHA256X86, true
+	default:
+		return "", false
+	}
+}
 
 // Bundle is an aggregate of the unchanged official RustDesk installer and our
 // independently built runtime. Only RuntimeSize bytes become the XPoint service.
@@ -80,7 +93,7 @@ func ReadBundle(r io.ReaderAt, size int64) (Bundle, error) {
 	}
 	runtimeSize := binary.LittleEndian.Uint64(tail[:8])
 	payloadSize := binary.LittleEndian.Uint64(tail[8:16])
-	if runtimeSize < 2 || runtimeSize > uint64(maxRuntimeSize) || payloadSize != uint64(RustDeskSize) || runtimeSize+payloadSize+uint64(len(tail)) != uint64(size) {
+	if _, ok := expectedRustDeskSHA256(int64(payloadSize)); !ok || runtimeSize < 2 || runtimeSize > uint64(maxRuntimeSize) || runtimeSize+payloadSize+uint64(len(tail)) != uint64(size) {
 		return Bundle{}, ErrBundle
 	}
 	for _, offset := range []int64{0, int64(runtimeSize)} {
@@ -93,12 +106,13 @@ func ReadBundle(r io.ReaderAt, size int64) (Bundle, error) {
 }
 
 func VerifyBundle(r io.ReaderAt, b Bundle) error {
-	if b.Size != RustDeskSize || b.Offset != b.RuntimeSize || b.RuntimeSize < 2 || b.RuntimeSize > maxRuntimeSize {
+	expectedHash, ok := expectedRustDeskSHA256(b.Size)
+	if !ok || b.Offset != b.RuntimeSize || b.RuntimeSize < 2 || b.RuntimeSize > maxRuntimeSize {
 		return ErrBundle
 	}
 	h := sha256.New()
 	n, err := io.Copy(h, io.NewSectionReader(r, b.Offset, b.Size))
-	if err != nil || n != b.Size || hex.EncodeToString(h.Sum(nil)) != RustDeskSHA256 {
+	if err != nil || n != b.Size || hex.EncodeToString(h.Sum(nil)) != expectedHash {
 		return ErrBundle
 	}
 	return nil

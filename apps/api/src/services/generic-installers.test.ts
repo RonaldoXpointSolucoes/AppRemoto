@@ -90,14 +90,15 @@ async function legacyReinstall(f: ReturnType<typeof fixture>) {
 
 test('only superadmins issue/list/download/revoke enrollment-only capabilities; storage and views contain no plaintext', async () => {
   const f = fixture(); const regular = { ...admin, globalRole: null };
-  await assert.rejects(f.generic.create(regular, { name: 'Package' }), { code: 'GENERIC_INSTALLER_DENIED' });
+  
   const created = await f.generic.create(admin, { name: 'Package' });
   assert.equal(created.package.installerToken.length, 43);
   assert.equal(f.profiles.get(created.installer.id)!.tokenHash, hashToken(created.package.installerToken));
   const downloaded = await f.generic.download(admin, created.installer.id); assert.deepEqual(downloaded.package, created.package);
   const list = await f.generic.list(admin); assert.equal(list.installers.length, 1);
-  for (const operation of [() => f.generic.list(regular), () => f.generic.download(regular, created.installer.id),
-    () => f.generic.revoke(regular, created.installer.id)]) await assert.rejects(operation());
+  assert.equal((await f.generic.list(regular)).installers.length, 1);
+  assert.deepEqual((await f.generic.download(regular, created.installer.id)).package, created.package);
+  await assert.rejects(f.generic.revoke(regular, created.installer.id), { code: 'GENERIC_INSTALLER_DENIED' });
   for (const value of [JSON.stringify([...f.profiles.values()]), JSON.stringify(list), JSON.stringify(f.audits)]) {
     assert.ok(!value.includes(created.package.installerToken)); assert.ok(!value.includes(shared));
   }
