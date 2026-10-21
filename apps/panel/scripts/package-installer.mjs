@@ -43,8 +43,14 @@ if (existsSync(cached)) {
 } else {
   if (process.env.RUSTDESK_INSTALLER_FILE) throw new Error('Configured RustDesk installer file is missing');
   payload = await downloadPayload();
-  mkdirSync(dirname(cached), { recursive: true });
-  writeFileSync(cached, payload, { flag: 'wx' });
+  if (process.env.NO_INSTALLER_CACHE !== '1') {
+    try {
+      mkdirSync(dirname(cached), { recursive: true });
+      writeFileSync(cached, payload, { flag: 'wx' });
+    } catch {
+      // Ignore cache write errors in constrained environments
+    }
+  }
 }
 const baseName = `xpoint-setup-${installerVersion}.exe`;
 const completeName = `xpoint-complete-${installerVersion}.exe`;

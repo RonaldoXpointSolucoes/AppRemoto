@@ -1,5 +1,4 @@
 FROM node:24-alpine AS runner
-RUN apk add --no-cache curl
 ARG NEXT_PUBLIC_APPWRITE_ENDPOINT
 ARG NEXT_PUBLIC_APPWRITE_PROJECT_ID
 ARG NEXT_PUBLIC_API_BASE_URL
@@ -9,21 +8,22 @@ ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+ENV NO_INSTALLER_CACHE=1
 
 WORKDIR /app
-COPY apps/panel/prebuilt/standalone.tar.gz /tmp/standalone.tar.gz
-COPY services/agent/prebuilt/xpoint-setup-1.3.4.exe /tmp/xpoint-setup-1.3.4.exe
-COPY apps/panel/scripts /app/apps/panel/scripts
 
-RUN tar -xzf /tmp/standalone.tar.gz -C /app && \
-    rm -f /tmp/standalone.tar.gz && \
-    mkdir -p /app/apps/panel/public/installers && \
-    mv /tmp/xpoint-setup-1.3.4.exe /app/apps/panel/public/installers/xpoint-setup-1.3.4.exe && \
-    node /app/apps/panel/scripts/package-installer.mjs && \
-    rm -rf /app/.local /app/apps/panel/scripts /root/.cache /tmp/* && \
+RUN --mount=type=bind,source=apps/panel/prebuilt/standalone.tar.gz,target=/tmp/standalone.tar.gz \
+    --mount=type=bind,source=services/agent/prebuilt/xpoint-setup-1.3.4.exe,target=/tmp/xpoint-setup-1.3.4.exe \
+    --mount=type=bind,source=apps/panel/scripts,target=/tmp/scripts \
+    printf '#!/bin/sh\nexec wget -q -O- http://127.0.0.1:3000/health\n' > /usr/local/bin/curl && \
+    chmod +x /usr/local/bin/curl && \
+    tar -xzf /tmp/standalone.tar.gz -C /app && \
+    mkdir -p /app/apps/panel/public/installers /app/apps/panel/scripts && \
+    cp /tmp/xpoint-setup-1.3.4.exe /app/apps/panel/public/installers/xpoint-setup-1.3.4.exe && \
+    cp -r /tmp/scripts/. /app/apps/panel/scripts/ && \
     chown -R node:node /app
 
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD curl --fail --silent --show-error http://127.0.0.1:3000/health || exit 1
 USER node
-CMD ["node", "apps/panel/server.js"]
+CMD ["sh", "-c", "(node /app/apps/panel/scripts/package-installer.mjs || true) & exec node apps/panel/server.js"]
