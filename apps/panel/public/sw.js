@@ -1,17 +1,38 @@
-const CACHE_NAME = 'xpoint-remote-v3';
+const CACHE_NAME = 'xpoint-remote-v4';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-      )
-      .then(() => clients.claim())
+    (async () => {
+      const keys = await caches.keys();
+      const oldKeys = keys.filter((k) => k !== CACHE_NAME);
+      await Promise.all(oldKeys.map((k) => caches.delete(k)));
+      await self.clients.claim();
+      if (oldKeys.length > 0) {
+        const windowClients = await self.clients.matchAll({
+          type: 'window',
+          includeUncontrolled: true,
+        });
+        for (const client of windowClients) {
+          if ('navigate' in client && client.url) {
+            try {
+              await client.navigate(client.url);
+            } catch {
+              // ignore navigation error
+            }
+          }
+        }
+      }
+    })()
   );
 });
 
@@ -136,6 +157,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/_next/static/') ||
     url.pathname.startsWith('/icons/') ||
     url.pathname === '/favicon.png' ||
+    url.pathname === '/favicon.ico' ||
     url.pathname === '/manifest.json';
 
   if (!isStaticAsset) return;

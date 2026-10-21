@@ -205,7 +205,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   useEffect(() => {
     emitToChatbotHost({
       type: 'XPOINT_REMOTE_READY',
-      version: 'v1.5.6',
+      version: 'v1.6.2',
       embedded: isEmbedMode,
       authenticated: true,
       activeCnpj: chatbotContextRef.current?.cnpj ?? null,
@@ -219,7 +219,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       if (action.action === 'PING') {
         emitToChatbotHost({
           type: 'XPOINT_REMOTE_PONG',
-          version: 'v1.5.6',
+          version: 'v1.6.2',
           authenticated: true,
           activeCnpj: chatbotContextRef.current?.cnpj ?? null,
           timestamp: new Date().toISOString(),
@@ -523,10 +523,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={() => setIsChangelogOpen(true)}
-                title="Clique para ver todas as novidades da versão v1.5.6"
-                aria-label="Ver novidades da versão v1.5.6 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.6.2"
+                aria-label="Ver novidades da versão v1.6.2 (mobile)"
               >
-                v1.5.6
+                v1.6.2
               </button>
             </div>
           </div>
@@ -594,10 +594,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.6.1"
-              aria-label="Ver novidades da versão v1.6.1"
+              title="Clique para ver todas as novidades da versão v1.6.2"
+              aria-label="Ver novidades da versão v1.6.2"
             >
-              v1.6.1
+              v1.6.2
             </button>
           </div>
 
@@ -850,8 +850,8 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 }
               >
                 <DeviceFilters organizations={organizations} value={filters} refreshing={query.isRefreshing} onChange={setFilters} onRefresh={() => void query.refresh()} />
+                {query.backgroundError && <p className="refresh-error" role="alert">Nao foi possivel atualizar os dispositivos. Os status estao indisponiveis.</p>}
               </div>
-              {query.backgroundError && <p className="refresh-error" role="alert">Nao foi possivel atualizar os dispositivos. Os status estao indisponiveis.</p>}
               {query.isPageLoading ? <section className="device-state" role="status">Carregando dispositivos...</section>
                 : (query.rows.length === 0 || (isLocalCategory && displayedDevices.length === 0)) ? <section className="device-state">{emptyMessage}</section>
                   : (

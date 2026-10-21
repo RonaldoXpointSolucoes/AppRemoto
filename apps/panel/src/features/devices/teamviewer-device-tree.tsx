@@ -1536,7 +1536,7 @@ export function TeamViewerDeviceTree({
                         requiresAccessPassword={protection.requiresAccessPassword}
                         accessPasswordHash={protection.accessPasswordHash}
                         adminOnlyBlocked={adminOnlyBlocked}
-                        enabled={dev.enabled && isOnline && statusState === 'current'}
+                        enabled={dev.enabled && isOnline}
                         service={{
                           connectDevice: service.connectDevice,
                           recordConnectionEvent: service.recordConnectionEvent,

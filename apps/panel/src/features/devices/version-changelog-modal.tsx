@@ -32,12 +32,40 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.6.2',
+    date: 'Outubro 2026',
+    title: 'Blindagem de Produção: Sincronização Resiliente, Abertura/Encerramento de Sessão & Auto-Update PWA',
+    highlight:
+      'Eliminação definitiva do alerta recorrente de falha ao atualizar dispositivos, correção dos fluxos de início e encerramento de sessão remota sem recarregar a página e atualização automática de cache PWA.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Sincronização em Segundo Plano Silenciosa & Tolerante a Falhas',
+        description:
+          'Mantém os computadores e botões Conectar sempre ativos na visão Pastas durante atualizações em segundo plano, com controle inteligente de foco e compatibilidade retroativa de schema para janelas PWA abertas.',
+        tag: 'Infra & Cockpit',
+      },
+      {
+        title: 'Estabilidade Total no Início e Encerramento de Acesso Remoto',
+        description:
+          'Correção do ciclo de hooks do rastreador de sessão ativa (ActiveSessionTracker) e lançamento isolado via frame oculto para que iniciar ou encerrar um acesso nunca derrube a página.',
+        tag: 'TeamViewer',
+      },
+      {
+        title: 'Auto-Healing do Service Worker PWA (Cache v4)',
+        description:
+          'Invalidação automática de caches antigos de versões anteriores e sincronização unificada de versão v1.6.2 em todo o painel.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.6.1',
     date: 'Outubro 2026',
     title: 'Telemetria de Hardware (CPU, Memória RAM, HD) & Diagnóstico de Roteadores / Mesma Rede',
     highlight:
       'Monitoramento em tempo real de Processador, Memória RAM e Disco (HD/SSD) enviado pelo agente Windows e motor inteligente de detecção de topologia de rede para identificar se as máquinas estão no mesmo roteador ou em roteadores separados.',
-    isCurrent: true,
+    isCurrent: false,
     items: [
       {
         title: 'Monitoramento de Processador (CPU), Memória RAM e HD/Disco',

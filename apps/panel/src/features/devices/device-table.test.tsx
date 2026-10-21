@@ -336,7 +336,7 @@ describe('DeviceDirectory', () => {
   it('opens the release notes modal when clicking the version number button', async () => {
     renderDirectory(service());
     await screen.findAllByText('Recepcao 01');
-    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.5.6' });
+    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.6.2' });
     expect(versionButtons.length).toBeGreaterThan(0);
     await userEvent.click(versionButtons[0]);
     const dialog = await screen.findByRole('dialog', { name: /Novidades da Plataforma/i });
@@ -503,6 +503,46 @@ describe('DeviceDirectory', () => {
     expect(screen.getAllByText('IP Público: 179.199.142.157').length).toBeGreaterThan(0);
     expect(screen.getAllByText('IP Local: N/D').length).toBeGreaterThan(0);
     expect(screen.getAllByText('IP Público: N/D').length).toBeGreaterThan(0);
+  });
+
+  it('starts and ends an active remote session cleanly without hook mismatch crashes', async () => {
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    try {
+      const connectDevice = vi.fn().mockImplementation(async (_id, opts) => ({
+        launchUri: 'rustdesk://connect/123456789@179.199.142.157:21116?key=public%2Bkey&password=ephemeral-secret',
+        attemptId: opts.attemptId,
+        mode: opts.mode,
+      }));
+      renderDirectory(
+        service({
+          connectDevice,
+          getMe: vi.fn().mockResolvedValue({
+            id: 'tech-1',
+            displayName: 'Ronaldo',
+            globalRole: 'super_admin',
+            authorization: [],
+          }),
+        })
+      );
+
+      const table = await screen.findByRole('table');
+      await userEvent.click(await within(table).findByRole('button', { name: 'Conectar' }));
+
+      const closeSessionBtn = await screen.findByRole('button', {
+        name: 'Encerrar e salvar telemetria automaticamente',
+      });
+      expect(closeSessionBtn).toBeInTheDocument();
+      expect(screen.getByText('Auto 1-Click')).toBeInTheDocument();
+
+      await userEvent.click(closeSessionBtn);
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('button', { name: 'Encerrar e salvar telemetria automaticamente' })
+        ).not.toBeInTheDocument()
+      );
+    } finally {
+      clickSpy.mockRestore();
+    }
   });
 });
 

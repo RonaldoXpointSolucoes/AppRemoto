@@ -77,6 +77,7 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
   const cursor = activePagination.cursors[activePagination.index];
   const retained = useRef<{ filterKey: string; snapshot: number; data: DevicePage } | undefined>(undefined);
   const refreshLock = useRef(false);
+  const lastRefreshAt = useRef(Date.now());
 
   useEffect(() => {
     if (pagination.filterKey !== filterKey) setPagination(firstPage(filterKey));
@@ -97,7 +98,7 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
     enabled: currentSession && Boolean(service.getMe), retry: false,
     staleTime: 0, refetchOnWindowFocus: false, refetchOnReconnect: false,
   });
-  const canLoadDevices = currentSession && organizations.isSuccess && organizations.data.length > 0;
+  const canLoadDevices = currentSession && Boolean(organizations.data && organizations.data.length > 0);
   const devices = useQuery({
     queryKey: ['session', epoch, 'devices', filterKey, activePagination.snapshot, cursor ?? null],
     queryFn: () => service.getDevices(deviceQuery(filters, cursor)),
@@ -123,9 +124,14 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
   function refresh() {
     if (fetching || refreshLock.current || sessionEpoch(queryClient) !== epoch) return;
     refreshLock.current = true;
+    lastRefreshAt.current = Date.now();
     setPagination((current) => firstPage(filterKey, current.snapshot + 1));
-    void organizations.refetch();
-    if (service.getMe) void profile.refetch();
+    if (!organizations.data || organizations.isError) {
+      void organizations.refetch();
+    }
+    if (service.getMe && (!profile.data || profile.isError)) {
+      void profile.refetch();
+    }
   }
 
   const refreshRef = useRef(refresh);
@@ -137,7 +143,9 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
     }, 30_000);
     function handleVisibilityOrFocus() {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        refreshRef.current();
+        if (Date.now() - lastRefreshAt.current >= 15_000) {
+          refreshRef.current();
+        }
       }
     }
     if (typeof window !== 'undefined') {
@@ -160,11 +168,11 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
     : devices.isError && page ? devices.error : null;
 
   return {
-    canConnect: (organizationId: string) => currentSession && !profile.isError && (profile.data?.globalRole === 'super_admin'
+    canConnect: (organizationId: string) => currentSession && Boolean(profile.data) && (profile.data?.globalRole === 'super_admin'
       || Boolean(profile.data?.authorization.some((permission) => permission.organizationId === organizationId && permission.canConnect))),
-    canManage: (organizationId: string) => currentSession && !profile.isError && (profile.data?.globalRole === 'super_admin'
+    canManage: (organizationId: string) => currentSession && Boolean(profile.data) && (profile.data?.globalRole === 'super_admin'
       || Boolean(profile.data?.authorization.some((permission) => permission.organizationId === organizationId && permission.canManageDevices))),
-    isAdmin: (organizationId?: string) => currentSession && !profile.isError && (
+    isAdmin: (organizationId?: string) => currentSession && Boolean(profile.data) && (
       profile.data?.globalRole === 'super_admin' ||
       Boolean(organizationId && profile.data?.authorization.some(
         (permission) => permission.organizationId === organizationId && (permission.role === 'admin' || permission.role === 'super_admin')

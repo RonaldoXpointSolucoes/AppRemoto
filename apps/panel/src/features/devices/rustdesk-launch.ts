@@ -119,10 +119,26 @@ function triggerEphemeralAnchor(targetUri: string): void {
     return;
   }
   installBackgroundNavigationGuard();
+  const isCustomProtocol = targetUri.startsWith('rustdesk:');
+  let launchFrame: HTMLIFrameElement | null = null;
+  if (isCustomProtocol) {
+    launchFrame = document.querySelector<HTMLIFrameElement>('iframe[name="rustdesk-launch-frame"]');
+    if (!launchFrame) {
+      launchFrame = document.createElement('iframe');
+      launchFrame.name = 'rustdesk-launch-frame';
+      launchFrame.style.display = 'none';
+      launchFrame.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(launchFrame);
+    }
+  }
   const anchor = document.createElement('a');
   try {
     anchor.href = targetUri;
-    anchor.rel = 'noopener noreferrer';
+    if (launchFrame) {
+      anchor.target = 'rustdesk-launch-frame';
+    } else {
+      anchor.rel = 'noopener noreferrer';
+    }
     anchor.style.display = 'none';
     document.body.appendChild(anchor);
     anchor.click();

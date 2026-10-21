@@ -6,14 +6,28 @@ export function PwaRegister() {
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
 
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    let refreshing = false;
+
+    const handleControllerChange = () => {
+      if (!hadController || refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    };
+
+    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
+
     navigator.serviceWorker
-      .register('/sw.js')
+      .register('/sw.js', { updateViaCache: 'none' })
       .then((reg) => {
         void reg.update().catch(() => {});
+        if (reg.waiting) {
+          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
         if ('caches' in window) {
           const currentPath = window.location.pathname || '/devices';
           void caches
-            .open('xpoint-remote-v3')
+            .open('xpoint-remote-v4')
             .then((cache) => cache.add(currentPath))
             .catch(() => {});
         }
@@ -21,6 +35,10 @@ export function PwaRegister() {
       .catch(() => {
         // Failed to register SW
       });
+
+    return () => {
+      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+    };
   }, []);
 
   return null;

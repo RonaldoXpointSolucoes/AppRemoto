@@ -35,7 +35,7 @@ const OrganizationViewSchema = z.object({
   id: z.string().min(1).max(36),
   name: z.string().min(1).max(128),
   slug: z.string().min(1).max(128),
-}).strict();
+}).strip();
 
 const OrganizationAuthorizationSchema = z.object({
   organizationId: z.string().min(1).max(36),
@@ -43,23 +43,23 @@ const OrganizationAuthorizationSchema = z.object({
   canView: z.boolean(),
   canConnect: z.boolean(),
   canManageDevices: z.boolean(),
-}).strict();
+}).strip();
 
 const TechnicianViewSchema = z.object({
   id: z.string().min(1).max(36),
   displayName: z.string().min(1).max(128),
   globalRole: z.string().min(1).max(64).nullable(),
   authorization: z.array(OrganizationAuthorizationSchema),
-}).strict();
+}).strip();
 
 const OrganizationsResponseSchema = z.object({
   organizations: z.array(OrganizationViewSchema),
-}).strict();
+}).strip();
 
 const DevicePageSchema = z.object({
   devices: z.array(DeviceViewSchema),
   nextCursor: z.string().min(1).max(1024).nullable(),
-}).strict();
+}).strip();
 
 interface ApiClientOptions {
   baseUrl: string;
@@ -146,7 +146,7 @@ export function createApiClient(options: ApiClientOptions) {
       let response: Response;
       try {
         response = await (options.fetch ?? globalThis.fetch)(`${options.baseUrl}${path}`, {
-          headers: { authorization: `Bearer ${jwt}`, accept: 'application/json', ...(payload !== undefined ? { 'content-type': 'application/json' } : {}) },
+          headers: { authorization: `Bearer ${jwt}`, accept: 'application/json, application/vnd.xpoint.v2+json', ...(payload !== undefined ? { 'content-type': 'application/json' } : {}) },
           method: payload === undefined ? 'GET' : 'POST',
           cache: 'no-store',
           ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
