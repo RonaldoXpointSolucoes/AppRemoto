@@ -32,12 +32,39 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.5.8',
+    date: 'Outubro 2026',
+    title: 'Estabilização do Passo 6 do Instalador & Recuperação Automática de Heartbeat Guards',
+    highlight:
+      'Eliminação do travamento no Passo 6 (HEARTBEAT_RETRY / HEARTBEAT_UNAVAILABLE), expiração automática de heartbeat_guards órfãos no Appwrite e contador contínuo na janela de progresso.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Expiração Automática de Heartbeat Guards Órfãos na API',
+        description:
+          'Bloqueios de heartbeat órfãos deixados por reinicializações ou timeouts anteriores agora são limpos automaticamente no Appwrite e durante o re-enrollment.',
+        tag: 'Infra & Cockpit',
+      },
+      {
+        title: 'Conclusão Resiliente do Passo 6 no Instalador Windows',
+        description:
+          'Após confirmação do Passo 5 (cadastro e senha no painel), o Passo 6 realiza tentativas rápidas de heartbeat e confirma online.json sem travar a instalação.',
+        tag: 'TeamViewer',
+      },
+      {
+        title: 'Contador Contínuo na Janela de Progresso',
+        description:
+          'O cronômetro de segundos na etapa de confirmação de comunicação mantém contagem contínua sem reiniciar a cada tentativa.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.5.7',
     date: 'Outubro 2026',
     title: 'Instalador Apple Design, Correção Definitiva do Serviço RustDesk & Lista Completa de Acessos',
     highlight: 'Redesign do instalador com estética inspirada no macOS (cantos arredondados e campos CNPJ, Razão Social e Nome Padrão agrupados lado a lado), correção definitiva do erro RUSTDESK_INSTALL_FAILED e carregamento completo da frota de dispositivos na lista principal.',
-    isCurrent: true,
-    items: [
+        items: [
       {
         title: 'Correção Definitiva do Serviço RustDesk (RUSTDESK_INSTALL_FAILED)',
         description:

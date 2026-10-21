@@ -235,9 +235,13 @@ var stepLabels = []string{"Validar pacote e autorizar cadastro", "Preparar RustD
 func (r *Report) ProgressText() string {
 	events := r.Events()
 	states := [7]string{}
+	var stepStart [7]time.Time
 	var last Event
 	for _, e := range events {
 		if e.Step > 0 {
+			if stepStart[e.Step].IsZero() {
+				stepStart[e.Step] = e.At
+			}
 			states[e.Step] = e.Result
 			last = e
 		}
@@ -256,7 +260,11 @@ func (r *Report) ProgressText() string {
 		fmt.Fprintf(&b, "%s %d. %s\r\n", mark, i+1, label)
 	}
 	if last.Operation != "" {
-		fmt.Fprintf(&b, "\r\nOperacao: %s (%ds)\r\n", last.Operation, int(time.Since(last.At).Seconds()))
+		ref := last.At
+		if last.Step > 0 && !stepStart[last.Step].IsZero() && (last.Result == "WAIT" || last.Operation == "HEARTBEAT_REQUEST" || last.Operation == "HEARTBEAT_RETRY") {
+			ref = stepStart[last.Step]
+		}
+		fmt.Fprintf(&b, "\r\nOperacao: %s (%ds)\r\n", last.Operation, int(time.Since(ref).Seconds()))
 	}
 	b.WriteString("\r\nLog: " + r.Path() + "\r\nFechar esta janela apenas oculta o progresso.")
 	return b.String()

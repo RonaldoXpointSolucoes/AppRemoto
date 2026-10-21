@@ -24,7 +24,7 @@ export type EnrollDevice = ((request: EnrollRequest, sourceIp: string) => Promis
 };
 export interface EnrollmentDependencies {
   repository: EnrollmentRepository;
-  reconfigurationGuard?: Pick<HeartbeatTokenRepository, 'beginHeartbeatGuard' | 'endHeartbeatGuard'>;
+  reconfigurationGuard?: Pick<HeartbeatTokenRepository, 'beginHeartbeatGuard' | 'endHeartbeatGuard' | 'getHeartbeatGuard'>;
   audit: AuditRepository;
   encryptionKey: Buffer;
   keyVersion: number;
@@ -173,6 +173,13 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
             return deny('token_inactive');
           }
         }
+        if (dependencies.reconfigurationGuard) {
+          try {
+            const existingGuard = await dependencies.reconfigurationGuard.getHeartbeatGuard?.(deviceId);
+            if (existingGuard) await dependencies.reconfigurationGuard.endHeartbeatGuard(existingGuard);
+            else await dependencies.reconfigurationGuard.endHeartbeatGuard({ deviceId, deviceTokenId: deviceId, startedAt: now().toISOString() });
+          } catch {}
+        }
         uncertainWrites.delete(tokenHash);
         return response;
       }
@@ -222,7 +229,11 @@ export function createEnrollmentService(dependencies: EnrollmentDependencies): E
         if (!finalToken || finalToken.active !== true || finalToken.revoked_at !== null) throw new EnrollmentError();
         if (dependencies.genericPassword) await dependencies.genericPassword(token);
         if (dependencies.reconfigurationGuard) {
-          try { await dependencies.reconfigurationGuard.endHeartbeatGuard({ deviceId, deviceTokenId: deviceId, startedAt: now().toISOString() }); } catch {}
+          try {
+            const existingGuard = await dependencies.reconfigurationGuard.getHeartbeatGuard?.(deviceId);
+            if (existingGuard) await dependencies.reconfigurationGuard.endHeartbeatGuard(existingGuard);
+            else await dependencies.reconfigurationGuard.endHeartbeatGuard({ deviceId, deviceTokenId: deviceId, startedAt: now().toISOString() });
+          } catch {}
         }
         uncertainWrites.delete(tokenHash);
         return response;

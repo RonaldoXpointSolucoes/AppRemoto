@@ -139,8 +139,15 @@ export function createEnrollmentRepository(databases: Databases): EnrollmentRepo
     },
     async beginHeartbeatGuard(guard) {
       try {
-        await databases.getDocument(database, 'heartbeat_guards', guard.deviceId);
-        return false;
+        const existing = await databases.getDocument(database, 'heartbeat_guards', guard.deviceId);
+        const existingTime = typeof existing.started_at === 'string' ? Date.parse(existing.started_at) : NaN;
+        const nextTime = Date.parse(guard.startedAt);
+        const isExpiredOrphan = existing.operation_id == null &&
+          Number.isFinite(existingTime) && Number.isFinite(nextTime) &&
+          (nextTime - existingTime) > 180_000;
+        if (!isExpiredOrphan) return false;
+        try { await databases.deleteDocument(database, 'heartbeat_guards', guard.deviceId); }
+        catch { return false; }
       } catch (error) {
         if (!(error instanceof AppwriteException) || error.code !== 404) return false;
       }

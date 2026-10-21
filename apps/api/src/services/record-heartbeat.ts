@@ -40,12 +40,13 @@ export function createHeartbeatService(dependencies: HeartbeatDependencies): Rec
     if (!projection || projection.token_hash !== hash || projection.revoked_at !== null ||
         projection.device_id !== projection.id || !projection.id) throw new HeartbeatError('UNAUTHENTICATED');
     const deviceId = projection.id;
-    if (poisoned.has(deviceId) || tails.size >= 10_000 && !tails.has(deviceId)) {
-      throw new HeartbeatError('HEARTBEAT_UNAVAILABLE', poisoned.has(deviceId));
+    const poisonKey = `${deviceId}:${hash}`;
+    if (poisoned.has(poisonKey) || tails.size >= 10_000 && !tails.has(deviceId)) {
+      throw new HeartbeatError('HEARTBEAT_UNAVAILABLE', poisoned.has(poisonKey));
     }
     const previous = tails.get(deviceId) ?? Promise.resolve();
     const operation = previous.catch(() => undefined).then(async (): Promise<HeartbeatResponse> => {
-      if (poisoned.has(deviceId)) throw new HeartbeatError('HEARTBEAT_UNAVAILABLE', true);
+      if (poisoned.has(poisonKey)) throw new HeartbeatError('HEARTBEAT_UNAVAILABLE', true);
       let timestamp: string;
       try { timestamp = now().toISOString(); }
       catch { throw new HeartbeatError('HEARTBEAT_UNAVAILABLE'); }
@@ -112,7 +113,7 @@ export function createHeartbeatService(dependencies: HeartbeatDependencies): Rec
         catch { /* The public error remains generic when audit storage is unavailable. */ }
       }
       async function freezeAndFail(): Promise<never> {
-        poisoned.add(deviceId);
+        poisoned.add(poisonKey);
         try { await repository.freezeHeartbeat(deviceId, hash, timestamp); }
         catch { /* Manual recovery is required when the durable freeze cannot be verified. */ }
         await failureAudit(true);

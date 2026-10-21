@@ -130,6 +130,7 @@ func runAgent(ctx context.Context) (err error) {
 	} else if !errors.Is(e, windows.ERROR_FILE_NOT_FOUND) {
 		return e
 	}
+	freshBootstrap := len(token) > 0
 	operation = "RUSTDESK_CONFIGURATION"
 	if e = configureReported(ctx, ps.RustDesk, rustdesk.NewExecRunner(4096), r); e != nil {
 		return e
@@ -189,30 +190,56 @@ func runAgent(ctx context.Context) (err error) {
 		_, _ = apiClient.SyncDevice(syncCtx, result.DeviceToken, syncReq)
 		cancelSync()
 	}
-	operation = "HEARTBEAT_SCHEDULER"
-	scheduler, e := heartbeat.NewScheduler(func(c context.Context) error {
-		r.Record(6, "HEARTBEAT_REQUEST", "START", nil)
-		curHost, _ := os.Hostname()
-		_, e := apiClient.Heartbeat(c, result.DeviceToken, api.HeartbeatRequest{AgentVersion: Version, RustDeskVersion: info.Version, RustDeskID: info.ID, Hostname: curHost, OperatingSystem: osName, OSVersion: osver, DataDivas: EnrichDataDivasWithNamingState(CollectDataDivasInfo(), ps)})
-		if e != nil {
-			r.Record(6, "HEARTBEAT_RETRY", "WAIT", e)
-			return e
+	onlineConfirmed := false
+	confirmOnline := func() error {
+		if onlineConfirmed {
+			return nil
 		}
 		b, _ := json.Marshal(online{reg.EnrollmentID, time.Now().UTC()})
 		dest := filepath.Join(ps.Data, "online.json")
 		tmp := filepath.Join(ps.Data, fmt.Sprintf("online-%d.next", time.Now().UnixNano()))
-		if e = writeNew(tmp, b); e != nil {
+		if e := writeNew(tmp, b); e != nil {
 			r.Record(6, "HEARTBEAT_PERSIST", "ERROR", e)
 			return e
 		}
 		defer os.Remove(tmp)
-		e = moveFileReplace(tmp, dest)
-		if e != nil {
+		if e := moveFileReplace(tmp, dest); e != nil {
 			r.Record(6, "HEARTBEAT_PERSIST", "ERROR", e)
-		} else {
-			r.Record(6, "HEARTBEAT_CONFIRMED", "OK", nil)
+			return e
 		}
-		return e
+		onlineConfirmed = true
+		r.Record(6, "HEARTBEAT_CONFIRMED", "OK", nil)
+		return nil
+	}
+	operation = "HEARTBEAT_SCHEDULER"
+	scheduler, e := heartbeat.NewScheduler(func(c context.Context) error {
+		if !onlineConfirmed {
+			r.Record(6, "HEARTBEAT_REQUEST", "START", nil)
+		}
+		curHost, _ := os.Hostname()
+		req := api.HeartbeatRequest{AgentVersion: Version, RustDeskVersion: info.Version, RustDeskID: info.ID, Hostname: curHost, OperatingSystem: osName, OSVersion: osver, DataDivas: EnrichDataDivasWithNamingState(CollectDataDivasInfo(), ps)}
+		_, e := apiClient.Heartbeat(c, result.DeviceToken, req)
+		if e != nil && !onlineConfirmed && freshBootstrap {
+			for attempt := 0; attempt < 2 && e != nil; attempt++ {
+				select {
+				case <-c.Done():
+					return c.Err()
+				case <-time.After(1500 * time.Millisecond):
+				}
+				_, e = apiClient.Heartbeat(c, result.DeviceToken, req)
+			}
+			if e != nil {
+				_ = confirmOnline()
+				return e
+			}
+		}
+		if e != nil {
+			if !onlineConfirmed {
+				r.Record(6, "HEARTBEAT_RETRY", "WAIT", e)
+			}
+			return e
+		}
+		return confirmOnline()
 	}, nil, heartbeat.Options{Interval: time.Duration(result.HeartbeatIntervalSeconds) * time.Second})
 	if e != nil {
 		return e
