@@ -13,19 +13,23 @@ ENV NO_INSTALLER_CACHE=1
 WORKDIR /app
 
 RUN --mount=type=bind,source=apps/panel/prebuilt/standalone.tar.gz,target=/tmp/standalone.tar.gz \
-    --mount=type=bind,source=services/agent/prebuilt/xpoint-setup-1.3.5.exe,target=/tmp/xpoint-setup-1.3.5.exe \
-    --mount=type=bind,source=services/agent/prebuilt/xpoint-setup-1.3.5-x86.exe,target=/tmp/xpoint-setup-1.3.5-x86.exe \
+    --mount=type=bind,source=services/agent/prebuilt/xpoint-setup-1.3.6.exe,target=/tmp/xpoint-setup-1.3.6.exe \
+    --mount=type=bind,source=services/agent/prebuilt/xpoint-setup-1.3.6-x86.exe,target=/tmp/xpoint-setup-1.3.6-x86.exe \
+    --mount=type=bind,source=services/agent/prebuilt/xpoint-setup-1.3.6-win7.exe,target=/tmp/xpoint-setup-1.3.6-win7.exe \
     --mount=type=bind,source=apps/panel/scripts,target=/tmp/scripts \
     printf '#!/bin/sh\nexec wget -q -O- http://127.0.0.1:3000/health\n' > /usr/local/bin/curl && \
     chmod +x /usr/local/bin/curl && \
     tar -xzf /tmp/standalone.tar.gz -C /app && \
     mkdir -p /app/apps/panel/public/installers /app/apps/panel/scripts && \
-    cp /tmp/xpoint-setup-1.3.5.exe /app/apps/panel/public/installers/xpoint-setup-1.3.5.exe && \
-    cp /tmp/xpoint-setup-1.3.5-x86.exe /app/apps/panel/public/installers/xpoint-setup-1.3.5-x86.exe && \
-    touch /app/apps/panel/public/installers/xpoint-complete-1.3.5.exe \
-          /app/apps/panel/public/installers/xpoint-complete-1.3.5-x86.exe \
+    cp /tmp/xpoint-setup-1.3.6.exe /app/apps/panel/public/installers/xpoint-setup-1.3.6.exe && \
+    cp /tmp/xpoint-setup-1.3.6-x86.exe /app/apps/panel/public/installers/xpoint-setup-1.3.6-x86.exe && \
+    cp /tmp/xpoint-setup-1.3.6-win7.exe /app/apps/panel/public/installers/xpoint-setup-1.3.6-win7.exe && \
+    touch /app/apps/panel/public/installers/xpoint-complete-1.3.6.exe \
+          /app/apps/panel/public/installers/xpoint-complete-1.3.6-x86.exe \
+          /app/apps/panel/public/installers/xpoint-complete-1.3.6-win7.exe \
           /app/apps/panel/public/installers/complete-manifest.json \
-          /app/apps/panel/public/installers/complete-manifest-x86.json && \
+          /app/apps/panel/public/installers/complete-manifest-x86.json \
+          /app/apps/panel/public/installers/complete-manifest-win7.json && \
     cp -r /tmp/scripts/. /app/apps/panel/scripts/ && \
     chown -R node:node /app
 

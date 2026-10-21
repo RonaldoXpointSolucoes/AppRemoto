@@ -88,9 +88,12 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
     lock.current = true; setBusy(true); setBusyArch(arch); setError(''); setMessage('');
     try {
       // Verify the bundled executable before asking the API for an enrollment capability.
-      const base = arch === 'x86'
-        ? await loadCompleteInstallerArtifact(fetch, 'x86')
-        : await loadCompleteInstallerArtifact();
+      const base =
+        arch === 'x86'
+          ? await loadCompleteInstallerArtifact(fetch, 'x86')
+          : arch === 'win7'
+            ? await loadCompleteInstallerArtifact(fetch, 'win7')
+            : await loadCompleteInstallerArtifact();
       if (!current()) return;
       const existing = installers.find((item) => item.id === selected && item.active && !item.revokedAt);
       const result: { package: GenericInstallerPackage; installer?: GenericInstallerView } = existing ? await service.getGenericInstallerPackage(existing.id) : await service.createGenericInstaller('Instalador geral XPoint');
@@ -98,12 +101,19 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
         if (!current()) return;
         const blob = createGenericInstallerPackage(base, result.package);
         releaseDownload.current?.();
-        releaseDownload.current = arch === 'x86' ? downloadGenericInstaller(blob, 'x86') : downloadGenericInstaller(blob);
+        releaseDownload.current =
+          arch === 'x86'
+            ? downloadGenericInstaller(blob, 'x86')
+            : arch === 'win7'
+              ? downloadGenericInstaller(blob, 'win7')
+              : downloadGenericInstaller(blob);
         if (result.installer) acceptList([result.installer, ...installers]);
         setMessage(
           arch === 'x86'
             ? 'Arquivo 32 bits preparado. Use este instalador em computadores Windows 32 bits (x86).'
-            : 'Arquivo preparado. Use o mesmo instalador nos computadores dos clientes.'
+            : arch === 'win7'
+              ? 'Arquivo Windows 7 preparado. Compatível com Windows 7 SP1 (32 e 64 bits).'
+              : 'Arquivo preparado. Use o mesmo instalador nos computadores dos clientes.'
         );
       } finally { result.package.installerToken = ''; }
     } catch (failure) {
@@ -136,7 +146,7 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
         for (const b of bytes) binary += String.fromCharCode(b);
         const encoded = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
         const origin = typeof window !== 'undefined' ? window.location.origin : 'https://remoto.xpointsolucoes.com.br';
-        const archQuery = arch === 'x86' ? '&arch=x86' : '';
+        const archQuery = arch === 'x86' ? '&arch=x86' : arch === 'win7' ? '&arch=win7' : '';
         const downloadUrl = `${origin}/api/installer/download?p=${encoded}${archQuery}`;
         if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
           try {
@@ -158,7 +168,9 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
         setMessage(
           arch === 'x86'
             ? 'Link de download 32 bits copiado! Envie para o cliente com Windows 32 bits (x86).'
-            : 'Link de download copiado! Envie para o cliente baixar o instalador pronto.'
+            : arch === 'win7'
+              ? 'Link de download Windows 7 copiado! Envie para o cliente com Windows 7 (32 ou 64 bits).'
+              : 'Link de download copiado! Envie para o cliente baixar o instalador pronto.'
         );
       } finally {
         result.package.installerToken = '';
@@ -193,7 +205,7 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
   const available = installers.filter((item) => item.active && !item.revokedAt);
   return <section className="automatic-setup" aria-labelledby="generic-setup-title">
     <div className="setup-introduction">
-      <p className="eyebrow">Instalador completo 1.3.5 · Windows 64 bits & 32 bits · UI Enterprise Segura</p>
+      <p className="eyebrow">Instalador completo 1.3.6 · Windows 10/11 (64 e 32 bits) & Windows 7 · UI Enterprise Segura</p>
       <h1 id="generic-setup-title">Um instalador para todos os computadores.</h1>
       <p>Baixe uma vez e use o mesmo arquivo nos computadores dos clientes. Se o RustDesk já estiver instalado, ele aplica os padrões da XPoint. Se não estiver, instala tudo com interface moderna de alta confiança, lê automaticamente os dados do <code>C:\DataDivas\config.ini</code>, sugere a função e numeração sequencial por CNPJ e permite renomear o Windows sem reiniciar à força.</p>
     </div>
@@ -219,6 +231,14 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
         <button type="button" className="command-button guide-link" disabled={busy || !ready} onClick={() => void copyDownloadLink('x86')} title="Copia o link direto do instalador 32 bits (x86) para enviar ao cliente">
           {copiedArch === 'x86' ? <Check aria-hidden="true" size={18} className="text-emerald-400" /> : <Copy aria-hidden="true" size={18} />}
           {copiedArch === 'x86' ? 'Link 32 bits copiado!' : 'Copiar link 32 bits'}
+        </button>
+        <button type="button" className="command-button guide-link" disabled={busy || !ready} onClick={() => void download('win7')} title="Baixa o instalador exclusivo para computadores com Windows 7 (32 e 64 bits)">
+          {busy && busyArch === 'win7' ? <LoaderCircle aria-hidden="true" size={18} /> : <Download aria-hidden="true" size={18} />}
+          {busy && busyArch === 'win7' ? 'Preparando Windows 7…' : 'Baixar instalador Windows 7'}
+        </button>
+        <button type="button" className="command-button guide-link" disabled={busy || !ready} onClick={() => void copyDownloadLink('win7')} title="Copia o link direto do instalador para Windows 7 (32 e 64 bits)">
+          {copiedArch === 'win7' ? <Check aria-hidden="true" size={18} className="text-emerald-400" /> : <Copy aria-hidden="true" size={18} />}
+          {copiedArch === 'win7' ? 'Link Windows 7 copiado!' : 'Copiar link Windows 7'}
         </button>
       </div>
       <p className="field-hint">Empresa, grupo por CNPJ e função padronizada do computador são sugeridos automaticamente durante a instalação. Não é necessário abrir nem entrar no painel no computador do cliente.</p>

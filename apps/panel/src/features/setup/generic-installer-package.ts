@@ -1,11 +1,11 @@
 import { GenericInstallerPackageSchema, type GenericInstallerPackage } from '@appremoto/contracts';
 import { z } from 'zod';
 
-export type InstallerArch = 'x64' | 'x86';
+export type InstallerArch = 'x64' | 'x86' | 'win7';
 
 const CompleteManifestSchema = z.object({
   version: z.string().regex(/^\d+\.\d+\.\d+$/),
-  path: z.string().regex(/^\/installers\/xpoint-complete-\d+\.\d+\.\d+(-x86)?\.exe$/),
+  path: z.string().regex(/^\/installers\/xpoint-complete-\d+\.\d+\.\d+(-x86|-win7)?\.exe$/),
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
   bytes: z.number().int().min(2).max(64 * 1024 * 1024),
 }).strict();
@@ -14,13 +14,21 @@ export async function loadCompleteInstallerArtifact(
   fetcher: typeof fetch = fetch,
   arch: InstallerArch = 'x64',
 ): Promise<Uint8Array<ArrayBuffer>> {
-  const manifestUrl = arch === 'x86' ? '/installers/complete-manifest-x86.json' : '/installers/complete-manifest.json';
+  const manifestUrl =
+    arch === 'x86'
+      ? '/installers/complete-manifest-x86.json'
+      : arch === 'win7'
+        ? '/installers/complete-manifest-win7.json'
+        : '/installers/complete-manifest.json';
   const metadata = await fetcher(manifestUrl, { cache: 'no-store', credentials: 'omit' });
   if (!metadata.ok) throw new Error('Installer unavailable');
   const manifest = CompleteManifestSchema.parse(await metadata.json());
-  const expectedPath = arch === 'x86'
-    ? `/installers/xpoint-complete-${manifest.version}-x86.exe`
-    : `/installers/xpoint-complete-${manifest.version}.exe`;
+  const expectedPath =
+    arch === 'x86'
+      ? `/installers/xpoint-complete-${manifest.version}-x86.exe`
+      : arch === 'win7'
+        ? `/installers/xpoint-complete-${manifest.version}-win7.exe`
+        : `/installers/xpoint-complete-${manifest.version}.exe`;
   if (manifest.path !== expectedPath) throw new Error('Installer integrity failed');
   const response = await fetcher(manifest.path, { cache: 'no-store', credentials: 'omit' });
   if (!response.ok) throw new Error('Installer unavailable');
@@ -51,7 +59,12 @@ export function downloadGenericInstaller(blob: Blob, arch: InstallerArch = 'x64'
   try {
     const link = document.createElement('a');
     link.href = url;
-    link.download = arch === 'x86' ? 'XPoint-Instalar-Completo-32bits.exe' : 'XPoint-Instalar-Completo.exe';
+    link.download =
+      arch === 'x86'
+        ? 'XPoint-Instalar-Completo-32bits.exe'
+        : arch === 'win7'
+          ? 'XPoint-Instalar-Completo-Win7.exe'
+          : 'XPoint-Instalar-Completo.exe';
     link.click();
     timer = setTimeout(release, 1000);
     return release;

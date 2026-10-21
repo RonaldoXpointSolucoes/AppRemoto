@@ -46,12 +46,34 @@ func isRustDeskExecutableReference(serviceBinaryPath, exePath string) bool {
 	return false
 }
 
-func findRustDeskExecutable() (string, error) {
-	for _, folder := range []*windows.KNOWNFOLDERID{windows.FOLDERID_ProgramFiles, windows.FOLDERID_ProgramFilesX64, windows.FOLDERID_ProgramFilesX86} {
-		root, e := windows.KnownFolderPath(folder, 0)
-		if e != nil || root == "" {
-			continue
+func candidateProgramFilesRoots() []string {
+	var roots []string
+	seen := map[string]bool{}
+	add := func(root string) {
+		clean := strings.TrimSpace(root)
+		if clean == "" {
+			return
 		}
+		key := strings.ToLower(filepath.Clean(clean))
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		roots = append(roots, filepath.Clean(clean))
+	}
+	for _, folder := range []*windows.KNOWNFOLDERID{windows.FOLDERID_ProgramFiles, windows.FOLDERID_ProgramFilesX64, windows.FOLDERID_ProgramFilesX86} {
+		if root, e := windows.KnownFolderPath(folder, 0); e == nil && root != "" {
+			add(root)
+		}
+	}
+	for _, envKey := range []string{"ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"} {
+		add(os.Getenv(envKey))
+	}
+	return roots
+}
+
+func findRustDeskExecutable() (string, error) {
+	for _, root := range candidateProgramFilesRoots() {
 		p := filepath.Join(root, "RustDesk", "RustDesk.exe")
 		if st, e := os.Stat(p); e == nil && st.Mode().IsRegular() {
 			return p, nil
@@ -288,11 +310,7 @@ func findInstalledRustDesk() (string, error) {
 		return "", e
 	}
 	// Resolve only the protected installation locations. Portable copies are not installed services.
-	for _, folder := range []*windows.KNOWNFOLDERID{windows.FOLDERID_ProgramFiles, windows.FOLDERID_ProgramFilesX64, windows.FOLDERID_ProgramFilesX86} {
-		root, e := windows.KnownFolderPath(folder, 0)
-		if e != nil || root == "" {
-			continue
-		}
+	for _, root := range candidateProgramFilesRoots() {
 		p := filepath.Join(root, "RustDesk", "RustDesk.exe")
 		if st, e := os.Stat(p); e == nil && st.Mode().IsRegular() && isRustDeskServicePath(c.BinaryPathName, p) {
 			return p, nil

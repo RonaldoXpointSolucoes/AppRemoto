@@ -44,9 +44,11 @@ func CollectSystemInfo() (operatingSystem string, osVersion string) {
 		if val, _, err := k.GetStringValue("ProductName"); err == nil {
 			productName = strings.TrimSpace(val)
 		}
-		if val, _, err := k.GetStringValue("DisplayVersion"); err == nil {
+		if val, _, err := k.GetStringValue("DisplayVersion"); err == nil && strings.TrimSpace(val) != "" {
 			displayVersion = strings.TrimSpace(val)
-		} else if val, _, err := k.GetStringValue("ReleaseId"); err == nil {
+		} else if val, _, err := k.GetStringValue("ReleaseId"); err == nil && strings.TrimSpace(val) != "" {
+			displayVersion = strings.TrimSpace(val)
+		} else if val, _, err := k.GetStringValue("CSDVersion"); err == nil && strings.TrimSpace(val) != "" {
 			displayVersion = strings.TrimSpace(val)
 		}
 		if val, _, err := k.GetIntegerValue("UBR"); err == nil {
@@ -54,7 +56,7 @@ func CollectSystemInfo() (operatingSystem string, osVersion string) {
 		}
 	}
 
-	// Trata a nomenclatura do Windows 10 vs Windows 11
+	// Trata a nomenclatura do Windows 10 vs Windows 11 e Windows 7/8/8.1
 	// No Windows 11 (Build >= 22000), a Microsoft manteve o kernel como 10.0 e muitas vezes ProductName como "Windows 10..."
 	if build >= 22000 {
 		if strings.HasPrefix(productName, "Windows 10") {
@@ -65,6 +67,12 @@ func CollectSystemInfo() (operatingSystem string, osVersion string) {
 	} else if productName == "" {
 		if major == 10 {
 			productName = "Windows 10"
+		} else if major == 6 && minor == 1 {
+			productName = "Windows 7"
+		} else if major == 6 && minor == 2 {
+			productName = "Windows 8"
+		} else if major == 6 && minor == 3 {
+			productName = "Windows 8.1"
 		} else {
 			productName = fmt.Sprintf("Windows %d.%d", major, minor)
 		}

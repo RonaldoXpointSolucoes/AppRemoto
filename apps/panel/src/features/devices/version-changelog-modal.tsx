@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.6.6',
+    date: 'Outubro 2026',
+    title: 'Instalador Exclusivo Windows 7 (SP1 · 32 e 64 bits) & Tripla Opção de Download (EXE v1.3.6)',
+    highlight:
+      'Suporte dedicado ao Windows 7 SP1 (32 e 64 bits) com camada de compatibilidade nativa de runtime Win32 (RtlGenRandom e fallback LoadLibraryExW), RustDesk 1.4.9 Sciter integrado e botões dedicados de download e link direto.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Novo Instalador Exclusivo para Windows 7 (32 e 64 bits)',
+        description:
+          'Compilado com overlay de compatibilidade de runtime Win32 (fallback automático de ProcessPrng para RtlGenRandom/SystemFunction036 e LoadLibraryExW) e binário RustDesk 1.4.9 Sciter compatível com Windows 7.',
+        tag: 'TeamViewer',
+      },
+      {
+        title: 'Tripla Opção de Download no Painel (64 bits, 32 bits & Windows 7)',
+        description:
+          'Tela de instalação agora oferece botões e cópia de link direto para Windows 10/11 (64 bits), Windows 32 bits (x86) e Windows 7.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.6.5',
     date: 'Outubro 2026',
     title: 'Instalador Exclusivo Windows 32 bits (x86) & Dupla Opção de Download no Painel (EXE v1.3.5)',
     highlight:
       'Suporte completo a computadores e PDVs com Windows 32 bits (x86): novo instalador dedicado com RustDesk 1.4.9 x86 integrado, link direto de download 32 bits e seleção clara entre 64 bits e 32 bits no painel.',
-    isCurrent: true,
     items: [
       {
         title: 'Novo Instalador Exclusivo Windows 32 bits (x86)',
@@ -789,7 +810,7 @@ export function VersionChangelogModal({
             <div className="changelog-title-group">
               <div className="changelog-title-row">
                 <h2 id="changelog-modal-title">Novidades da Plataforma</h2>
-                <span className="changelog-current-pill">v1.6.5 · ATUAL</span>
+                <span className="changelog-current-pill">v1.6.6 · ATUAL</span>
               </div>
               <p className="changelog-subtitle">
                 Histórico de atualizações, recursos de mobilidade e melhorias de UI/UX do XPoint Remote
@@ -878,7 +899,7 @@ export function VersionChangelogModal({
         <div className="changelog-modal-footer">
           <div className="changelog-footer-info">
             <ShieldCheck size={15} className="text-emerald-400" />
-            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.6.5)</span>
+            <span>XPoint Soluções · Ambiente de Produção Atualizado (v1.6.6)</span>
           </div>
           <button type="button" className="tv-btn-primary" onClick={onClose}>
             Entendi, voltar ao painel

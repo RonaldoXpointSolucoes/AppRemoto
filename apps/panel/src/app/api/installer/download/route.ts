@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
   const encodedPkg = request.nextUrl.searchParams.get('p');
   const archParam = request.nextUrl.searchParams.get('arch');
   const isX86 = archParam === 'x86' || archParam === '32';
+  const isWin7 = archParam === 'win7' || archParam === 'w7';
 
   if (!encodedPkg) {
     return NextResponse.json(
@@ -55,9 +56,21 @@ export async function GET(request: NextRequest) {
 
   try {
     const publicDir = resolvePublicDir();
-    const manifestName = isX86 ? 'complete-manifest-x86.json' : 'complete-manifest.json';
-    const defaultExePath = isX86 ? '/installers/xpoint-complete-1.3.5-x86.exe' : '/installers/xpoint-complete-1.3.5.exe';
-    const downloadFilename = isX86 ? 'XPoint-Instalar-Completo-32bits.exe' : 'XPoint-Instalar-Completo.exe';
+    const manifestName = isWin7
+      ? 'complete-manifest-win7.json'
+      : isX86
+        ? 'complete-manifest-x86.json'
+        : 'complete-manifest.json';
+    const defaultExePath = isWin7
+      ? '/installers/xpoint-complete-1.3.6-win7.exe'
+      : isX86
+        ? '/installers/xpoint-complete-1.3.6-x86.exe'
+        : '/installers/xpoint-complete-1.3.6.exe';
+    const downloadFilename = isWin7
+      ? 'XPoint-Instalar-Completo-Win7.exe'
+      : isX86
+        ? 'XPoint-Instalar-Completo-32bits.exe'
+        : 'XPoint-Instalar-Completo.exe';
 
     const manifestRaw = await readFile(path.join(publicDir, 'installers', manifestName), 'utf8');
     const manifest = JSON.parse(manifestRaw) as { path?: string };

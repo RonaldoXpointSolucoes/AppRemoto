@@ -231,6 +231,9 @@ func validateExecutableTrust(handle windows.Handle) error {
 		if ace.Header.AceType == windows.ACCESS_DENIED_ACE_TYPE {
 			continue
 		}
+		if ace.Header.AceFlags&windows.INHERIT_ONLY_ACE != 0 {
+			continue
+		}
 		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE {
 			return errors.New("RustDesk executable DACL contains an unsupported allow entry")
 		}

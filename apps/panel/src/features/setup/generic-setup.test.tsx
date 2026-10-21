@@ -127,3 +127,12 @@ it('downloads the dedicated 32-bit x86 installer when clicking the 32-bit option
   expect(loadCompleteInstallerArtifact).toHaveBeenCalledWith(fetch, 'x86');
   expect(await screen.findByRole('status')).toHaveTextContent('Arquivo 32 bits preparado');
 });
+it('downloads the dedicated Windows 7 installer when clicking the Windows 7 option', async () => {
+  fixture();
+  const buttonWin7 = await screen.findByRole('button', { name: 'Baixar instalador Windows 7' });
+  await waitFor(() => expect(buttonWin7).toBeEnabled());
+  await userEvent.click(buttonWin7);
+  await waitFor(() => expect(downloadGenericInstaller).toHaveBeenCalledWith(expect.any(Blob), 'win7'));
+  expect(loadCompleteInstallerArtifact).toHaveBeenCalledWith(fetch, 'win7');
+  expect(await screen.findByRole('status')).toHaveTextContent('Arquivo Windows 7 preparado');
+});

@@ -72,5 +72,15 @@ if (existsSync(baseUrlX86)) {
   console.log(`Complete Windows 32-bit installer verified (${complete32.length} bytes; RustDesk ${rustDeskX86.version})`);
 }
 
+const baseUrlWin7 = new URL(`xpoint-setup-${installerVersion}-win7.exe`, directory);
+if (existsSync(baseUrlWin7)) {
+  const payloadWin7 = await resolvePayload(rustDeskX86, `rustdesk-${rustDeskX86.version}-x86-sciter.exe`, process.env.RUSTDESK_INSTALLER_X86_FILE);
+  const completeNameWin7 = `xpoint-complete-${installerVersion}-win7.exe`;
+  const completeWin7 = assembleInstaller(readFileSync(baseUrlWin7), payloadWin7, rustDeskX86);
+  writeFileSync(new URL(completeNameWin7, directory), completeWin7);
+  writeFileSync(new URL('complete-manifest-win7.json', directory), JSON.stringify(artifactManifest(completeWin7, completeNameWin7)) + '\n');
+  console.log(`Complete Windows 7 installer verified (${completeWin7.length} bytes; RustDesk ${rustDeskX86.version})`);
+}
+
 await import('./write-installer-manifest.mjs');
 console.log(`Complete Windows 64-bit installer verified (${complete64.length} bytes; RustDesk ${rustDesk.version})`);
