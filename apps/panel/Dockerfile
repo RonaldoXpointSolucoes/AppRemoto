@@ -1,9 +1,7 @@
 FROM golang:1.26-alpine AS windows-installer
 WORKDIR /agent
-COPY services/agent/go.mod services/agent/go.sum ./
-RUN go mod download
 COPY services/agent/ ./
-RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags='-s -w -H=windowsgui' -o /out/xpoint-setup-1.3.3.exe ./cmd/remote-setup
+RUN go mod download && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags='-s -w -H=windowsgui' -o /out/xpoint-setup-1.3.3.exe ./cmd/remote-setup && rm -rf /go/pkg /root/.cache /tmp/*
 
 FROM node:24-alpine AS base
 ENV PNPM_HOME=/pnpm
@@ -12,11 +10,12 @@ RUN corepack enable
 WORKDIR /app
 
 FROM base AS dependencies
+COPY --from=windows-installer /out/xpoint-setup-1.3.3.exe /tmp/xpoint-setup-1.3.3.exe
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/panel/package.json apps/panel/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
-RUN pnpm install --frozen-lockfile --filter @appremoto/panel... && pnpm store prune && rm -rf /root/.local/share/pnpm/store /tmp/*
+RUN pnpm install --frozen-lockfile --filter @appremoto/panel... && rm -rf /pnpm/store /root/.local/share/pnpm/store /root/.cache /tmp/*
 
 FROM dependencies AS builder
 ARG NEXT_PUBLIC_APPWRITE_ENDPOINT
