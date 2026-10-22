@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { ApiClientError } from '../../lib/api';
 import { isDisabledProfile, isExpiredSession, isInvalidCredentials, type LoginService } from './session';
-import { beginSession, expireSession, sessionEpoch } from './session-cache';
+import { beginSession, expireSession, markSessionVerified, sessionEpoch } from './session-cache';
 
 export type { LoginService } from './session';
 
@@ -72,6 +72,7 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
       setStep('profile-retry');
       setPassword('');
       await service.verifyProfile();
+      markSessionVerified();
       onAuthenticated();
     } catch (error) {
       if (isDisabledProfile(error) || (sessionEstablished && isExpiredSession(error))) {
@@ -135,6 +136,7 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
         setPassword('');
       }
       await service.verifyProfile();
+      markSessionVerified();
       onAuthenticated();
     } catch (error) {
       if (!sessionEstablished && isInvalidCredentials(error)) {

@@ -150,17 +150,55 @@ export function createApiClient(options: ApiClientOptions) {
         cache: 'no-store',
         ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
       };
+      const preferSameOrigin =
+        !options.fetch &&
+        typeof window !== 'undefined' &&
+        window.location.protocol === 'https:' &&
+        options.baseUrl.includes('.sslip.io') &&
+        !window.location.origin.includes('.sslip.io');
+
+      const primaryUrl = preferSameOrigin
+        ? `${window.location.origin}${path}`
+        : `${options.baseUrl}${path}`;
+      const fallbackUrl =
+        !options.fetch &&
+        typeof window !== 'undefined' &&
+        window.location.protocol === 'https:' &&
+        options.baseUrl.includes('.sslip.io')
+          ? preferSameOrigin
+            ? `${options.baseUrl}${path}`
+            : `${window.location.origin}${path}`
+          : null;
+
+      const execFetch = async (targetUrl: string, timeoutMs: number): Promise<Response> => {
+        if (options.fetch) {
+          return options.fetch(targetUrl, reqInit);
+        }
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+        try {
+          return await globalThis.fetch(targetUrl, controller ? { ...reqInit, signal: controller.signal } : reqInit);
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
+      };
+
       try {
-        response = await (options.fetch ?? globalThis.fetch)(`${options.baseUrl}${path}`, reqInit);
-      } catch {
+        response = await execFetch(primaryUrl, 7_500);
         if (
-          !options.fetch &&
-          typeof window !== 'undefined' &&
-          window.location.protocol === 'https:' &&
-          options.baseUrl.includes('.sslip.io')
+          fallbackUrl &&
+          (response.status === 502 || response.status === 503 || response.status === 504)
         ) {
           try {
-            response = await globalThis.fetch(`${window.location.origin}${path}`, reqInit);
+            response = await execFetch(fallbackUrl, 6_000);
+          } catch {
+            // Keep original gateway response if fallback also fails
+          }
+        }
+      } catch {
+        if (fallbackUrl) {
+          try {
+            response = await execFetch(fallbackUrl, 6_000);
           } catch {
             throw new ApiClientError({
               code: 'NETWORK_ERROR',

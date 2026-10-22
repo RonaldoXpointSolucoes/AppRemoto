@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.7.5',
+    date: 'Outubro 2026',
+    title: 'Eliminação Definitiva da Tela Branca "Verificando Sessão" & Acesso Instantâneo Same-Origin',
+    highlight:
+      'Fim do travamento na tela "Verificando sessão..." no celular e no computador: roteamento prioritário same-origin (<150ms sem depender de DNS sslip.io), handoff instantâneo pós-login (0ms), watchdog anti-deadlock de JWT e nova interface glassmorphism com controles de escape imediato.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Roteamento Same-Origin Prioritário & Handoff Instantâneo Pós-Login (0ms)',
+        description:
+          'Prioriza a rota local /v1/* do próprio domínio HTTPS (eliminando o atraso de 9s a 60s de resolução DNS sslip.io em redes móveis 4G/5G) e reaproveita a sessão recém-validada no login para abrir o painel sem segunda tela de espera.',
+        tag: 'Mobilidade',
+      },
+      {
+        title: 'Watchdog Anti-Travamento (5.5s), Timeout de JWT & UI Glassmorphism Sem Tela Branca',
+        description:
+          'Adiciona proteção com AbortController/timeout em todas as chamadas de sessão e remodelação visual dark/glassmorphism com botões imediatos de "Atualizar agora" e "Ir para o login".',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.7.4',
     date: 'Outubro 2026',
     title: 'Preservação Permanente do Nome nas Abas do RustDesk em Múltiplas Conexões Simultâneas',
     highlight:
       'Eliminação definitiva do bug em que o RustDesk apagava o nome salvo da máquina ao abrir uma 2ª ou 3ª aba de conexão simultânea, garantindo que todas as abas exibam sempre o nome do computador no topo.',
-    isCurrent: true,
     items: [
       {
         title: 'Blindagem Anti-Exclusão do RustDesk (info.platform + Base64 Sync)',

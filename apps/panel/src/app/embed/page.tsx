@@ -4,10 +4,11 @@ import { useRouter } from 'next/navigation';
 import { useMemo } from 'react';
 
 import { SessionBoundary } from '../../features/auth/session-boundary';
+import { clearVerifiedSessionBootstrap } from '../../features/auth/session-cache';
 import { DeviceDirectory, type DeviceDirectoryService } from '../../features/devices/device-table';
 import { buildPreservedRoute } from '../../features/embed/chatbot-bridge';
 import { createApiClient } from '../../lib/api';
-import { createAppwriteSessionClient } from '../../lib/appwrite';
+import { createAppwriteSessionClient, deleteCurrentSessionSafely } from '../../lib/appwrite';
 import { getPublicConfig } from '../../lib/config';
 
 function createEmbedDeviceDirectoryService(): DeviceDirectoryService {
@@ -29,7 +30,8 @@ function createEmbedDeviceDirectoryService(): DeviceDirectoryService {
     executeCnpjGroupAction: api.executeCnpjGroupAction,
     migrateCnpjGroups: api.migrateCnpjGroups,
     expireSession: async () => {
-      await account.deleteSession('current');
+      clearVerifiedSessionBootstrap();
+      await deleteCurrentSessionSafely(account, 2_500);
     },
   };
 }

@@ -25,11 +25,7 @@ export function PwaRegister() {
           reg.waiting.postMessage({ type: 'SKIP_WAITING' });
         }
         if ('caches' in window) {
-          const currentPath = window.location.pathname || '/devices';
-          void caches
-            .open('xpoint-remote-v5')
-            .then((cache) => cache.add(currentPath))
-            .catch(() => {});
+          void caches.delete('xpoint-remote-v5').catch(() => {});
         }
       })
       .catch(() => {

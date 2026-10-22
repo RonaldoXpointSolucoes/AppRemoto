@@ -5,9 +5,15 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { createApiClient, ApiClientError } from '../../lib/api';
-import { createAppwriteSessionClient } from '../../lib/appwrite';
+import { createAppwriteSessionClient, deleteCurrentSessionSafely } from '../../lib/appwrite';
 import { getPublicConfig } from '../../lib/config';
-import { expireSession, sessionEpoch } from './session-cache';
+import {
+  clearVerifiedSessionBootstrap,
+  expireSession,
+  hasVerifiedSessionBootstrap,
+  markSessionVerified,
+  sessionEpoch,
+} from './session-cache';
 
 export interface LoginService {
   createSession(email: string, password: string): Promise<void>;
@@ -27,6 +33,8 @@ export type SessionState =
   | { status: 'authenticated' }
   | { status: 'expired' }
   | { status: 'recoverable-error'; message: string };
+
+export const SESSION_CHECK_TIMEOUT_MS = 5_500;
 
 export function isExpiredSession(error: unknown): boolean {
   return (error instanceof AppwriteException && error.code === 401)
@@ -48,6 +56,16 @@ export function isDisabledProfile(error: unknown): boolean {
   );
 }
 
+async function fetchAuthWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  try {
+    return await fetch(url, controller ? { ...init, signal: controller.signal } : init);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function postPublicAuthEndpoint(
   baseUrl: string,
   path: string,
@@ -59,17 +77,37 @@ async function postPublicAuthEndpoint(
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(payload),
   };
+
+  const preferSameOrigin =
+    typeof window !== 'undefined' &&
+    window.location.protocol === 'https:' &&
+    cleanBase.includes('.sslip.io') &&
+    !window.location.origin.includes('.sslip.io');
+
+  const primaryUrl = preferSameOrigin ? `${window.location.origin}${path}` : `${cleanBase}${path}`;
+  const fallbackUrl =
+    typeof window !== 'undefined' &&
+    window.location.protocol === 'https:' &&
+    cleanBase.includes('.sslip.io')
+      ? preferSameOrigin
+        ? `${cleanBase}${path}`
+        : `${window.location.origin}${path}`
+      : null;
+
   let response: Response;
   try {
-    response = await fetch(`${cleanBase}${path}`, reqInit);
-  } catch {
-    if (
-      typeof window !== 'undefined' &&
-      window.location.protocol === 'https:' &&
-      cleanBase.includes('.sslip.io')
-    ) {
+    response = await fetchAuthWithTimeout(primaryUrl, reqInit, 6_500);
+    if (fallbackUrl && (response.status === 502 || response.status === 503 || response.status === 504)) {
       try {
-        response = await fetch(`${window.location.origin}${path}`, reqInit);
+        response = await fetchAuthWithTimeout(fallbackUrl, reqInit, 5_500);
+      } catch {
+        // Keep primary gateway response if fallback also fails
+      }
+    }
+  } catch {
+    if (fallbackUrl) {
+      try {
+        response = await fetchAuthWithTimeout(fallbackUrl, reqInit, 5_500);
       } catch {
         throw new ApiClientError({
           code: 'NETWORK_ERROR',
@@ -121,11 +159,7 @@ export function createLoginService(): LoginService {
               password,
               requireUnconfiguredOrToken: true,
             });
-            try {
-              await account.deleteSession('current');
-            } catch {
-              // Ignore if no previous session exists
-            }
+            await deleteCurrentSessionSafely(account, 1_500);
             await account.createSession(token.userId, token.secret);
             return;
           } catch {
@@ -148,11 +182,7 @@ export function createLoginService(): LoginService {
         email: normalized,
         ...(inviteToken ? { inviteToken } : {}),
       });
-      try {
-        await account.deleteSession('current');
-      } catch {
-        // Ignore if no previous session exists
-      }
+      await deleteCurrentSessionSafely(account, 1_500);
       await account.createSession(token.userId, token.secret);
     },
     activateInviteSession: async ({ email, password, displayName, inviteToken }) => {
@@ -162,30 +192,48 @@ export function createLoginService(): LoginService {
         ...(displayName ? { displayName } : {}),
         ...(inviteToken ? { inviteToken } : {}),
       });
-      try {
-        await account.deleteSession('current');
-      } catch {
-        // Ignore if no previous session exists
-      }
+      await deleteCurrentSessionSafely(account, 1_500);
       await account.createSession(token.userId, token.secret);
     },
-    verifyProfile: async () => { await api.getMe(); },
-    removeSession: async () => { await account.deleteSession('current'); },
+    verifyProfile: async () => {
+      await api.getMe();
+      markSessionVerified();
+    },
+    removeSession: async () => {
+      clearVerifiedSessionBootstrap();
+      await deleteCurrentSessionSafely(account, 2_500);
+    },
   };
 }
 
 export async function checkSession(service: LoginService, expire?: () => Promise<boolean>): Promise<SessionState> {
   try {
     await service.verifyProfile();
+    markSessionVerified();
     return { status: 'authenticated' };
   } catch (error) {
     if (!isTerminalSession(error)) {
       return { status: 'recoverable-error', message: 'Nao foi possivel verificar sua sessao.' };
     }
+    clearVerifiedSessionBootstrap();
     if (expire) {
-      if (!await expire()) return { status: 'checking' };
+      try {
+        await Promise.race([
+          expire(),
+          new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 2_500)),
+        ]);
+      } catch {
+        // Never allow session expiration cleanup to block terminal state transition.
+      }
     } else {
-      try { await service.removeSession(); } catch { /* The local session is already unusable. */ }
+      try {
+        await Promise.race([
+          service.removeSession(),
+          new Promise<void>((resolve) => setTimeout(resolve, 2_500)),
+        ]);
+      } catch {
+        /* The local session is already unusable. */
+      }
     }
     return { status: 'expired' };
   }
@@ -194,20 +242,62 @@ export async function checkSession(service: LoginService, expire?: () => Promise
 export function useSessionBoundary(serviceOverride?: LoginService) {
   const queryClient = useQueryClient();
   const service = useMemo(() => serviceOverride ?? createLoginService(), [serviceOverride]);
-  const [state, setState] = useState<SessionState>({ status: 'checking' });
-  const started = useRef(false);
+  const [state, setState] = useState<SessionState>(() =>
+    hasVerifiedSessionBootstrap() ? { status: 'authenticated' } : { status: 'checking' }
+  );
+  const verifyRunId = useRef(0);
 
-  const verify = useCallback(async () => {
+  const verify = useCallback(async (backgroundOnly = false) => {
+    const currentRun = ++verifyRunId.current;
     const epoch = sessionEpoch(queryClient);
-    setState({ status: 'checking' });
-    setState(await checkSession(service, () => expireSession(queryClient, epoch, () => service.removeSession())));
+    if (!backgroundOnly) {
+      setState({ status: 'checking' });
+    }
+
+    let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+    const watchdogPromise = new Promise<SessionState>((resolve) => {
+      watchdogTimer = setTimeout(() => {
+        resolve({
+          status: 'recoverable-error',
+          message: 'Nao foi possivel verificar sua sessao.',
+        });
+      }, SESSION_CHECK_TIMEOUT_MS);
+    });
+
+    try {
+      const nextState = await Promise.race([
+        checkSession(service, () => expireSession(queryClient, epoch, () => service.removeSession())),
+        watchdogPromise,
+      ]);
+      if (verifyRunId.current !== currentRun) return;
+      if (backgroundOnly && nextState.status === 'recoverable-error') {
+        // Keep optimistic authenticated view when a background check hits a transient network blip
+        return;
+      }
+      setState(nextState);
+    } finally {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
+    }
   }, [queryClient, service]);
 
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    void verify();
+    const isOptimistic = hasVerifiedSessionBootstrap();
+    void verify(isOptimistic);
+    return () => {
+      verifyRunId.current += 1;
+    };
   }, [verify]);
 
-  return { state, retry: verify };
+  useEffect(() => {
+    if (typeof window === 'undefined' || state.status !== 'recoverable-error') return;
+    const handleOnline = () => {
+      void verify(false);
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [state.status, verify]);
+
+  const retry = useCallback(() => verify(false), [verify]);
+
+  return { state, retry };
 }

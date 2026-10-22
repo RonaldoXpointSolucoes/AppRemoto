@@ -10,6 +10,53 @@ interface SessionScope {
 }
 
 const scopes = new WeakMap<QueryClient, SessionScope>();
+const VERIFIED_SESSION_STORAGE_KEY = 'xpoint_verified_session_ts';
+let lastVerifiedAtMemory = 0;
+
+export function markSessionVerified(): void {
+  const now = Date.now();
+  lastVerifiedAtMemory = now;
+  if (typeof window !== 'undefined') {
+    try {
+      window.sessionStorage.setItem(VERIFIED_SESSION_STORAGE_KEY, String(now));
+    } catch {
+      // Ignore storage quota/privacy errors
+    }
+  }
+}
+
+export function clearVerifiedSessionBootstrap(): void {
+  lastVerifiedAtMemory = 0;
+  if (typeof window !== 'undefined') {
+    try {
+      window.sessionStorage.removeItem(VERIFIED_SESSION_STORAGE_KEY);
+    } catch {
+      // Ignore storage errors
+    }
+  }
+}
+
+export function hasVerifiedSessionBootstrap(maxAgeMs = 180_000): boolean {
+  const now = Date.now();
+  if (lastVerifiedAtMemory > 0 && now - lastVerifiedAtMemory < maxAgeMs) {
+    return true;
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.sessionStorage.getItem(VERIFIED_SESSION_STORAGE_KEY);
+      if (raw) {
+        const parsed = Number(raw);
+        if (Number.isFinite(parsed) && parsed > 0 && now - parsed < maxAgeMs) {
+          lastVerifiedAtMemory = parsed;
+          return true;
+        }
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }
+  return false;
+}
 
 function scope(client: QueryClient): SessionScope {
   let current = scopes.get(client);
@@ -33,6 +80,7 @@ export function onSessionClear(client: QueryClient, listener: () => void): () =>
 
 function clearSession(client: QueryClient): number {
   const next = ++scope(client).epoch;
+  clearVerifiedSessionBootstrap();
   for (const listener of scope(client).listeners ?? []) {
     // A failed UI cleanup must not prevent cache and credential invalidation.
     try { listener(); } catch { /* Continue invalidating the remaining session state. */ }

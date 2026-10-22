@@ -5,10 +5,11 @@ import { useMemo } from 'react';
 
 import { SessionBoundary } from '../../features/auth/session-boundary';
 import { createLoginService, type LoginService } from '../../features/auth/session';
+import { clearVerifiedSessionBootstrap, markSessionVerified } from '../../features/auth/session-cache';
 import { DeviceDirectory, type DeviceDirectoryService } from '../../features/devices/device-table';
 import { buildPreservedRoute } from '../../features/embed/chatbot-bridge';
 import { createApiClient, type DevicePage, type OrganizationView, type TechnicianView } from '../../lib/api';
-import { createAppwriteSessionClient } from '../../lib/appwrite';
+import { createAppwriteSessionClient, deleteCurrentSessionSafely } from '../../lib/appwrite';
 import { getPublicConfig } from '../../lib/config';
 
 function createDevicesPageServices(): {
@@ -72,12 +73,14 @@ function createDevicesPageServices(): {
       devicesBootstrap = { promise: devPromise, expiresAt };
 
       await mePromise;
+      markSessionVerified();
     },
     removeSession: async () => {
       meBootstrap = null;
       orgsBootstrap = null;
       devicesBootstrap = null;
-      await account.deleteSession('current');
+      clearVerifiedSessionBootstrap();
+      await deleteCurrentSessionSafely(account, 2_500);
     },
   };
 
@@ -99,7 +102,8 @@ function createDevicesPageServices(): {
       meBootstrap = null;
       orgsBootstrap = null;
       devicesBootstrap = null;
-      await account.deleteSession('current');
+      clearVerifiedSessionBootstrap();
+      await deleteCurrentSessionSafely(account, 2_500);
     },
   };
 
