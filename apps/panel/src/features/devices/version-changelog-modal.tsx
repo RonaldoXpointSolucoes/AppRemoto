@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.7.4',
+    date: 'Outubro 2026',
+    title: 'Preservação Permanente do Nome nas Abas do RustDesk em Múltiplas Conexões Simultâneas',
+    highlight:
+      'Eliminação definitiva do bug em que o RustDesk apagava o nome salvo da máquina ao abrir uma 2ª ou 3ª aba de conexão simultânea, garantindo que todas as abas exibam sempre o nome do computador no topo.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Blindagem Anti-Exclusão do RustDesk (info.platform + Base64 Sync)',
+        description:
+          'Preenche obrigatoriamente platform = "Windows" nos arquivos de configuração de peers (.toml) para impedir que o garbage collector interno do RustDesk (PeerConfig::batch_peers) exclua o apelido ao abrir novas conexões.',
+        tag: 'TeamViewer',
+      },
+      {
+        title: 'Preservação de Chave Pública (+) e Recuperação Automática de Alias',
+        description:
+          'Decodificação exata da chave pública com sinal "+" na bridge do protocolo rustdesk:// e sincronização em lote corrigida para manter o nome amigável em todas as abas abertas.',
+        tag: 'Infra & Cockpit',
+      },
+    ],
+  },
+  {
     version: 'v1.7.3',
     date: 'Outubro 2026',
     title: 'Central Multi-Sessões Simultâneas & Documentação Individual por Máquina (3+ Conexões)',
     highlight:
       'Fim da perda de sessões ao conectar em múltiplas máquinas ao mesmo tempo: fila multi-sessão com abas interativas, cronômetros independentes, preservação de rascunho por computador e fluxo sequencial "Salvar e Ir p/ Próxima".',
-    isCurrent: true,
     items: [
       {
         title: 'Dock Multi-Sessão para 2, 3 ou Mais Máquinas Conectadas',

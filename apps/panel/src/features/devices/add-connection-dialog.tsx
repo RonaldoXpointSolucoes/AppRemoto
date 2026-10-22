@@ -54,10 +54,11 @@ export function AddConnectionDialog({
     }
     try {
       const serverHost = '179.199.142.157:21116';
-      const publicKey = 'i44K4wFmI7+wE42H70q8xG2E6eQ5J+Lp40uK18rXkGQ=';
+      const publicKey = '6qc86QUPst9+H4QjXyQvSLPbGU6ef25iO+ESoi3figk=';
+      const peerAlias = displayName.trim() || undefined;
       const baseUri = `rustdesk://connect/${cleanId}@${serverHost}?key=${encodeURIComponent(publicKey)}`;
-      const targetUri = password ? manualRustDeskUri(baseUri, password) : baseUri;
-      launchRustDesk(targetUri);
+      const targetUri = password ? manualRustDeskUri(baseUri, password, peerAlias) : baseUri;
+      launchRustDesk(targetUri, peerAlias);
 
       // Salva no histórico de recentes
       saveRecentConnection({

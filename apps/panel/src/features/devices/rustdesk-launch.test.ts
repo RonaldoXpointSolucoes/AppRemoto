@@ -23,13 +23,14 @@ it('attaches the concatenated nickname (alias) to the RustDesk launch URI', () =
   expect(withAlias.searchParams.get('password')).toBe('ephemeral-secret');
 });
 
-it('builds a PowerShell command that writes the alias to all 3 RustDesk peer TOML files including the ?key= tab peer file', () => {
-  const cmd = buildRustDeskPeerAliasPowerShellCommand('246221500', 'PANAMBY - SERVIDOR');
-  expect(cmd).toContain("id='246221500'");
-  expect(cmd).toContain("name='PANAMBY - SERVIDOR'");
-  expect(cmd).toContain('"$id@$srv?key=$key"');
-  expect(cmd).toContain('"$id@$srv"');
+it('builds a PowerShell command that writes the alias and platform=Windows to all 3 RustDesk peer TOML files including the ?key= tab peer file so RustDesk batch_peers never deletes 9-digit peer configs', () => {
+  const cmd = buildRustDeskPeerAliasPowerShellCommand('124728515', 'BURGUER PLUS - SERVIDOR');
+  expect(cmd).toContain("id='124728515'");
+  expect(cmd).toContain("name='BURGUER PLUS - SERVIDOR'");
+  expect(cmd).toContain('"${id}@${srv}?key=${key}"');
+  expect(cmd).toContain('"${id}@${srv}"');
   expect(cmd).toContain("alias = '$name'");
+  expect(cmd).toContain("platform = 'Windows'");
 });
 
 it.each(['https://example.test', 'rustdesk://connect/123456789@other:21116?key=public',

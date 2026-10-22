@@ -1,4 +1,4 @@
-const CACHE_NAME = 'xpoint-remote-v1-7-3';
+const CACHE_NAME = 'xpoint-remote-v1-7-4';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
