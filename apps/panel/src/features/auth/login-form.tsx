@@ -4,7 +4,13 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { ApiClientError } from '../../lib/api';
-import { isDisabledProfile, isExpiredSession, isInvalidCredentials, type LoginService } from './session';
+import {
+  isDisabledProfile,
+  isExpiredSession,
+  isInvalidCredentials,
+  LAST_LOGIN_EMAIL_STORAGE_KEY,
+  type LoginService,
+} from './session';
 import { beginSession, expireSession, markSessionVerified, sessionEpoch } from './session-cache';
 
 export type { LoginService } from './session';
@@ -52,7 +58,18 @@ export function LoginForm({ service, onAuthenticated }: LoginFormProps) {
 
   async function handleGoogleLogin() {
     if (pending || !service.createGoogleSession) return;
-    const cleanEmail = email.trim();
+    let cleanEmail = email.trim();
+    if (!cleanEmail && typeof window !== 'undefined') {
+      try {
+        const saved = window.localStorage.getItem(LAST_LOGIN_EMAIL_STORAGE_KEY)?.trim();
+        if (saved && /^\S+@\S+\.\S+$/.test(saved)) {
+          cleanEmail = saved;
+          setEmail(saved);
+        }
+      } catch {
+        // Ignore storage error
+      }
+    }
     if (!/^\S+@\S+\.\S+$/.test(cleanEmail)) {
       setGooglePromptMode(true);
       setErrors({ email: 'Informe seu e-mail liberado na lista de Técnicos para entrar com o Google.' });

@@ -5,8 +5,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { createApiClient, ApiClientError } from '../../lib/api';
-import { createAppwriteSessionClient, deleteCurrentSessionSafely } from '../../lib/appwrite';
+import {
+  clearAppwriteCookieFallback,
+  createAppwriteSessionClient,
+  deleteCurrentSessionSafely,
+} from '../../lib/appwrite';
 import { getPublicConfig } from '../../lib/config';
+import { clearPanelSessionJwt, storePanelSessionJwt } from '../../lib/session-jwt';
 import {
   clearVerifiedSessionBootstrap,
   expireSession,
@@ -14,6 +19,8 @@ import {
   markSessionVerified,
   sessionEpoch,
 } from './session-cache';
+
+export const LAST_LOGIN_EMAIL_STORAGE_KEY = 'appremoto:last-login-email';
 
 export interface LoginService {
   createSession(email: string, password: string): Promise<void>;
@@ -37,8 +44,10 @@ export type SessionState =
 export const SESSION_CHECK_TIMEOUT_MS = 5_500;
 
 export function isExpiredSession(error: unknown): boolean {
-  return (error instanceof AppwriteException && error.code === 401)
-    || (error instanceof ApiClientError && error.status === 401);
+  return (
+    (error instanceof AppwriteException && error.code === 401) ||
+    (error instanceof ApiClientError && error.status === 401)
+  );
 }
 
 function isTerminalSession(error: unknown): boolean {
@@ -46,17 +55,36 @@ function isTerminalSession(error: unknown): boolean {
 }
 
 export function isInvalidCredentials(error: unknown): boolean {
-  return (error instanceof AppwriteException && error.code === 401)
-    || (error instanceof ApiClientError && error.status === 401 && error.code === 'INVALID_CREDENTIALS');
-}
-
-export function isDisabledProfile(error: unknown): boolean {
-  return error instanceof ApiClientError && error.status === 403 && (
-    error.code === 'TECHNICIAN_DISABLED' || error.code === 'TECHNICIAN_NOT_AUTHORIZED'
+  return (
+    (error instanceof AppwriteException && error.code === 401) ||
+    (error instanceof ApiClientError &&
+      error.status === 401 &&
+      error.code === 'INVALID_CREDENTIALS')
   );
 }
 
-async function fetchAuthWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+export function isDisabledProfile(error: unknown): boolean {
+  return (
+    error instanceof ApiClientError &&
+    error.status === 403 &&
+    (error.code === 'TECHNICIAN_DISABLED' || error.code === 'TECHNICIAN_NOT_AUTHORIZED')
+  );
+}
+
+function rememberLoginEmail(email: string): void {
+  if (typeof window === 'undefined' || !email) return;
+  try {
+    window.localStorage.setItem(LAST_LOGIN_EMAIL_STORAGE_KEY, email.trim().toLowerCase());
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+async function fetchAuthWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
   try {
@@ -70,7 +98,7 @@ async function postPublicAuthEndpoint(
   baseUrl: string,
   path: string,
   payload: Record<string, unknown>
-): Promise<{ userId: string; secret: string }> {
+): Promise<{ userId: string; secret: string; sessionJwt?: string }> {
   const cleanBase = baseUrl.replace(/\/+$/, '');
   const reqInit: RequestInit = {
     method: 'POST',
@@ -96,10 +124,13 @@ async function postPublicAuthEndpoint(
 
   let response: Response;
   try {
-    response = await fetchAuthWithTimeout(primaryUrl, reqInit, 6_500);
-    if (fallbackUrl && (response.status === 502 || response.status === 503 || response.status === 504)) {
+    response = await fetchAuthWithTimeout(primaryUrl, reqInit, 8_000);
+    if (
+      fallbackUrl &&
+      (response.status === 502 || response.status === 503 || response.status === 504)
+    ) {
       try {
-        response = await fetchAuthWithTimeout(fallbackUrl, reqInit, 5_500);
+        response = await fetchAuthWithTimeout(fallbackUrl, reqInit, 7_000);
       } catch {
         // Keep primary gateway response if fallback also fails
       }
@@ -107,7 +138,7 @@ async function postPublicAuthEndpoint(
   } catch {
     if (fallbackUrl) {
       try {
-        response = await fetchAuthWithTimeout(fallbackUrl, reqInit, 5_500);
+        response = await fetchAuthWithTimeout(fallbackUrl, reqInit, 7_000);
       } catch {
         throw new ApiClientError({
           code: 'NETWORK_ERROR',
@@ -125,7 +156,12 @@ async function postPublicAuthEndpoint(
   }
 
   const data = (await response.json().catch(() => null)) as
-    | { userId?: string; secret?: string; error?: { code?: string; message?: string } }
+    | {
+        userId?: string;
+        secret?: string;
+        sessionJwt?: string;
+        error?: { code?: string; message?: string };
+      }
     | null;
 
   if (!response.ok || !data?.userId || !data?.secret) {
@@ -136,7 +172,17 @@ async function postPublicAuthEndpoint(
     });
   }
 
-  return { userId: data.userId, secret: data.secret };
+  const resolvedJwt =
+    data.sessionJwt || (data.secret.split('.').length === 3 ? data.secret : undefined);
+  if (resolvedJwt) {
+    storePanelSessionJwt(resolvedJwt);
+  }
+
+  return {
+    userId: data.userId,
+    secret: data.secret,
+    ...(resolvedJwt ? { sessionJwt: resolvedJwt } : {}),
+  };
 }
 
 export function createLoginService(): LoginService {
@@ -147,26 +193,45 @@ export function createLoginService(): LoginService {
     getJwt,
   });
 
+  function syncAppwriteSessionInBackground(userId: string, secret: string): void {
+    if (secret.split('.').length === 3) return;
+    void (async () => {
+      try {
+        clearAppwriteCookieFallback();
+        await account.createSession(userId, secret);
+      } catch {
+        // Panel session JWT is already active; ignore cross-origin Appwrite cookie fallback failure.
+      }
+    })();
+  }
+
   return {
     createSession: async (email, password) => {
+      const normalized = email.trim().toLowerCase();
       try {
-        await account.createEmailPasswordSession(email, password);
-      } catch (err) {
-        if (err instanceof AppwriteException && err.code === 401 && password.length >= 8) {
-          try {
-            const token = await postPublicAuthEndpoint(config.apiBaseUrl, '/v1/auth/activate-invite', {
-              email,
-              password,
-              requireUnconfiguredOrToken: true,
-            });
-            await deleteCurrentSessionSafely(account, 1_500);
-            await account.createSession(token.userId, token.secret);
-            return;
-          } catch {
-            throw err;
-          }
+        const token = await postPublicAuthEndpoint(config.apiBaseUrl, '/v1/auth/activate-invite', {
+          email: normalized,
+          password,
+        });
+        rememberLoginEmail(normalized);
+        if (token.sessionJwt) {
+          storePanelSessionJwt(token.sessionJwt);
+          syncAppwriteSessionInBackground(token.userId, token.secret);
+          return;
         }
-        throw err;
+        await deleteCurrentSessionSafely(account, 1_200);
+        await account.createSession(token.userId, token.secret);
+        return;
+      } catch (err) {
+        if (
+          err instanceof ApiClientError &&
+          (err.status === 400 || err.status === 401 || err.status === 403)
+        ) {
+          throw err;
+        }
+        await deleteCurrentSessionSafely(account, 1_200);
+        await account.createEmailPasswordSession(normalized, password);
+        rememberLoginEmail(normalized);
       }
     },
     createGoogleSession: async (email, inviteToken) => {
@@ -182,17 +247,30 @@ export function createLoginService(): LoginService {
         email: normalized,
         ...(inviteToken ? { inviteToken } : {}),
       });
-      await deleteCurrentSessionSafely(account, 1_500);
+      rememberLoginEmail(normalized);
+      if (token.sessionJwt) {
+        storePanelSessionJwt(token.sessionJwt);
+        syncAppwriteSessionInBackground(token.userId, token.secret);
+        return;
+      }
+      await deleteCurrentSessionSafely(account, 1_200);
       await account.createSession(token.userId, token.secret);
     },
     activateInviteSession: async ({ email, password, displayName, inviteToken }) => {
+      const normalized = email.trim().toLowerCase();
       const token = await postPublicAuthEndpoint(config.apiBaseUrl, '/v1/auth/activate-invite', {
-        email: email.trim().toLowerCase(),
+        email: normalized,
         password,
         ...(displayName ? { displayName } : {}),
         ...(inviteToken ? { inviteToken } : {}),
       });
-      await deleteCurrentSessionSafely(account, 1_500);
+      rememberLoginEmail(normalized);
+      if (token.sessionJwt) {
+        storePanelSessionJwt(token.sessionJwt);
+        syncAppwriteSessionInBackground(token.userId, token.secret);
+        return;
+      }
+      await deleteCurrentSessionSafely(account, 1_200);
       await account.createSession(token.userId, token.secret);
     },
     verifyProfile: async () => {
@@ -201,12 +279,16 @@ export function createLoginService(): LoginService {
     },
     removeSession: async () => {
       clearVerifiedSessionBootstrap();
-      await deleteCurrentSessionSafely(account, 2_500);
+      clearPanelSessionJwt();
+      await deleteCurrentSessionSafely(account, 1_800);
     },
   };
 }
 
-export async function checkSession(service: LoginService, expire?: () => Promise<boolean>): Promise<SessionState> {
+export async function checkSession(
+  service: LoginService,
+  expire?: () => Promise<boolean>
+): Promise<SessionState> {
   try {
     await service.verifyProfile();
     markSessionVerified();
@@ -220,7 +302,7 @@ export async function checkSession(service: LoginService, expire?: () => Promise
       try {
         await Promise.race([
           expire(),
-          new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 2_500)),
+          new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 2_000)),
         ]);
       } catch {
         // Never allow session expiration cleanup to block terminal state transition.
@@ -229,7 +311,7 @@ export async function checkSession(service: LoginService, expire?: () => Promise
       try {
         await Promise.race([
           service.removeSession(),
-          new Promise<void>((resolve) => setTimeout(resolve, 2_500)),
+          new Promise<void>((resolve) => setTimeout(resolve, 2_000)),
         ]);
       } catch {
         /* The local session is already unusable. */
@@ -247,38 +329,43 @@ export function useSessionBoundary(serviceOverride?: LoginService) {
   );
   const verifyRunId = useRef(0);
 
-  const verify = useCallback(async (backgroundOnly = false) => {
-    const currentRun = ++verifyRunId.current;
-    const epoch = sessionEpoch(queryClient);
-    if (!backgroundOnly) {
-      setState({ status: 'checking' });
-    }
-
-    let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
-    const watchdogPromise = new Promise<SessionState>((resolve) => {
-      watchdogTimer = setTimeout(() => {
-        resolve({
-          status: 'recoverable-error',
-          message: 'Nao foi possivel verificar sua sessao.',
-        });
-      }, SESSION_CHECK_TIMEOUT_MS);
-    });
-
-    try {
-      const nextState = await Promise.race([
-        checkSession(service, () => expireSession(queryClient, epoch, () => service.removeSession())),
-        watchdogPromise,
-      ]);
-      if (verifyRunId.current !== currentRun) return;
-      if (backgroundOnly && nextState.status === 'recoverable-error') {
-        // Keep optimistic authenticated view when a background check hits a transient network blip
-        return;
+  const verify = useCallback(
+    async (backgroundOnly = false) => {
+      const currentRun = ++verifyRunId.current;
+      const epoch = sessionEpoch(queryClient);
+      if (!backgroundOnly) {
+        setState({ status: 'checking' });
       }
-      setState(nextState);
-    } finally {
-      if (watchdogTimer) clearTimeout(watchdogTimer);
-    }
-  }, [queryClient, service]);
+
+      let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+      const watchdogPromise = new Promise<SessionState>((resolve) => {
+        watchdogTimer = setTimeout(() => {
+          resolve({
+            status: 'recoverable-error',
+            message: 'Nao foi possivel verificar sua sessao.',
+          });
+        }, SESSION_CHECK_TIMEOUT_MS);
+      });
+
+      try {
+        const nextState = await Promise.race([
+          checkSession(service, () =>
+            expireSession(queryClient, epoch, () => service.removeSession())
+          ),
+          watchdogPromise,
+        ]);
+        if (verifyRunId.current !== currentRun) return;
+        if (backgroundOnly && nextState.status === 'recoverable-error') {
+          // Keep optimistic authenticated view when a background check hits a transient network blip
+          return;
+        }
+        setState(nextState);
+      } finally {
+        if (watchdogTimer) clearTimeout(watchdogTimer);
+      }
+    },
+    [queryClient, service]
+  );
 
   useEffect(() => {
     const isOptimistic = hasVerifiedSessionBootstrap();

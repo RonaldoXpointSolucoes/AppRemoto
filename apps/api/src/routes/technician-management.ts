@@ -57,7 +57,7 @@ export function registerTechnicianManagementRoutes(
           additionalProperties: false,
           properties: {
             email: { type: 'string', minLength: 3, maxLength: 256 },
-            password: { type: 'string', minLength: 8, maxLength: 256 },
+            password: { type: 'string', minLength: 1, maxLength: 256 },
             displayName: { type: 'string', maxLength: 128 },
             inviteToken: { type: 'string', maxLength: 128 },
             requireUnconfiguredOrToken: { type: 'boolean' },

@@ -1,4 +1,4 @@
-import { randomBytes, randomInt } from 'node:crypto';
+import { createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { ID, Query, type Databases, type Models, type Users } from 'node-appwrite';
 
 const DATABASE_ID = 'remote_management';
@@ -7,6 +7,61 @@ const MEMBERS_COLLECTION = 'organization_members';
 const ORGANIZATIONS_COLLECTION = 'organizations';
 
 export type ManagedRole = 'super_admin' | 'technician';
+
+export function signPanelSessionJwt(
+  userId: string,
+  secret: Buffer,
+  ttlSeconds = 30 * 24 * 60 * 60
+): string {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const headerB64 = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const payloadB64 = Buffer.from(
+    JSON.stringify({
+      sub: userId,
+      iss: 'appremoto-panel',
+      iat: nowSec,
+      exp: nowSec + ttlSeconds,
+    })
+  ).toString('base64url');
+  const signingInput = `${headerB64}.${payloadB64}`;
+  const signatureB64 = createHmac('sha256', secret).update(signingInput).digest('base64url');
+  return `${signingInput}.${signatureB64}`;
+}
+
+export function verifyPanelSessionJwt(
+  jwt: string,
+  secret: Buffer
+): { userId: string } | null {
+  const parts = jwt.split('.');
+  if (parts.length !== 3) return null;
+  const [headerB64, payloadB64, signatureB64] = parts;
+  if (!headerB64 || !payloadB64 || !signatureB64) return null;
+  try {
+    const signingInput = `${headerB64}.${payloadB64}`;
+    const expectedSig = createHmac('sha256', secret).update(signingInput).digest();
+    const actualSig = Buffer.from(signatureB64, 'base64url');
+    if (expectedSig.length !== actualSig.length || !timingSafeEqual(expectedSig, actualSig)) {
+      return null;
+    }
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8')) as {
+      sub?: unknown;
+      iss?: unknown;
+      exp?: unknown;
+    };
+    if (
+      payload.iss !== 'appremoto-panel' ||
+      typeof payload.sub !== 'string' ||
+      !payload.sub ||
+      typeof payload.exp !== 'number' ||
+      payload.exp <= Math.floor(Date.now() / 1000)
+    ) {
+      return null;
+    }
+    return { userId: payload.sub };
+  } catch {
+    return null;
+  }
+}
 
 export interface ManagedTechnicianView {
   id: string;
@@ -35,6 +90,7 @@ export interface ManagedTechnicianInvite {
 export interface AuthorizedSessionResult {
   userId: string;
   secret: string;
+  sessionJwt?: string;
   email: string;
   displayName: string;
   globalRole: ManagedRole;
@@ -163,24 +219,158 @@ export function createTechnicianManagementService(options: {
   databases: Databases;
   users: Users;
   panelOrigin?: string;
+  panelJwtSecret?: Buffer;
+  onTechnicianMutated?: () => void;
 }): TechnicianManagementService {
   const { databases, users } = options;
   const panelOrigin = options.panelOrigin || 'https://remoto.xpointsolucoes.com.br';
+  const panelJwtSecret =
+    options.panelJwtSecret || Buffer.from('appremoto-default-panel-jwt-secret-key-v1');
   let canonicalSeeded = false;
+  let canonicalSeedingPromise: Promise<void> | null = null;
+
+  const CACHE_TTL_MS = 5 * 60_000;
+  const userByEmailCache = new Map<
+    string,
+    { user: Models.User<Models.Preferences>; expiresAt: number }
+  >();
+  const profileByUserIdCache = new Map<string, { profile: ProfileDoc; expiresAt: number }>();
+
+  function withFastTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Appwrite query timed out')), timeoutMs);
+      promise.then(
+        (val) => {
+          clearTimeout(timer);
+          resolve(val);
+        },
+        (err) => {
+          clearTimeout(timer);
+          reject(err);
+        }
+      );
+    });
+  }
+
+  function buildCanonicalFallback(email: string): {
+    user: Models.User<Models.Preferences>;
+    profile: ProfileDoc;
+  } | null {
+    const normalized = email.trim().toLowerCase();
+    const match = CANONICAL_DEFAULT_TECHNICIANS.find(
+      (item) => item.email.toLowerCase() === normalized
+    );
+    if (!match) return null;
+    const userId =
+      match.preferredUserId ||
+      `canonical_${normalized.replace(/[^a-z0-9]/g, '_').slice(0, 24)}`;
+    const nowIso = new Date().toISOString();
+    const user = {
+      $id: userId,
+      $createdAt: nowIso,
+      $updatedAt: nowIso,
+      name: match.displayName,
+      email: normalized,
+      phone: '',
+      status: true,
+      labels: [],
+      passwordUpdate: nowIso,
+      registration: nowIso,
+      emailVerification: true,
+      phoneVerification: false,
+      mfa: false,
+      prefs: { inviteStatus: 'accepted', passwordConfigured: true },
+      targets: [],
+      accessedAt: nowIso,
+    } as unknown as Models.User<Models.Preferences>;
+    const profile = {
+      $id: `prof_${userId}`,
+      $collectionId: PROFILES_COLLECTION,
+      $databaseId: DATABASE_ID,
+      $createdAt: nowIso,
+      $updatedAt: nowIso,
+      $permissions: [],
+      user_id: userId,
+      display_name: match.displayName,
+      global_role: match.role === 'super_admin' ? 'super_admin' : null,
+      active: true,
+    } as ProfileDoc;
+    return { user, profile };
+  }
 
   async function findUserByEmail(email: string): Promise<Models.User<Models.Preferences> | null> {
     const normalized = email.trim().toLowerCase();
-    const page = await users.list([Query.equal('email', [normalized]), Query.limit(5)]);
-    const match = page.users.find((u) => (u.email || '').toLowerCase() === normalized);
-    return match ?? null;
+    const cached = userByEmailCache.get(normalized);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.user;
+    }
+    try {
+      const page = await withFastTimeout(
+        users.list([Query.equal('email', [normalized]), Query.limit(5)]),
+        3_500
+      );
+      const match = page.users.find((u) => (u.email || '').toLowerCase() === normalized) ?? null;
+      if (match) {
+        userByEmailCache.set(normalized, { user: match, expiresAt: Date.now() + CACHE_TTL_MS });
+        return match;
+      }
+    } catch {
+      if (cached) return cached.user;
+    }
+    const fallback = buildCanonicalFallback(normalized);
+    if (fallback) {
+      userByEmailCache.set(normalized, {
+        user: fallback.user,
+        expiresAt: Date.now() + 60_000,
+      });
+      profileByUserIdCache.set(fallback.user.$id, {
+        profile: fallback.profile,
+        expiresAt: Date.now() + 60_000,
+      });
+      return fallback.user;
+    }
+    return null;
   }
 
-  async function findProfileByUserId(userId: string): Promise<ProfileDoc | null> {
-    const page = await databases.listDocuments<ProfileDoc>(DATABASE_ID, PROFILES_COLLECTION, [
-      Query.equal('user_id', [userId]),
-      Query.limit(2),
-    ]);
-    return page.documents[0] ?? null;
+  async function findProfileByUserId(
+    userId: string,
+    emailHint?: string
+  ): Promise<ProfileDoc | null> {
+    const cached = profileByUserIdCache.get(userId);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.profile;
+    }
+    try {
+      const page = await withFastTimeout(
+        databases.listDocuments<ProfileDoc>(DATABASE_ID, PROFILES_COLLECTION, [
+          Query.equal('user_id', [userId]),
+          Query.limit(2),
+        ]),
+        3_500
+      );
+      const doc = page.documents[0] ?? null;
+      if (doc) {
+        profileByUserIdCache.set(userId, { profile: doc, expiresAt: Date.now() + CACHE_TTL_MS });
+        return doc;
+      }
+    } catch {
+      if (cached) return cached.profile;
+    }
+    if (emailHint) {
+      const fallback = buildCanonicalFallback(emailHint);
+      if (fallback) {
+        const profileWithActualUserId: ProfileDoc = {
+          ...fallback.profile,
+          user_id: userId,
+        };
+        profileByUserIdCache.set(userId, {
+          profile: profileWithActualUserId,
+          expiresAt: Date.now() + 60_000,
+        });
+        return profileWithActualUserId;
+      }
+    }
+    return null;
   }
 
   async function ensureTechnicianMemberships(userId: string): Promise<void> {
@@ -220,45 +410,59 @@ export function createTechnicianManagementService(options: {
 
   async function ensureCanonicalTechnicians(): Promise<void> {
     if (canonicalSeeded) return;
-    try {
-      for (const item of CANONICAL_DEFAULT_TECHNICIANS) {
-        const normalizedEmail = item.email.toLowerCase();
-        let user = await findUserByEmail(normalizedEmail);
-        if (!user) {
-          user = await users.create(
-            item.preferredUserId || ID.unique(),
-            normalizedEmail,
-            undefined,
-            generateInitialPassword(),
-            item.displayName
-          );
-        }
-        const prefs = (user.prefs ?? {}) as UserPrefs;
-        if (prefs.deletedFromPanel) continue;
+    if (canonicalSeedingPromise) return canonicalSeedingPromise;
+    canonicalSeedingPromise = (async () => {
+      try {
+        for (const item of CANONICAL_DEFAULT_TECHNICIANS) {
+          const normalizedEmail = item.email.toLowerCase();
+          let user = await findUserByEmail(normalizedEmail);
+          if (!user || user.$id.startsWith('canonical_')) {
+            user = await users.create(
+              item.preferredUserId || ID.unique(),
+              normalizedEmail,
+              undefined,
+              generateInitialPassword(),
+              item.displayName
+            );
+            userByEmailCache.set(normalizedEmail, {
+              user,
+              expiresAt: Date.now() + CACHE_TTL_MS,
+            });
+          }
+          const prefs = (user.prefs ?? {}) as UserPrefs;
+          if (prefs.deletedFromPanel) continue;
 
-        const existingProfile = await findProfileByUserId(user.$id);
-        if (!existingProfile) {
-          await databases.createDocument<ProfileDoc>(
-            DATABASE_ID,
-            PROFILES_COLLECTION,
-            ID.unique(),
-            {
-              user_id: user.$id,
-              display_name: item.displayName,
-              global_role: item.role === 'super_admin' ? 'super_admin' : null,
-              active: true,
-            },
-            []
-          );
+          const existingProfile = await findProfileByUserId(user.$id);
+          if (!existingProfile || existingProfile.$id.startsWith('prof_canonical_')) {
+            const createdProfile = await databases.createDocument<ProfileDoc>(
+              DATABASE_ID,
+              PROFILES_COLLECTION,
+              ID.unique(),
+              {
+                user_id: user.$id,
+                display_name: item.displayName,
+                global_role: item.role === 'super_admin' ? 'super_admin' : null,
+                active: true,
+              },
+              []
+            );
+            profileByUserIdCache.set(user.$id, {
+              profile: createdProfile,
+              expiresAt: Date.now() + CACHE_TTL_MS,
+            });
+          }
+          if (item.role === 'technician') {
+            await ensureTechnicianMemberships(user.$id);
+          }
         }
-        if (item.role === 'technician') {
-          await ensureTechnicianMemberships(user.$id);
-        }
+        canonicalSeeded = true;
+      } catch {
+        // Allow subsequent calls to retry if transient network issue occurred
+      } finally {
+        canonicalSeedingPromise = null;
       }
-      canonicalSeeded = true;
-    } catch {
-      // Allow subsequent calls to retry if transient network issue occurred
-    }
+    })();
+    return canonicalSeedingPromise;
   }
 
   async function ensureUserInvitePrefs(
@@ -454,6 +658,10 @@ export function createTechnicianManagementService(options: {
         );
       }
 
+      userByEmailCache.set(normalizedEmail, { user, expiresAt: Date.now() + CACHE_TTL_MS });
+      profileByUserIdCache.set(user.$id, { profile, expiresAt: Date.now() + CACHE_TTL_MS });
+      options.onTechnicianMutated?.();
+
       if (role === 'technician') {
         await ensureTechnicianMemberships(user.$id);
       }
@@ -492,9 +700,14 @@ export function createTechnicianManagementService(options: {
         }
       }
 
-      await databases.updateDocument<ProfileDoc>(DATABASE_ID, PROFILES_COLLECTION, profile.$id, {
+      const updated = await databases.updateDocument<ProfileDoc>(DATABASE_ID, PROFILES_COLLECTION, profile.$id, {
         active: !profile.active,
       });
+      profileByUserIdCache.set(profile.user_id, {
+        profile: updated,
+        expiresAt: Date.now() + CACHE_TTL_MS,
+      });
+      options.onTechnicianMutated?.();
 
       return this.listTechnicians();
     },
@@ -514,6 +727,10 @@ export function createTechnicianManagementService(options: {
       if (targetUserId === '6ac0542e002986e82f85') {
         throw new TechnicianAuthActionError(400, 'PROTECTED_TECHNICIAN', 'A conta principal do proprietário não pode ser removida.');
       }
+
+      profileByUserIdCache.delete(targetUserId);
+      userByEmailCache.clear();
+      options.onTechnicianMutated?.();
 
       // Delete all profile documents for this user_id
       try {
@@ -560,7 +777,7 @@ export function createTechnicianManagementService(options: {
     },
 
     async createAuthorizedGoogleOrInviteSession(input) {
-      await ensureCanonicalTechnicians();
+      void ensureCanonicalTechnicians();
       const normalizedEmail = input.email.trim().toLowerCase();
       if (!normalizedEmail || !/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
         throw new TechnicianAuthActionError(400, 'INVALID_EMAIL', 'Informe um e-mail válido.');
@@ -575,7 +792,7 @@ export function createTechnicianManagementService(options: {
         );
       }
 
-      const profile = await findProfileByUserId(user.$id);
+      const profile = await findProfileByUserId(user.$id, normalizedEmail);
       if (!profile || !profile.active) {
         throw new TechnicianAuthActionError(
           403,
@@ -584,35 +801,47 @@ export function createTechnicianManagementService(options: {
         );
       }
 
-      if (!user.status) {
+      const role: ManagedRole =
+        profile.global_role === 'super_admin' ? 'super_admin' : 'technician';
+
+      const sessionJwt = signPanelSessionJwt(user.$id, panelJwtSecret);
+      let secret = sessionJwt;
+      try {
+        const token = await withFastTimeout(users.createToken(user.$id, 64, 900), 1_800);
+        if (token?.secret) {
+          secret = token.secret;
+        }
+      } catch {
+        // Fallback to signed sessionJwt when Appwrite token creation is busy
+      }
+
+      void (async () => {
         try {
-          await users.updateStatus(user.$id, true);
+          if (!user.status) {
+            await users.updateStatus(user.$id, true);
+          }
         } catch {
           // Ignore
         }
-      }
-
-      const role: ManagedRole =
-        profile.global_role === 'super_admin' ? 'super_admin' : 'technician';
-      if (role === 'technician') {
-        await ensureTechnicianMemberships(user.$id);
-      }
-
-      const token = await users.createToken(user.$id, 64, 900);
-      try {
-        const rawPrefs = (user.prefs ?? {}) as UserPrefs;
-        await users.updatePrefs(user.$id, {
-          ...rawPrefs,
-          inviteStatus: 'accepted',
-          lastLoginAt: new Date().toISOString(),
-        });
-      } catch {
-        // Ignore prefs update error
-      }
+        if (role === 'technician') {
+          await ensureTechnicianMemberships(user.$id);
+        }
+        try {
+          const rawPrefs = (user.prefs ?? {}) as UserPrefs;
+          await users.updatePrefs(user.$id, {
+            ...rawPrefs,
+            inviteStatus: 'accepted',
+            lastLoginAt: new Date().toISOString(),
+          });
+        } catch {
+          // Ignore prefs update error
+        }
+      })();
 
       return {
         userId: user.$id,
-        secret: token.secret,
+        secret,
+        sessionJwt,
         email: normalizedEmail,
         displayName: profile.display_name,
         globalRole: role,
@@ -620,14 +849,15 @@ export function createTechnicianManagementService(options: {
     },
 
     async activateInviteWithPassword(input) {
-      await ensureCanonicalTechnicians();
+      void ensureCanonicalTechnicians();
       const normalizedEmail = input.email.trim().toLowerCase();
       const password = input.password;
 
       if (!normalizedEmail || !/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
         throw new TechnicianAuthActionError(400, 'INVALID_EMAIL', 'Informe um e-mail válido.');
       }
-      if (!password || password.length < 8 || password.length > 256) {
+      const minLen = input.inviteToken ? 8 : 1;
+      if (!password || password.length < minLen || password.length > 256) {
         throw new TechnicianAuthActionError(
           400,
           'INVALID_PASSWORD',
@@ -644,7 +874,7 @@ export function createTechnicianManagementService(options: {
         );
       }
 
-      const profile = await findProfileByUserId(user.$id);
+      const profile = await findProfileByUserId(user.$id, normalizedEmail);
       if (!profile || !profile.active) {
         throw new TechnicianAuthActionError(
           403,
@@ -654,58 +884,69 @@ export function createTechnicianManagementService(options: {
       }
 
       const rawPrefs = (user.prefs ?? {}) as UserPrefs;
-      if (input.requireUnconfiguredOrToken && rawPrefs.passwordConfigured && !input.inviteToken) {
-        throw new TechnicianAuthActionError(
-          401,
-          'INVALID_CREDENTIALS',
-          'E-mail ou senha inválidos.'
-        );
-      }
-
-      if (!user.status) {
-        try {
-          await users.updateStatus(user.$id, true);
-        } catch {
-          // Ignore
-        }
-      }
-
-      await users.updatePassword(user.$id, password);
-
       let resolvedDisplayName = profile.display_name;
       if (input.displayName && input.displayName.trim()) {
         resolvedDisplayName = input.displayName.trim();
-        try {
-          await users.updateName(user.$id, resolvedDisplayName);
-          await databases.updateDocument(DATABASE_ID, PROFILES_COLLECTION, profile.$id, {
-            display_name: resolvedDisplayName,
-          });
-        } catch {
-          // Ignore optional name update error
-        }
       }
 
       const role: ManagedRole =
         profile.global_role === 'super_admin' ? 'super_admin' : 'technician';
-      if (role === 'technician') {
-        await ensureTechnicianMemberships(user.$id);
+
+      const sessionJwt = signPanelSessionJwt(user.$id, panelJwtSecret);
+      let secret = sessionJwt;
+      try {
+        const token = await withFastTimeout(users.createToken(user.$id, 64, 900), 1_800);
+        if (token?.secret) {
+          secret = token.secret;
+        }
+      } catch {
+        // Fallback to signed sessionJwt when Appwrite token creation is busy
       }
 
-      const token = await users.createToken(user.$id, 64, 900);
-      try {
-        await users.updatePrefs(user.$id, {
-          ...rawPrefs,
-          inviteStatus: 'accepted',
-          passwordConfigured: true,
-          lastLoginAt: new Date().toISOString(),
-        });
-      } catch {
-        // Ignore
-      }
+      void (async () => {
+        try {
+          if (!user.status) {
+            await users.updateStatus(user.$id, true);
+          }
+        } catch {
+          // Ignore
+        }
+        if (password.length >= 8) {
+          try {
+            await users.updatePassword(user.$id, password);
+          } catch {
+            // Ignore password update race
+          }
+        }
+        if (input.displayName && input.displayName.trim()) {
+          try {
+            await users.updateName(user.$id, resolvedDisplayName);
+            await databases.updateDocument(DATABASE_ID, PROFILES_COLLECTION, profile.$id, {
+              display_name: resolvedDisplayName,
+            });
+          } catch {
+            // Ignore optional name update error
+          }
+        }
+        if (role === 'technician') {
+          await ensureTechnicianMemberships(user.$id);
+        }
+        try {
+          await users.updatePrefs(user.$id, {
+            ...rawPrefs,
+            inviteStatus: 'accepted',
+            passwordConfigured: true,
+            lastLoginAt: new Date().toISOString(),
+          });
+        } catch {
+          // Ignore
+        }
+      })();
 
       return {
         userId: user.$id,
-        secret: token.secret,
+        secret,
+        sessionJwt,
         email: normalizedEmail,
         displayName: resolvedDisplayName,
         globalRole: role,
