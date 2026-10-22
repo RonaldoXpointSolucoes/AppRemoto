@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.7.0',
+    date: 'Outubro 2026',
+    title: 'Conexão Remota Instantânea via Relay Direto (hbbs/hbbr) & Eliminação de Race Condition de Pareamento',
+    highlight:
+      'Eliminação do atraso de 6 a 10 segundos de NAT hole-punching malsucedido em CGNAT (ALWAYS_USE_RELAY=Y), correção da condição de corrida de pareamento simultâneo no hbbr (TOKIO_WORKER_THREADS=1 + RUST_LOG=warn) e redução de 50% nas leituras do endpoint /connect.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Pareamento Imediato via Relay (Zero Espera de Hole-Punching UDP/CGNAT)',
+        description:
+          'Ativação de ALWAYS_USE_RELAY=Y no servidor hbbs e eliminação da condição de corrida em hbbr que causava timeout de 30s seguido de reconexão automática quando ambos os pares conectavam no mesmo microssegundo.',
+        tag: 'TeamViewer',
+      },
+      {
+        title: 'Endpoint /connect sem Leituras Duplicadas & Cache de Preflight CORS (24h)',
+        description:
+          'Reutilização de contexto pré-verificado e paralelização via Promise.all no backend, eliminando 4 leituras redundantes no Appwrite a cada clique em Conectar.',
+        tag: 'Infra & Cockpit',
+      },
+    ],
+  },
+  {
     version: 'v1.6.9',
     date: 'Outubro 2026',
     title: 'Busca Multi-Dados Instantânea (0ms), Seletores por Escopo & Otimização O(N) de Carregamento',
     highlight:
       'Filtragem ultra-rápida sem latência por Nome, IP Local/Público, Razão Social, Fantasia e ID (com suporte a múltiplos termos e vírgulas), eliminação do waterfall de carregamento da página e redução de O(N²) para O(N) na análise de topologia.',
-    isCurrent: true,
     items: [
       {
         title: 'Filtro Multi-Dados Instantâneo (Nome, IP, Razão Social, Fantasia, CNPJ e ID)',

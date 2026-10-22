@@ -11,14 +11,14 @@ import { issueToken, hashToken } from '../security/tokens.ts';
 import { decryptPassword } from '../security/credentials.ts';
 import { createDeviceTools, type DeviceToolsService } from './device-tools.ts';
 import { OperatorSetupDenied } from './operator-errors.ts';
-import { createConnectionLaunch, type ConnectWithOptions } from './connection-launch.ts';
+import { createConnectionLaunch, type ConnectWithOptions, type PreverifiedConnectContext } from './connection-launch.ts';
 
 export { OperatorSetupDenied } from './operator-errors.ts';
 export interface OperatorSetupService extends Partial<DeviceToolsService> {
   connectWithOptions?: ConnectWithOptions;
   create(technician: AuthenticatedTechnician, request: CreateEnrollmentTokenRequest, sourceIp: string): Promise<CreateEnrollmentTokenResponse>;
   status(technician: AuthenticatedTechnician, enrollmentId: string): Promise<EnrollmentStatusResponse>;
-  connect(technician: AuthenticatedTechnician, deviceId: string, sourceIp: string): Promise<ConnectDeviceResponse>;
+  connect(technician: AuthenticatedTechnician, deviceId: string, sourceIp: string, preverified?: PreverifiedConnectContext): Promise<ConnectDeviceResponse>;
 }
 interface Dependencies {
   repository: EnrollmentRepository;
@@ -51,10 +51,13 @@ export function createOperatorSetupService(deps: Dependencies): OperatorSetupSer
       status: device.enabled === true && age >= 0 && age <= 90_000 ? 'ONLINE' : 'OFFLINE' });
   }
   async function heartbeatConfirmed(deviceId: string, device: EnrollmentData): Promise<boolean> {
-    const token = await repo.snapshot('device_tokens', deviceId);
+    const [token, pending] = await Promise.all([
+      repo.snapshot('device_tokens', deviceId),
+      deps.receipts.heartbeatPending(deviceId),
+    ]);
     return Boolean(token && token.device_id === deviceId && token.revoked_at === null &&
       typeof token.last_used_at === 'string' && Number.isFinite(Date.parse(token.last_used_at)) &&
-      token.last_used_at === device.last_seen_at && !await deps.receipts.heartbeatPending(deviceId));
+      token.last_used_at === device.last_seen_at && !pending);
   }
   const service: OperatorSetupService = {
     ...createDeviceTools(deps),
@@ -94,12 +97,19 @@ export function createOperatorSetupService(deps: Dependencies): OperatorSetupSer
           !await heartbeatConfirmed(receipt.device_id, device)) return waiting();
       return EnrollmentStatusResponseSchema.parse({ status: projected.status.toLowerCase(), expiresAt: token.expires_at, device: projected });
     },
-    async connect(technician, deviceId, sourceIp) {
-      const device = await repo.snapshot('devices', deviceId);
-      if (!device) throw denied();
-      const organization = await authorize(technician, device.organization_id, 'canConnect');
-      if (view(deviceId, device, organization.name).status !== 'ONLINE' || typeof device.rustdesk_id !== 'string' ||
-        !/^[0-9]{6,16}$/.test(device.rustdesk_id) || !await heartbeatConfirmed(deviceId, device)) throw denied();
+    async connect(technician, deviceId, sourceIp, preverified) {
+      let device: EnrollmentData | null;
+      let organization: { id: string; name: string };
+      if (preverified) {
+        device = preverified.device;
+        organization = preverified.organization;
+      } else {
+        device = await repo.snapshot('devices', deviceId);
+        if (!device) throw denied();
+        organization = await authorize(technician, device.organization_id, 'canConnect');
+        if (view(deviceId, device, organization.name).status !== 'ONLINE' || typeof device.rustdesk_id !== 'string' ||
+          !/^[0-9]{6,16}$/.test(device.rustdesk_id) || !await heartbeatConfirmed(deviceId, device)) throw denied();
+      }
       const credential = await repo.snapshot('device_credentials', deviceId);
       if (!credential || credential.device_id !== deviceId) throw unavailable();
       let response: ConnectDeviceResponse;

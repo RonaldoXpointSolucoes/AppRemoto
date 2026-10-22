@@ -113,6 +113,19 @@ function installBackgroundNavigationGuard(): void {
   timerId = setTimeout(cleanup, 5000);
 }
 
+export function ensureRustDeskLaunchFrame(): HTMLIFrameElement | null {
+  if (typeof document === 'undefined' || !document.body) return null;
+  let launchFrame = document.querySelector<HTMLIFrameElement>('iframe[name="rustdesk-launch-frame"]');
+  if (!launchFrame) {
+    launchFrame = document.createElement('iframe');
+    launchFrame.name = 'rustdesk-launch-frame';
+    launchFrame.style.display = 'none';
+    launchFrame.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(launchFrame);
+  }
+  return launchFrame;
+}
+
 function triggerEphemeralAnchor(targetUri: string): void {
   if (typeof document === 'undefined' || !document.body) {
     window.location.assign(targetUri);
@@ -120,17 +133,7 @@ function triggerEphemeralAnchor(targetUri: string): void {
   }
   installBackgroundNavigationGuard();
   const isCustomProtocol = targetUri.startsWith('rustdesk:');
-  let launchFrame: HTMLIFrameElement | null = null;
-  if (isCustomProtocol) {
-    launchFrame = document.querySelector<HTMLIFrameElement>('iframe[name="rustdesk-launch-frame"]');
-    if (!launchFrame) {
-      launchFrame = document.createElement('iframe');
-      launchFrame.name = 'rustdesk-launch-frame';
-      launchFrame.style.display = 'none';
-      launchFrame.setAttribute('aria-hidden', 'true');
-      document.body.appendChild(launchFrame);
-    }
-  }
+  const launchFrame = isCustomProtocol ? ensureRustDeskLaunchFrame() : null;
   const anchor = document.createElement('a');
   try {
     anchor.href = targetUri;
@@ -204,9 +207,10 @@ export function buildRustDeskBulkAliasSyncPowerShellCommand(
     `        elseif($c -match '\\[options\\]'){ $c=$c -replace '\\[options\\]',"[options]\`r\`nalias = '$name'" }`,
     `        else { $c+="\r\n[options]\r\nalias = '$name'\r\n" };`,
     `        if($pk -like '*?key=*'){ $c=[regex]::Replace($c,'(?m)^hostname\\s*=.*$',"hostname = ''") };`,
+    `        if($c -notmatch '(?m)^force-always-relay\\s*='){ $c=$c -replace '\\[options\\]',"[options]\`r\`nforce-always-relay = 'Y'" };`,
     `        [IO.File]::WriteAllText($f, $c, $utf8)`,
     `      } else {`,
-    `        [IO.File]::WriteAllText($f, "[options]\`r\`nother-server-key = '$key'\`r\`nalias = '$name'\`r\`n\`r\`n[info]\`r\`nhostname = ''\`r\`n", $utf8)`,
+    `        [IO.File]::WriteAllText($f, "[options]\`r\`nother-server-key = '$key'\`r\`nforce-always-relay = 'Y'\`r\`nalias = '$name'\`r\`n\`r\`n[info]\`r\`nhostname = ''\`r\`n", $utf8)`,
     `      }`,
     `    }`,
     `  }`,

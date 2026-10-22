@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiClientError } from '../../lib/api';
 import { onSessionClear, sessionEpoch } from '../auth/session-cache';
-import { launchRustDesk, manualRustDeskUri } from './rustdesk-launch';
+import { ensureRustDeskLaunchFrame, launchRustDesk, manualRustDeskUri } from './rustdesk-launch';
 import { localEvent, safeConnectionCode, type ConnectionLogEvent } from './connection-log';
 
 export interface ConnectionService {
@@ -82,7 +82,14 @@ export function ConnectDevice({
       active.current = false; remove(); handoff.current = undefined; clearTimeout(timer.current); clearTimeout(autoDismissTimer.current); clearPassword();
     };
   }, [client, deviceId]);
-  useEffect(() => { if (!enabled) { clearHandoff(); clearPassword(); } }, [enabled]);
+  useEffect(() => {
+    if (!enabled) {
+      clearHandoff();
+      clearPassword();
+    } else {
+      ensureRustDeskLaunchFrame();
+    }
+  }, [enabled]);
   function append(value: ConnectionLogEvent) { if (valid()) events.current?.(value); }
   function report(current: Attempt, event: ConnectionEventInput['event']) {
     if (!valid()) return;

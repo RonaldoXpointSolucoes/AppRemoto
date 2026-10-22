@@ -1,10 +1,15 @@
 import { ConnectDeviceRequestSchema, ConnectDeviceLaunchResponseSchema, extractDeviceAccessPolicy, verifyDeviceAccessPassword, type ConnectDeviceRequest,
   type ConnectDeviceLaunchResponse, type ConnectDeviceResponse } from '@appremoto/contracts';
 import type { AuthenticatedTechnician } from '../plugins/technician-auth.ts';
-import type { EnrollmentRepository } from '../repositories/enrollment.ts';
+import type { EnrollmentData, EnrollmentRepository } from '../repositories/enrollment.ts';
 import type { OperatorAuditRepository } from '../repositories/audit.ts';
 import type { SetupReceiptRepository } from '../repositories/operator-setup.ts';
 import { OperatorSetupDenied, DeviceToolError } from './operator-errors.ts';
+
+export interface PreverifiedConnectContext {
+  device: EnrollmentData;
+  organization: { id: string; name: string };
+}
 
 export type ConnectWithOptions = (technician: AuthenticatedTechnician, deviceId: string,
   input: ConnectDeviceRequest, sourceIp: string) => Promise<ConnectDeviceLaunchResponse>;
@@ -13,7 +18,7 @@ interface Dependencies {
   now?: () => Date;
   // Reuse the unchanged, already-authorized automatic connect implementation.
   // This wrapper never decrypts, changes or logs its launch URI.
-  connectAutomatic(technician: AuthenticatedTechnician, deviceId: string, sourceIp: string): Promise<ConnectDeviceResponse>;
+  connectAutomatic(technician: AuthenticatedTechnician, deviceId: string, sourceIp: string, preverified?: PreverifiedConnectContext): Promise<ConnectDeviceResponse>;
 }
 
 export function createConnectionLaunch(deps: Dependencies): ConnectWithOptions {
@@ -50,11 +55,14 @@ export function createConnectionLaunch(deps: Dependencies): ConnectWithOptions {
       if (request.mode === 'automatic') {
         const age = typeof device.last_seen_at === 'string' ? now().getTime() - Date.parse(device.last_seen_at) : NaN;
         if (!Number.isFinite(age) || age < 0 || age > 90_000) throw new DeviceToolError('DEVICE_OFFLINE', 409);
-        const token = await deps.repository.snapshot('device_tokens', deviceId);
+        const [token, pending] = await Promise.all([
+          deps.repository.snapshot('device_tokens', deviceId),
+          deps.receipts.heartbeatPending(deviceId),
+        ]);
         if (!token || token.device_id !== deviceId || token.revoked_at !== null ||
             typeof token.last_used_at !== 'string' || token.last_used_at !== device.last_seen_at ||
-            await deps.receipts.heartbeatPending(deviceId)) throw new DeviceToolError('HEARTBEAT_UNCONFIRMED', 409);
-        const launch = await deps.connectAutomatic(technician, deviceId, sourceIp);
+            pending) throw new DeviceToolError('HEARTBEAT_UNCONFIRMED', 409);
+        const launch = await deps.connectAutomatic(technician, deviceId, sourceIp, { device, organization });
         response = ConnectDeviceLaunchResponseSchema.parse({ ...launch, ...request });
       } else {
         // Manual launch contains only public server configuration. No password is accepted or read here.

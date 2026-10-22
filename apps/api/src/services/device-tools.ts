@@ -58,10 +58,13 @@ export function createDeviceTools(deps: Dependencies): DeviceToolsService {
       ...(policy.customDisplayName ? { customDisplayName: true } : {}) });
   }
   async function heartbeatConfirmed(deviceId: string, device: EnrollmentData): Promise<boolean> {
-    const token = await repo.snapshot('device_tokens', deviceId);
+    const [token, pending] = await Promise.all([
+      repo.snapshot('device_tokens', deviceId),
+      deps.receipts.heartbeatPending(deviceId),
+    ]);
     return Boolean(token && token.device_id === deviceId && token.revoked_at === null &&
       typeof token.last_used_at === 'string' && Number.isFinite(Date.parse(token.last_used_at)) &&
-      token.last_used_at === device.last_seen_at && !await deps.receipts.heartbeatPending(deviceId));
+      token.last_used_at === device.last_seen_at && !pending);
   }
   return {
     async details(technician, deviceId) {
@@ -69,9 +72,12 @@ export function createDeviceTools(deps: Dependencies): DeviceToolsService {
       const projected = view(deviceId, device, organization.name);
       const { cleanNotes } = extractDataDivasFromNotes(typeof device.notes === 'string' ? device.notes : null);
       const canConnect = technician.authorization.some((item) => item.organizationId === organization.id && item.canConnect);
-      const credential = canConnect ? await repo.snapshot('device_credentials', deviceId) : null;
+      const [credential, hbConfirmed] = await Promise.all([
+        canConnect ? repo.snapshot('device_credentials', deviceId) : Promise.resolve(null),
+        heartbeatConfirmed(deviceId, device),
+      ]);
       return DeviceDetailsResponseSchema.parse({ device: projected, notes: cleanNotes, diagnostics: {
-        agentOnline: projected.status === 'ONLINE', heartbeatConfirmed: await heartbeatConfirmed(deviceId, device),
+        agentOnline: projected.status === 'ONLINE', heartbeatConfirmed: hbConfirmed,
         rustdeskIdValid: validId(device.rustdesk_id), credentialAvailable: Boolean(credential && credential.device_id === deviceId &&
           typeof credential.password_ciphertext === 'string' && credential.password_ciphertext && credential.key_version === deps.keyVersion),
       } });

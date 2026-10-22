@@ -33,6 +33,7 @@ export function buildApp(options: FastifyServerOptions = {}, services?: Technici
   if (allowedOrigins) app.register(cors, {
     origin: (origin, callback) => callback(null, Boolean(origin && allowedOrigins.includes(origin))),
     methods: ['GET', 'POST', 'OPTIONS'], allowedHeaders: ['Authorization', 'Content-Type'],
+    maxAge: 86400,
     strictPreflight: true,
   });
 
