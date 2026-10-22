@@ -556,4 +556,233 @@ export function analyzeDeviceNetworkTopology<
   };
 }
 
+export function analyzeAllDevicesNetworkTopology<
+  T extends {
+    id: string;
+    displayName: string;
+    hostname: string;
+    operatingSystem: string;
+    osVersion: string;
+    publicIp?: string | null;
+    datadivas?: {
+      cnpj?: string;
+      nomeFantasia?: string;
+      razaoSocial?: string;
+      ipMaq?: string;
+      ipDataDivas?: string;
+      redeSubrede?: string;
+      redeGateway?: string;
+      redeTipo?: string;
+    } | null;
+  },
+>(allDevices: readonly T[]): Map<string, DeviceNetworkTopologyAnalysis> {
+  const result = new Map<string, DeviceNetworkTopologyAnalysis>();
+  if (allDevices.length === 0) return result;
+
+  interface PrecomputedNode {
+    dev: T;
+    localIp: string | null;
+    publicIp: string | null;
+    subnetPrefix: string | null;
+    gatewayIp: string | null;
+    cnpjKey: string | null;
+    clientNameKey: string | null;
+  }
+
+  const nodes: PrecomputedNode[] = [];
+  const byCnpj = new Map<string, PrecomputedNode[]>();
+  const byClientName = new Map<string, PrecomputedNode[]>();
+  const byPublicIp = new Map<string, PrecomputedNode[]>();
+
+  for (const dev of allDevices) {
+    const { localIp, publicIp } = resolveDeviceNetworkIps(dev);
+    const subnetPrefix = extractIpv4SubnetPrefix(localIp);
+    const gatewayIp =
+      normalizeIpAddress(dev.datadivas?.redeGateway) ||
+      (subnetPrefix ? `${subnetPrefix}.1` : null);
+    const { cnpjKey, clientNameKey } = extractClientGroupKey(dev);
+    const node: PrecomputedNode = {
+      dev,
+      localIp,
+      publicIp,
+      subnetPrefix,
+      gatewayIp,
+      cnpjKey,
+      clientNameKey,
+    };
+    nodes.push(node);
+
+    if (cnpjKey) {
+      const list = byCnpj.get(cnpjKey);
+      if (list) list.push(node);
+      else byCnpj.set(cnpjKey, [node]);
+    }
+    if (clientNameKey) {
+      const list = byClientName.get(clientNameKey);
+      if (list) list.push(node);
+      else byClientName.set(clientNameKey, [node]);
+    }
+    if (publicIp) {
+      const list = byPublicIp.get(publicIp);
+      if (list) list.push(node);
+      else byPublicIp.set(publicIp, [node]);
+    }
+  }
+
+  for (const targetNode of nodes) {
+    const target = targetNode.dev;
+    const { localIp, publicIp, subnetPrefix, gatewayIp, cnpjKey, clientNameKey } = targetNode;
+    const subnetRangeLabel = subnetPrefix ? `${subnetPrefix}.x` : null;
+    const subnetCidr =
+      target.datadivas?.redeSubrede?.trim() || (subnetPrefix ? `${subnetPrefix}.0/24` : null);
+    const connectionType = target.datadivas?.redeTipo?.trim() || null;
+
+    const configuredServerIp = normalizeIpAddress(target.datadivas?.ipDataDivas);
+    const configuredServerSubnet = extractIpv4SubnetPrefix(configuredServerIp);
+    const serverSubnetMismatch = Boolean(
+      subnetPrefix && configuredServerSubnet && subnetPrefix !== configuredServerSubnet
+    );
+
+    const peerMap = new Map<string, PrecomputedNode>();
+    if (cnpjKey) {
+      for (const p of byCnpj.get(cnpjKey) || []) {
+        if (p.dev.id !== target.id) peerMap.set(p.dev.id, p);
+      }
+    }
+    if (clientNameKey) {
+      for (const p of byClientName.get(clientNameKey) || []) {
+        if (p.dev.id !== target.id) peerMap.set(p.dev.id, p);
+      }
+    }
+    if (publicIp) {
+      for (const p of byPublicIp.get(publicIp) || []) {
+        if (p.dev.id !== target.id) peerMap.set(p.dev.id, p);
+      }
+    }
+
+    const peers: NetworkPeerSummary[] = [];
+    for (const peerNode of peerMap.values()) {
+      let relation: NetworkPeerSummary['relation'] = 'unknown_lan';
+      if (subnetPrefix && peerNode.subnetPrefix) {
+        relation = subnetPrefix === peerNode.subnetPrefix ? 'same_router' : 'different_router';
+      }
+      peers.push({
+        id: peerNode.dev.id,
+        displayName: peerNode.dev.displayName,
+        hostname: peerNode.dev.hostname,
+        localIp: peerNode.localIp,
+        publicIp: peerNode.publicIp,
+        subnetPrefix: peerNode.subnetPrefix,
+        gatewayIp: peerNode.gatewayIp,
+        relation,
+      });
+    }
+
+    const sameRouterPeers = peers.filter((p) => p.relation === 'same_router');
+    const differentRouterPeers = peers.filter((p) => p.relation === 'different_router');
+
+    if (!localIp || !subnetPrefix) {
+      result.set(target.id, {
+        status: 'no_lan_ip',
+        localIp: null,
+        publicIp,
+        subnetPrefix: null,
+        subnetRangeLabel: null,
+        subnetCidr: null,
+        gatewayIp: null,
+        connectionType,
+        configuredServerIp,
+        serverSubnetMismatch: false,
+        badgeLabel:
+          peers.length > 0
+            ? `📡 Rede: s/ IP Local (${peers.length + 1} PCs no grupo)`
+            : '📡 Rede: s/ IP Local',
+        summaryTitle: 'IP Local ainda não detectado para diagnóstico de roteador',
+        summaryDescription:
+          peers.length > 0
+            ? `Esta máquina pertence a um grupo com mais ${peers.length} computador(es), mas ainda não reportou seu IP de rede local (LAN).`
+            : 'O endereço IP da rede interna ainda não foi reportado pelo agente desta máquina.',
+        peers,
+        sameRouterCount: 0,
+        differentRouterCount: 0,
+      });
+      continue;
+    }
+
+    if (serverSubnetMismatch || differentRouterPeers.length > 0) {
+      const conflictTarget = serverSubnetMismatch
+        ? `${configuredServerSubnet}.x (Servidor DataDivas ${configuredServerIp})`
+        : `${differentRouterPeers[0]!.subnetPrefix}.x (${differentRouterPeers[0]!.displayName})`;
+      const conflictSubnetShort = serverSubnetMismatch
+        ? `${configuredServerSubnet}.x`
+        : `${differentRouterPeers[0]!.subnetPrefix}.x`;
+
+      result.set(target.id, {
+        status: 'isolated_router',
+        localIp,
+        publicIp,
+        subnetPrefix,
+        subnetRangeLabel,
+        subnetCidr,
+        gatewayIp,
+        connectionType,
+        configuredServerIp,
+        serverSubnetMismatch,
+        badgeLabel: `⚠️ Outro Roteador (${subnetPrefix}.x ≠ ${conflictSubnetShort})`,
+        summaryTitle: 'Alerta de Isolamento de Rede (Roteadores / Sub-redes Diferentes)',
+        summaryDescription: `Esta máquina está na faixa ${subnetPrefix}.x (Roteador ${gatewayIp}), enquanto ${conflictTarget} está em outra faixa de rede. Máquinas em roteadores/sub-redes diferentes não se enxergam na rede local.`,
+        peers,
+        sameRouterCount: sameRouterPeers.length + 1,
+        differentRouterCount: differentRouterPeers.length,
+      });
+      continue;
+    }
+
+    if (sameRouterPeers.length > 0) {
+      const totalSame = sameRouterPeers.length + 1;
+      result.set(target.id, {
+        status: 'same_router',
+        localIp,
+        publicIp,
+        subnetPrefix,
+        subnetRangeLabel,
+        subnetCidr,
+        gatewayIp,
+        connectionType,
+        configuredServerIp,
+        serverSubnetMismatch: false,
+        badgeLabel: `🔗 Mesma Rede (${subnetPrefix}.x · ${totalSame} PCs)`,
+        summaryTitle: `Todas as ${totalSame} máquinas na Mesma Rede Local (${subnetPrefix}.x)`,
+        summaryDescription: `Este computador e mais ${sameRouterPeers.length} máquina(s) deste local estão conectados na mesma faixa de roteador (${subnetCidr} · Gateway ${gatewayIp}) e se enxergam normalmente na LAN.`,
+        peers,
+        sameRouterCount: totalSame,
+        differentRouterCount: 0,
+      });
+      continue;
+    }
+
+    result.set(target.id, {
+      status: 'single_router',
+      localIp,
+      publicIp,
+      subnetPrefix,
+      subnetRangeLabel,
+      subnetCidr,
+      gatewayIp,
+      connectionType,
+      configuredServerIp,
+      serverSubnetMismatch: false,
+      badgeLabel: `📡 Roteador: ${subnetPrefix}.x (GW ${gatewayIp})`,
+      summaryTitle: `Sub-rede Local ${subnetCidr} (Roteador ${gatewayIp})`,
+      summaryDescription: `Máquina operando na faixa local ${subnetPrefix}.x com gateway padrão ${gatewayIp}${connectionType ? ` via ${connectionType}` : ''}.`,
+      peers,
+      sameRouterCount: 1,
+      differentRouterCount: 0,
+    });
+  }
+
+  return result;
+}
+
+
 

@@ -249,15 +249,31 @@ const LEGACY_GROUPS_KEY = 'xpoint_device_groups';
 const FOLDER_MAP_KEY = 'xpoint_device_folder_map_v2';
 const CUSTOM_META_KEY = 'xpoint_device_custom_meta_v1';
 
-export function getRecentConnections(): RecentConnectionRecord[] {
-  if (typeof window === 'undefined') return [];
+const storageJsonCache = new Map<string, { raw: string; parsed: unknown }>();
+let groupsMergedCache: { key: string; groups: DeviceGroup[] } | null = null;
+
+function readCachedStorageJson<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
   try {
-    const raw = localStorage.getItem(RECENT_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw);
+    const raw = localStorage.getItem(key);
+    if (!raw) {
+      storageJsonCache.delete(key);
+      return fallback;
+    }
+    const cached = storageJsonCache.get(key);
+    if (cached && cached.raw === raw) {
+      return cached.parsed as T;
+    }
+    const parsed = JSON.parse(raw) as T;
+    storageJsonCache.set(key, { raw, parsed });
+    return parsed;
   } catch {
-    return [];
+    return fallback;
   }
+}
+
+export function getRecentConnections(): RecentConnectionRecord[] {
+  return readCachedStorageJson<RecentConnectionRecord[]>(RECENT_KEY, []);
 }
 
 export function saveRecentConnection(record: Omit<RecentConnectionRecord, 'connectedAt'> & { connectedAt?: string }): RecentConnectionRecord[] {
@@ -370,32 +386,35 @@ export function defaultGroups(): DeviceGroup[] {
 }
 
 export function getDeviceFolderMap(): Record<string, string> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(FOLDER_MAP_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
+  return readCachedStorageJson<Record<string, string>>(FOLDER_MAP_KEY, {});
 }
 
 export function saveDeviceFolderMap(map: Record<string, string>): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(FOLDER_MAP_KEY, JSON.stringify(map));
+    const raw = JSON.stringify({ ...map });
+    localStorage.setItem(FOLDER_MAP_KEY, raw);
+    storageJsonCache.set(FOLDER_MAP_KEY, { raw, parsed: { ...map } });
+    groupsMergedCache = null;
   } catch {}
 }
 
 export function getDeviceGroups(): DeviceGroup[] {
   if (typeof window === 'undefined') return defaultGroups();
   try {
-    let groups: DeviceGroup[];
     const raw = localStorage.getItem(GROUPS_KEY);
+    const legacyRaw = raw ? null : localStorage.getItem(LEGACY_GROUPS_KEY);
+    const folderRaw = localStorage.getItem(FOLDER_MAP_KEY);
+    const cacheKey = `${raw ?? ''}::${legacyRaw ?? ''}::${folderRaw ?? ''}`;
+    if (groupsMergedCache && groupsMergedCache.key === cacheKey) {
+      return groupsMergedCache.groups;
+    }
+
+    let groups: DeviceGroup[];
     if (raw) {
-      groups = JSON.parse(raw);
+      groups = readCachedStorageJson<DeviceGroup[]>(GROUPS_KEY, defaultGroups());
     } else {
       // Tenta migrar da chave legada se existir
-      const legacyRaw = localStorage.getItem(LEGACY_GROUPS_KEY);
       if (legacyRaw) {
         groups = JSON.parse(legacyRaw);
       } else {
@@ -418,6 +437,7 @@ export function getDeviceGroups(): DeviceGroup[] {
       });
     }
 
+    groupsMergedCache = { key: cacheKey, groups };
     return groups;
   } catch {
     return defaultGroups();
@@ -427,7 +447,10 @@ export function getDeviceGroups(): DeviceGroup[] {
 export function saveDeviceGroups(groups: DeviceGroup[]): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(GROUPS_KEY, JSON.stringify(groups));
+    const raw = JSON.stringify(groups);
+    localStorage.setItem(GROUPS_KEY, raw);
+    storageJsonCache.set(GROUPS_KEY, { raw, parsed: groups });
+    groupsMergedCache = null;
   } catch {}
 }
 
@@ -509,21 +532,17 @@ export function assignDeviceToGroup(
 }
 
 export function getCustomMetadataMap(): Record<string, DeviceCustomMetadata> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(CUSTOM_META_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
+  return readCachedStorageJson<Record<string, DeviceCustomMetadata>>(CUSTOM_META_KEY, {});
 }
 
 export function saveDeviceCustomMetadata(deviceId: string, metadata: DeviceCustomMetadata): void {
   if (typeof window === 'undefined') return;
   try {
-    const current = getCustomMetadataMap();
+    const current = { ...getCustomMetadataMap() };
     current[deviceId] = { ...current[deviceId], ...metadata };
-    localStorage.setItem(CUSTOM_META_KEY, JSON.stringify(current));
+    const raw = JSON.stringify(current);
+    localStorage.setItem(CUSTOM_META_KEY, raw);
+    storageJsonCache.set(CUSTOM_META_KEY, { raw, parsed: current });
   } catch {}
 }
 
@@ -531,16 +550,8 @@ const FAVORITES_KEY = 'xpoint_favorite_devices_v1';
 
 export function getFavoriteDeviceIds(userId?: string | null): string[] {
   if (typeof window === 'undefined') return [];
-  try {
-    if (userId) {
-      const userRaw = localStorage.getItem(`${FAVORITES_KEY}_${userId}`);
-      return userRaw ? JSON.parse(userRaw) : [];
-    }
-    const raw = localStorage.getItem(FAVORITES_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+  const key = userId ? `${FAVORITES_KEY}_${userId}` : FAVORITES_KEY;
+  return readCachedStorageJson<string[]>(key, []);
 }
 
 export function toggleFavoriteDeviceId(deviceId: string, userId?: string | null): string[] {

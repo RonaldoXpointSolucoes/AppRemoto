@@ -336,7 +336,7 @@ describe('DeviceDirectory', () => {
   it('opens the release notes modal when clicking the version number button', async () => {
     renderDirectory(service());
     await screen.findAllByText('Recepcao 01');
-    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.6.8' });
+    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.6.9' });
     expect(versionButtons.length).toBeGreaterThan(0);
     await userEvent.click(versionButtons[0]);
     const dialog = await screen.findByRole('dialog', { name: /Novidades da Plataforma/i });
@@ -543,6 +543,62 @@ describe('DeviceDirectory', () => {
     } finally {
       clickSpy.mockRestore();
     }
+  });
+
+  it('filters devices instantaneously in memory by name, IP, razao social, multi-term AND, and comma OR without triggering blocking server refetches', async () => {
+    const getDevices = vi.fn().mockResolvedValue({
+      devices: [
+        device({
+          id: 'dev-tbk',
+          displayName: 'TBK (Servidor)',
+          hostname: 'TBK-SRV',
+          osVersion: '10.0.19045 · IP 192.168.7.130',
+          publicIp: '177.55.10.20',
+          datadivas: {
+            nomeFantasia: 'TBK LANCHES',
+            razaoSocial: 'ACAI E CIA COMERCIO DE ALIMENTOS LTDA',
+            ipMaq: '192.168.7.130',
+          },
+        }),
+        device({
+          id: 'dev-marcos',
+          displayName: 'Marcos X-Point',
+          hostname: 'PC-MARCOS',
+          osVersion: '10.0.22631 · IP 192.168.0.125',
+          publicIp: '200.100.50.25',
+          datadivas: {
+            nomeFantasia: 'SISTEMA DEMONSTRAÇÃO',
+            razaoSocial: 'JOÃO MARCOS SOLUÇÕES LTDA',
+            ipMaq: '192.168.0.125',
+          },
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    renderDirectory(service({ getDevices }));
+    await screen.findAllByText('TBK (Servidor)');
+    expect(getDevices).toHaveBeenCalledTimes(1);
+
+    const quickInput = screen.getByLabelText('Pesquisar e conectar dispositivo');
+
+    // 1. Filtra por IP Local extraído do osVersion
+    fireEvent.change(quickInput, { target: { value: '192.168.7.130' } });
+    expect(screen.getAllByText('TBK (Servidor)').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Marcos X-Point')).not.toBeInTheDocument();
+    // Nenhum refetch de servidor bloqueante disparado ao digitar!
+    expect(getDevices).toHaveBeenCalledTimes(1);
+
+    // 2. Filtra por Razão Social sem acento e múltiplos termos (AND)
+    fireEvent.change(quickInput, { target: { value: 'acai servidor' } });
+    expect(screen.getAllByText('TBK (Servidor)').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Marcos X-Point')).not.toBeInTheDocument();
+
+    // 3. Filtra múltiplos alvos separados por vírgula (OR: IP de um + Razão do outro)
+    fireEvent.change(quickInput, { target: { value: '192.168.7.130, joao marcos' } });
+    expect(screen.getAllByText('TBK (Servidor)').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Marcos X-Point').length).toBeGreaterThan(0);
+    expect(getDevices).toHaveBeenCalledTimes(1);
   });
 });
 

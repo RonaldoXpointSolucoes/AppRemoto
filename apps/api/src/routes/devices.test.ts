@@ -348,3 +348,45 @@ test('batching authorized organizations does not emit a cursor for trailing empt
   assert.ok(calls.length <= 5);
   assert.ok(calls.every((batch) => batch.split(',').length <= 25));
 });
+
+test('search matches across displayName, local IP in osVersion, publicIp, razaoSocial, multi-term AND and comma OR', async () => {
+  const records = [
+    device('1', 'a', {
+      displayName: 'TBK - ESTOQUE',
+      hostname: 'ESTOQUE',
+      osVersion: '10.0.19045 · IP 192.168.7.130',
+      publicIp: '200.49.37.130',
+      notes: '[datadivas:{"razaoSocial":"Tbk Alimentos Ltda","nomeFantasia":"TBK","ipMaq":"192.168.7.130"}]',
+    }),
+    device('2', 'a', {
+      displayName: 'SERVIDOR',
+      hostname: 'DESKTOP-ZANINI',
+      osVersion: '10.0.22631 · IP 192.168.0.150',
+      publicIp: '191.9.99.231',
+      notes: '[datadivas:{"razaoSocial":"Açaí da Zanini Ltda","nomeFantasia":"Açaí Zanini"}]',
+    }),
+    device('3', 'a', {
+      displayName: 'MARCOS-X-POINT',
+      hostname: 'PC-MARCOS',
+      rustdeskId: '372313956',
+      osVersion: '10.0.19045 · IP 192.168.0.125',
+      notes: '[datadivas:{"razaoSocial":"Joao Marcos","funcao":"CAIXA"}]',
+    }),
+  ];
+
+  // Local IP from osVersion
+  const byLocalIp = await get('/v1/devices?search=192.168.7.130', services(records, []));
+  assert.deepEqual(byLocalIp.json().devices.map((r: { id: string }) => r.id), ['1']);
+
+  // Accent-insensitive Razão Social + Nome cross-field AND ("acai servidor")
+  const byRazaoAndName = await get('/v1/devices?search=acai%20servidor', services(records, []));
+  assert.deepEqual(byRazaoAndName.json().devices.map((r: { id: string }) => r.id), ['2']);
+
+  // Cross-field Razão + IP ("joao 192.168.0.125")
+  const byRazaoAndIp = await get('/v1/devices?search=joao%20192.168.0.125', services(records, []));
+  assert.deepEqual(byRazaoAndIp.json().devices.map((r: { id: string }) => r.id), ['3']);
+
+  // Multi-value comma-separated OR ("192.168.7.130, joao marcos")
+  const byMultiOr = await get('/v1/devices?search=192.168.7.130%2C%20joao%20marcos', services(records, []));
+  assert.deepEqual(byMultiOr.json().devices.map((r: { id: string }) => r.id), ['1', '3']);
+});

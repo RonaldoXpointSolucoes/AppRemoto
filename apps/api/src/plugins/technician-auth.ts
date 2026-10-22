@@ -111,13 +111,16 @@ export function registerTechnicianAuth(app: FastifyInstance, services: Technicia
     }
 
     try {
-      const profile = await services.technicians.findByUserId(identity.userId);
+      const [profile, rawOrganizations] = await Promise.all([
+        services.technicians.findByUserId(identity.userId),
+        services.organizations.listActive(),
+      ]);
       if (!profile?.active || profile.userId !== identity.userId) {
         auditFailure(request, 'profile_disabled_or_missing');
         return reply.code(403).send(disabled);
       }
 
-      const activeOrganizations = (await services.organizations.listActive()).filter((organization) => organization.active);
+      const activeOrganizations = rawOrganizations.filter((organization) => organization.active);
       const memberships = profile.globalRole === 'super_admin' ? [] : await services.technicians.listMemberships(identity.userId);
       const visibleMemberships = new Map(memberships
         .filter((membership) => membership.userId === identity.userId && membership.canView)

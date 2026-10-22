@@ -376,3 +376,176 @@ export function resolveCoherentDevicePresentation(
     roleIncludedInTitle,
   };
 }
+
+export type DeviceSearchScope = 'all' | 'name' | 'ip' | 'razao' | 'id';
+
+export interface DeviceSearchIndex {
+  fullHaystack: string;
+  nameHaystack: string;
+  ipHaystack: string;
+  razaoHaystack: string;
+  idHaystack: string;
+  digitValues: string[];
+}
+
+export function normalizeSearchText(value: string): string {
+  return stripAccents(value).toLowerCase();
+}
+
+export function buildDeviceSearchIndex(
+  dev: DeviceView,
+  options?: {
+    presentation?: CoherentDevicePresentation;
+    localIp?: string | null;
+    publicIp?: string | null;
+    folderName?: string;
+    customNotes?: string;
+  }
+): DeviceSearchIndex {
+  const folderName = options?.folderName || 'Clientes';
+  const presentation =
+    options?.presentation ?? resolveCoherentDevicePresentation(dev, folderName);
+  const dd = dev.datadivas;
+
+  const nameParts = [
+    presentation.mainTitle,
+    presentation.anchorBrand,
+    dev.displayName,
+    dev.hostname,
+    dd?.nomeMaq,
+    dd?.windowsHostnameDesejado,
+    dd?.funcao,
+  ].filter(Boolean) as string[];
+
+  const ipParts = [
+    options?.localIp,
+    options?.publicIp,
+    dev.publicIp,
+    dev.osVersion,
+    dd?.ipMaq,
+    dd?.ipDataDivas,
+    dd?.redeSubrede,
+    dd?.redeGateway,
+  ].filter(Boolean) as string[];
+
+  const razaoParts = [
+    dd?.razaoSocial,
+    dd?.nomeFantasia,
+    presentation.subtitlePrimary,
+    presentation.subtitleSecondary,
+     presentation.anchorBrand,
+    dev.organizationName,
+    folderName,
+    dd?.cidade,
+    dd?.uf,
+    dd?.endereco,
+  ].filter(Boolean) as string[];
+
+  const idParts = [
+    dev.rustdeskId,
+    dd?.cnpj,
+    dd?.serial,
+    dd?.ie,
+  ].filter(Boolean) as string[];
+
+  const allParts = [
+    ...nameParts,
+    ...ipParts,
+    ...razaoParts,
+    ...idParts,
+    dev.operatingSystem,
+    dev.notes,
+    options?.customNotes,
+  ].filter(Boolean) as string[];
+
+  return {
+    fullHaystack: normalizeSearchText(allParts.join(' ')),
+    nameHaystack: normalizeSearchText(nameParts.join(' ')),
+    ipHaystack: normalizeSearchText(ipParts.join(' ')),
+    razaoHaystack: normalizeSearchText(razaoParts.join(' ')),
+    idHaystack: normalizeSearchText(idParts.join(' ')),
+    digitValues: idParts.map((v) => v.replace(/\D+/g, '')).filter(Boolean),
+  };
+}
+
+export function matchesDeviceSearchIndex(
+  index: DeviceSearchIndex,
+  rawQuery: string,
+  scope: DeviceSearchScope = 'all'
+): boolean {
+  if (!rawQuery) return true;
+  const trimmed = rawQuery.trim();
+  if (!trimmed) return true;
+
+  const clauses = normalizeSearchText(trimmed)
+    .split(/[,;|]+/)
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+  if (clauses.length === 0) return true;
+
+  const scopedHaystack =
+    scope === 'name'
+      ? index.nameHaystack
+      : scope === 'ip'
+        ? index.ipHaystack
+        : scope === 'razao'
+          ? index.razaoHaystack
+          : scope === 'id'
+            ? index.idHaystack
+            : index.fullHaystack;
+
+  return clauses.some((clause) => {
+    if (scopedHaystack.includes(clause)) return true;
+
+    if (scope === 'all' || scope === 'id') {
+      const clauseDigits = clause.replace(/\D+/g, '');
+      const isNumericLike =
+        clauseDigits.length >= 3 && /^[\d\s.\-/]+$/.test(clause) && !clause.includes('.');
+      if (
+        (clauseDigits.length >= 6 || isNumericLike) &&
+        index.digitValues.some((d) => d.includes(clauseDigits))
+      ) {
+        return true;
+      }
+    }
+
+    const tokens = clause.split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return false;
+
+    return tokens.every((tok) => {
+      const colonIdx = tok.indexOf(':');
+      if (colonIdx > 0) {
+        const prefix = tok.slice(0, colonIdx);
+        const val = tok.slice(colonIdx + 1);
+        if (!val) return true;
+        if (prefix === 'nome' || prefix === 'host' || prefix === 'pc' || prefix === 'funcao') {
+          return index.nameHaystack.includes(val);
+        }
+        if (prefix === 'ip' || prefix === 'rede' || prefix === 'lan' || prefix === 'wan') {
+          return index.ipHaystack.includes(val);
+        }
+        if (prefix === 'razao' || prefix === 'fantasia' || prefix === 'empresa' || prefix === 'cliente') {
+          return index.razaoHaystack.includes(val);
+        }
+        if (prefix === 'id' || prefix === 'cnpj' || prefix === 'serial') {
+          const valDigits = val.replace(/\D+/g, '');
+          return (
+            index.idHaystack.includes(val) ||
+            (valDigits.length >= 3 && index.digitValues.some((d) => d.includes(valDigits)))
+          );
+        }
+      }
+
+      if (scopedHaystack.includes(tok)) return true;
+      if (scope === 'all' || scope === 'id') {
+        const tokDigits = tok.replace(/\D+/g, '');
+        if (tokDigits.length >= 4 && index.digitValues.some((d) => d.includes(tokDigits))) {
+          return true;
+        }
+      }
+      return false;
+    });
+  });
+}
+

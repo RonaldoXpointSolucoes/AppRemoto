@@ -3,12 +3,12 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
 
-import { useSessionBoundary } from './session';
+import { useSessionBoundary, type LoginService } from './session';
 import { buildPreservedRoute } from '../embed/chatbot-bridge';
 
-export function SessionBoundary({ children }: { children: ReactNode }) {
+export function SessionBoundary({ children, service }: { children: ReactNode; service?: LoginService }) {
   const router = useRouter();
-  const { state, retry } = useSessionBoundary();
+  const { state, retry } = useSessionBoundary(service);
 
   useEffect(() => {
     if (state.status === 'expired') router.replace(buildPreservedRoute('/login'));

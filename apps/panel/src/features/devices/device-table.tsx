@@ -16,7 +16,12 @@ import { isUnauthorized, useDevices, type DeviceDirectoryService, type DeviceFil
 import { ThemeToggle } from '../../components/theme-toggle';
 import { TeamViewerSidebar, type TeamViewerTab } from './teamviewer-sidebar';
 import { TeamViewerDeviceTree } from './teamviewer-device-tree';
-import { resolveCoherentDevicePresentation } from './device-presentation';
+import {
+  buildDeviceSearchIndex,
+  matchesDeviceSearchIndex,
+  resolveCoherentDevicePresentation,
+  type DeviceSearchScope,
+} from './device-presentation';
 import { ConnectionHistoryView } from './connection-history-view';
 import { ActiveSessionTracker, type ActiveSession } from './active-session-tracker';
 import { AddConnectionDialog } from './add-connection-dialog';
@@ -92,20 +97,21 @@ function DeviceRows({ devices, statusState, service, canConnect, canManage, isAd
       </div>
     </div>;
   };
+  const rowsWithAction = devices.map((device) => ({ device, actionEl: action(device) }));
   return <>
     <div className="device-table-wrap">
       <table className="device-table" aria-label="Dispositivos remotos">
         <thead><tr>{['Dispositivo', 'Organizacao', 'Hostname', 'Sistema operacional', 'RustDesk ID', 'Status', 'Ultima atividade', 'Acesso'].map((label) => <th key={label} scope="col">{label}</th>)}</tr></thead>
-        <tbody>{devices.map((device) => <tr key={device.id}>
+        <tbody>{rowsWithAction.map(({ device, actionEl }) => <tr key={device.id}>
           <td className="device-value">{device.displayName}</td><td className="device-value">{device.organizationName}</td>
           <td className="device-value">{device.hostname}</td><td className="device-value">{device.operatingSystem} {device.osVersion}</td>
           <td className="device-value">{device.rustdeskId}</td><td><DeviceStatus device={device} state={statusState} /></td>
           <td className="device-value">{formatLastSeen(device.lastSeenAt)}</td>
-          <td>{action(device)}</td>
+          <td>{actionEl}</td>
         </tr>)}</tbody>
       </table>
     </div>
-    <div className="device-records">{devices.map((device) => <DeviceRecord key={device.id} device={device} statusState={statusState} action={action(device)} />)}</div>
+    <div className="device-records">{rowsWithAction.map(({ device, actionEl }) => <DeviceRecord key={device.id} device={device} statusState={statusState} action={actionEl} />)}</div>
   </>;
 }
 
@@ -129,6 +135,8 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     status: initialChatbotCtx ? '' : initialUserPrefs.status,
     search: initialChatbotCtx ? initialChatbotCtx.cnpj : initialUserPrefs.search,
   }));
+  const [searchScope, setSearchScope] = useState<DeviceSearchScope>('all');
+  const [serverSearchCommitted, setServerSearchCommitted] = useState<boolean>(false);
   const [selected, setSelected] = useState<DeviceView>();
   const [connectionEvents, setConnectionEvents] = useState<Record<string, ConnectionLogEvent[]>>({});
   const [logoutPending, setLogoutPending] = useState(false);
@@ -157,9 +165,15 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     (filters.organizationId === 'recent' || filters.organizationId.startsWith('group_'))
   );
 
+  // Mantém a filtragem rápida no cliente (0ms) sem disparar requisição bloqueante a cada tecla;
+  // envia `search` ao backend apenas quando confirmado pelo filtro de tabela (Buscar) ou Enter.
   const apiFilters = useMemo<DeviceFiltersValue>(() => {
-    return isLocalCategory ? { ...filters, organizationId: '' } : filters;
-  }, [filters, isLocalCategory]);
+    return {
+      organizationId: isLocalCategory ? '' : filters.organizationId,
+      status: filters.status,
+      search: serverSearchCommitted ? filters.search : '',
+    };
+  }, [filters.organizationId, filters.status, filters.search, isLocalCategory, serverSearchCommitted]);
 
   const query = useDevices(service, apiFilters);
   const resolvedUserId = query.profile?.id || null;
@@ -174,6 +188,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       loadedUserRef.current = resolvedUserId;
       const userPrefs = getUserViewPreferences(resolvedUserId);
       const activeBotCtx = chatbotContextRef.current;
+      setServerSearchCommitted(false);
       setFilters({
         organizationId: activeBotCtx ? '' : userPrefs.organizationId,
         status: activeBotCtx ? '' : userPrefs.status,
@@ -201,11 +216,23 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     return isLocalCategory ? filterDevicesByCategory(query.rows, filters.organizationId) : query.rows;
   }, [isLocalCategory, filters.organizationId, query.rows]);
 
+  const tableDevices = useMemo(() => {
+    if (!filters.search.trim() || serverSearchCommitted) return displayedDevices;
+    return displayedDevices.filter((dev) => {
+      const folderName = getDeviceFolderName(dev);
+      const presentation = resolveCoherentDevicePresentation(dev, folderName);
+      const sysInfo = parseSystemInfo(dev.operatingSystem, dev.osVersion);
+      const localIp = sysInfo.ip || dev.datadivas?.ipMaq;
+      const idx = buildDeviceSearchIndex(dev, presentation, localIp, folderName);
+      return matchesDeviceSearchIndex(idx, filters.search, searchScope);
+    });
+  }, [displayedDevices, filters.search, searchScope, serverSearchCommitted]);
+
   // Notifica o Chatbot Host que o AppRemoto está pronto para receber eventos
   useEffect(() => {
     emitToChatbotHost({
       type: 'XPOINT_REMOTE_READY',
-      version: 'v1.6.8',
+      version: 'v1.6.9',
       embedded: isEmbedMode,
       authenticated: true,
       activeCnpj: chatbotContextRef.current?.cnpj ?? null,
@@ -219,7 +246,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       if (action.action === 'PING') {
         emitToChatbotHost({
           type: 'XPOINT_REMOTE_PONG',
-          version: 'v1.6.8',
+          version: 'v1.6.9',
           authenticated: true,
           activeCnpj: chatbotContextRef.current?.cnpj ?? null,
           timestamp: new Date().toISOString(),
@@ -228,6 +255,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       }
       if (action.action === 'CLEAR_CONTEXT') {
         setChatbotContext(null);
+        setServerSearchCommitted(false);
         setFilters((prev) => ({ ...prev, organizationId: '', status: '', search: '' }));
         return;
       }
@@ -240,6 +268,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       if (action.action === 'SET_CONTEXT') {
         setChatbotContext(action.context);
         setActiveTab('devices');
+        setServerSearchCommitted(false);
         setFilters({
           organizationId: '',
           status: '',
@@ -523,10 +552,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={() => setIsChangelogOpen(true)}
-                title="Clique para ver todas as novidades da versão v1.6.8"
-                aria-label="Ver novidades da versão v1.6.8 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.6.9"
+                aria-label="Ver novidades da versão v1.6.9 (mobile)"
               >
-                v1.6.8
+                v1.6.9
               </button>
             </div>
           </div>
@@ -594,10 +623,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.6.8"
-              aria-label="Ver novidades da versão v1.6.8"
+              title="Clique para ver todas as novidades da versão v1.6.9"
+              aria-label="Ver novidades da versão v1.6.9"
             >
-              v1.6.8
+              v1.6.9
             </button>
           </div>
 
@@ -607,9 +636,17 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               <input
                 ref={searchInputRef}
                 type="search"
-                placeholder="Pesquisar fantasia, razão, CNPJ, serial, IP ou ID..."
+                placeholder="Filtrar por nome, IP, razão social, fantasia, CNPJ ou ID (separe por espaço ou vírgula)..."
                 value={filters.search}
-                onChange={(e) => setFilters((prev) => ({ ...prev, status: '', search: e.target.value }))}
+                onChange={(e) => {
+                  setServerSearchCommitted(false);
+                  setFilters((prev) => ({ ...prev, status: '', search: e.target.value }));
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (query.hasNextPage || query.hasPreviousPage)) {
+                    setServerSearchCommitted(true);
+                  }
+                }}
                 aria-label="Pesquisar e conectar dispositivo"
               />
               {filters.search ? (
@@ -620,6 +657,8 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                   aria-label="Limpar pesquisa"
                   onClick={() => {
                     if (chatbotContext) setChatbotContext(null);
+                    setServerSearchCommitted(false);
+                    setSearchScope('all');
                     setFilters((prev) => ({ ...prev, search: '' }));
                   }}
                 >
@@ -849,7 +888,16 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                     : undefined
                 }
               >
-                <DeviceFilters organizations={organizations} value={filters} refreshing={query.isRefreshing} onChange={setFilters} onRefresh={() => void query.refresh()} />
+                <DeviceFilters
+                  organizations={organizations}
+                  value={filters}
+                  refreshing={query.isRefreshing}
+                  onChange={(next) => {
+                    setServerSearchCommitted(Boolean(next.search.trim()));
+                    setFilters(next);
+                  }}
+                  onRefresh={() => void query.refresh()}
+                />
                 {query.backgroundError && <p className="refresh-error" role="alert">Nao foi possivel atualizar os dispositivos. Os status estao indisponiveis.</p>}
               </div>
               {query.isPageLoading ? <section className="device-state" role="status">Carregando dispositivos...</section>
@@ -877,15 +925,23 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                             currentUserId={activeUserId}
                             onOpenCnpjGroup={service.getCnpjGroups ? (cnpj) => setCnpjModalFilter(cnpj) : undefined}
                             searchQuery={filters.search}
+                            searchScope={searchScope}
+                            onSearchScopeChange={setSearchScope}
+                            onClearSearch={() => {
+                              if (chatbotContext) setChatbotContext(null);
+                              setServerSearchCommitted(false);
+                              setSearchScope('all');
+                              setFilters((prev) => ({ ...prev, search: '' }));
+                            }}
                             isAdmin={query.isAdmin}
                           />
                           {/* Tabela mantida acessível no DOM para leitores e testes de conformidade */}
                           <div style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
-                            <DeviceRows devices={displayedDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} isAdmin={query.isAdmin} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
+                            <DeviceRows devices={tableDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} isAdmin={query.isAdmin} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
                           </div>
                         </>
                       ) : (
-                        <DeviceRows devices={displayedDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} isAdmin={query.isAdmin} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
+                        <DeviceRows devices={tableDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} isAdmin={query.isAdmin} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
                       )}
                     </>
                   )}

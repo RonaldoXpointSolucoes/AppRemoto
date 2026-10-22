@@ -97,6 +97,121 @@ function decodeCursor(cursor: string, secret: Buffer, expectedFingerprint: strin
   return state;
 }
 
+function normalizeSearchText(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
+}
+
+function matchesDeviceSearch(view: DeviceView, rawSearch?: string): boolean {
+  if (!rawSearch) return true;
+  const trimmed = rawSearch.trim();
+  if (!trimmed) return true;
+
+  const dd = view.datadivas;
+  const nameFields = [
+    view.displayName,
+    view.hostname,
+    dd?.nomeMaq,
+    dd?.windowsHostnameDesejado,
+    dd?.funcao,
+  ].filter(Boolean) as string[];
+
+  const ipFields = [
+    view.publicIp,
+    view.osVersion,
+    dd?.ipMaq,
+    dd?.ipDataDivas,
+    dd?.redeSubrede,
+    dd?.redeGateway,
+  ].filter(Boolean) as string[];
+
+  const razaoFields = [
+    dd?.razaoSocial,
+    dd?.nomeFantasia,
+    view.organizationName,
+    dd?.cidade,
+    dd?.uf,
+    dd?.endereco,
+  ].filter(Boolean) as string[];
+
+  const idFields = [
+    view.rustdeskId,
+    dd?.cnpj,
+    dd?.serial,
+    dd?.ie,
+  ].filter(Boolean) as string[];
+
+  const allValues = [
+    ...nameFields,
+    ...ipFields,
+    ...razaoFields,
+    ...idFields,
+    view.operatingSystem,
+    view.notes,
+  ].filter(Boolean) as string[];
+
+  const fullHaystack = normalizeSearchText(allValues.join(' '));
+  const nameHaystack = normalizeSearchText(nameFields.join(' '));
+  const ipHaystack = normalizeSearchText(ipFields.join(' '));
+  const razaoHaystack = normalizeSearchText(razaoFields.join(' '));
+  const idHaystack = normalizeSearchText(idFields.join(' '));
+  const digitValues = allValues.map((v) => v.replace(/\D+/g, '')).filter(Boolean);
+
+  const clauses = normalizeSearchText(trimmed)
+    .split(/[,;|]+/)
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+  if (clauses.length === 0) return true;
+
+  return clauses.some((clause) => {
+    if (fullHaystack.includes(clause)) return true;
+
+    const clauseDigits = clause.replace(/\D+/g, '');
+    const isNumericLike = clauseDigits.length >= 3 && /^[\d\s.:\-/]+$/.test(clause) && !clause.includes('.');
+    if (
+      (clauseDigits.length >= 6 || isNumericLike) &&
+      digitValues.some((d) => d.includes(clauseDigits))
+    ) {
+      return true;
+    }
+
+    const tokens = clause.split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return false;
+
+    return tokens.every((tok) => {
+      const colonIdx = tok.indexOf(':');
+      if (colonIdx > 0) {
+        const prefix = tok.slice(0, colonIdx);
+        const val = tok.slice(colonIdx + 1);
+        if (!val) return true;
+        if (prefix === 'nome' || prefix === 'host' || prefix === 'pc' || prefix === 'funcao') {
+          return nameHaystack.includes(val) || razaoHaystack.includes(val);
+        }
+        if (prefix === 'ip' || prefix === 'rede' || prefix === 'lan' || prefix === 'wan') {
+          return ipHaystack.includes(val);
+        }
+        if (prefix === 'razao' || prefix === 'fantasia' || prefix === 'empresa' || prefix === 'cliente') {
+          return razaoHaystack.includes(val) || nameHaystack.includes(val);
+        }
+        if (prefix === 'id' || prefix === 'cnpj' || prefix === 'serial') {
+          const valDigits = val.replace(/\D+/g, '');
+          return (
+            idHaystack.includes(val) ||
+            (valDigits.length >= 3 && digitValues.some((d) => d.includes(valDigits)))
+          );
+        }
+      }
+
+      if (fullHaystack.includes(tok)) return true;
+      const tokDigits = tok.replace(/\D+/g, '');
+      if (tokDigits.length >= 4 && digitValues.some((d) => d.includes(tokDigits))) {
+        return true;
+      }
+      return false;
+    });
+  });
+}
+
 export async function listDevices(technician: AuthenticatedTechnician, query: DeviceListQuery,
   repository: DeviceRepository, now: Date, cursorSecret: Buffer): Promise<DevicePage> {
   const visible = new Map(technician.organizations
@@ -119,8 +234,6 @@ export async function listDevices(technician: AuthenticatedTechnician, query: De
   const state: CursorState = query.cursor
     ? decodeCursor(query.cursor, cursorSecret, expectedFingerprint, batches.length, now)
     : { v: 1, t: now.toISOString(), b: 0, k: null, f: expectedFingerprint };
-  const search = query.search?.toLocaleLowerCase();
-  const searchDigits = query.search ? query.search.replace(/\D+/g, '') : '';
   const devices: DeviceView[] = [];
   let scanned = 0;
   let queries = 0;
@@ -140,31 +253,7 @@ export async function listDevices(technician: AuthenticatedTechnician, query: De
       state.k = record.id;
       scanned++;
       const view = viewOf(record, visible.get(record.organizationId)!.name, state.t, now);
-      const searchableValues = [
-        view.displayName,
-        view.organizationName,
-        view.hostname,
-        view.rustdeskId,
-        view.publicIp,
-        view.datadivas?.nomeFantasia,
-        view.datadivas?.razaoSocial,
-        view.datadivas?.cnpj,
-        view.datadivas?.serial,
-        view.datadivas?.ie,
-        view.datadivas?.endereco,
-        view.datadivas?.cidade,
-        view.datadivas?.ipMaq,
-        view.datadivas?.ipDataDivas,
-        view.datadivas?.nomeMaq,
-        view.datadivas?.funcao,
-        view.datadivas?.windowsHostnameDesejado,
-      ];
-      const matchesText = !search || searchableValues.some(
-        (value) => value && (
-          value.toLocaleLowerCase().includes(search) ||
-          (searchDigits.length >= 6 && value.replace(/\D+/g, '').includes(searchDigits))
-        ),
-      );
+      const matchesText = matchesDeviceSearch(view, query.search);
       if ((!query.status || view.status === query.status) && matchesText) devices.push(view);
       if (devices.length === query.limit) {
         if (index + 1 < page.records.length || page.hasMore) {

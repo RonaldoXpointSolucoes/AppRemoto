@@ -46,6 +46,10 @@ import {
   resolveDeviceNetworkIps,
   resolveDeviceHardwareTelemetry,
   analyzeDeviceNetworkTopology,
+  analyzeAllDevicesNetworkTopology,
+  type ParsedSystemInfo,
+  type DeviceHardwareTelemetry,
+  type DeviceNetworkTopologyAnalysis,
 } from './system-info';
 import {
   getRecentConnections,
@@ -72,10 +76,21 @@ import {
 } from './teamviewer-storage';
 import {
   resolveCoherentDevicePresentation,
+  buildDeviceSearchIndex,
+  matchesDeviceSearchIndex,
   type CoherentDevicePresentation,
+  type DeviceSearchScope,
+  type DeviceSearchIndex,
 } from './device-presentation';
 
-export { resolveCoherentDevicePresentation, type CoherentDevicePresentation };
+export {
+  resolveCoherentDevicePresentation,
+  buildDeviceSearchIndex,
+  matchesDeviceSearchIndex,
+  type CoherentDevicePresentation,
+  type DeviceSearchScope,
+  type DeviceSearchIndex,
+};
 
 function getDeviceNotes(dev: DeviceView, metaMap: Record<string, DeviceCustomMetadata>): string {
   const fromDev = (dev as { notes?: string }).notes;
@@ -104,6 +119,9 @@ export function TeamViewerDeviceTree({
   currentUserId = null,
   onOpenCnpjGroup,
   searchQuery = '',
+  searchScope,
+  onSearchScopeChange,
+  onClearSearch,
   isAdmin,
 }: {
   devices: DeviceView[];
@@ -123,6 +141,9 @@ export function TeamViewerDeviceTree({
   currentUserId?: string | null;
   onOpenCnpjGroup?(cnpj: string): void;
   searchQuery?: string;
+  searchScope?: DeviceSearchScope;
+  onSearchScopeChange?(scope: DeviceSearchScope): void;
+  onClearSearch?(): void;
   isAdmin?(organizationId: string): boolean;
 }) {
   const initialTreePrefs = useMemo(() => getUserViewPreferences(currentUserId), [currentUserId]);
@@ -130,6 +151,12 @@ export function TeamViewerDeviceTree({
   const [groups, setGroups] = useState<DeviceGroup[]>(() => getDeviceGroups());
   const [menuOpenForDevice, setMenuOpenForDevice] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [localSearchScope, setLocalSearchScope] = useState<DeviceSearchScope>('all');
+  const activeSearchScope = searchScope ?? localSearchScope;
+  const handleSelectSearchScope = (nextScope: DeviceSearchScope) => {
+    setLocalSearchScope(nextScope);
+    onSearchScopeChange?.(nextScope);
+  };
 
   // Estados de Mobilidade & Operação Rápida (PC e Celular - Persistidos por Usuário)
   const [favoriteIds, setFavoriteIds] = useState<string[]>(() => getFavoriteDeviceIds(currentUserId));
@@ -759,16 +786,6 @@ export function TeamViewerDeviceTree({
     return d.status === 'ONLINE' || (d.enabled && Number.isFinite(age) && age >= 0 && age <= 95_000);
   };
 
-  const onlineCount = useMemo(() => {
-    return devices.filter(isDeviceOnline).length;
-  }, [devices]);
-
-  const favoriteCount = useMemo(() => {
-    return devices.filter((d) => favoriteIds.includes(d.id)).length;
-  }, [devices, favoriteIds]);
-
-  const hasActiveSearch = Boolean(searchQuery && searchQuery.trim().length > 0);
-
   const getRegistrationTimestamp = (d: DeviceView): number => {
     const rawCreated = d.createdAt || d.datadivas?.ultimaSincronizacao;
     if (rawCreated) {
@@ -782,28 +799,142 @@ export function TeamViewerDeviceTree({
     return 0;
   };
 
+  // Precomputa em O(N) toda a topologia de rede, apresentação coerente, IPs, hardware e índice de busca
+  // evitando O(N²) (9.800+ chamadas de regex por render) e tornando o filtro instantâneo (0ms).
+  const deviceComputedMap = useMemo(() => {
+    const pool = allDevices.length >= devices.length ? allDevices : devices;
+    const topologyById = analyzeAllDevicesNetworkTopology(pool);
+    const recentByDeviceId = new Map<string, (typeof recents)[number]>();
+    const recentByRustdeskId = new Map<string, (typeof recents)[number]>();
+    for (const r of recents) {
+      if (r.deviceId && !recentByDeviceId.has(r.deviceId)) recentByDeviceId.set(r.deviceId, r);
+      if (r.rustdeskId && !recentByRustdeskId.has(r.rustdeskId)) recentByRustdeskId.set(r.rustdeskId, r);
+    }
+
+    const map = new Map<
+      string,
+      {
+        sys: ParsedSystemInfo;
+        rawNotes: string;
+        parsedNotes: ReturnType<typeof parseDeviceNotes>;
+        folderName: string;
+        rec: (typeof recents)[number] | undefined;
+        effectiveDev: DeviceView;
+        isCustomEdited: boolean;
+        presentation: CoherentDevicePresentation;
+        localIp: string | null;
+        publicIp: string | null;
+        hw: DeviceHardwareTelemetry;
+        netTopo: DeviceNetworkTopologyAnalysis;
+        protection: ReturnType<typeof getDeviceProtectionState>;
+        regTimestamp: number;
+        searchIndex: DeviceSearchIndex;
+      }
+    >();
+
+    const registerDevice = (dev: DeviceView) => {
+      if (map.has(dev.id)) return;
+      const sys = parseSystemInfo(dev.operatingSystem, dev.osVersion);
+      const rawNotes = getDeviceNotes(dev, customMetaMap);
+      const parsedNotes = parseDeviceNotes(rawNotes);
+      const folderName = getDeviceFolderName(dev, groups);
+      const rec = recentByDeviceId.get(dev.id) ?? recentByRustdeskId.get(dev.rustdeskId);
+      const localCustomMeta = customMetaMap[dev.id];
+      const effectiveDev = localCustomMeta?.displayName
+        ? { ...dev, displayName: localCustomMeta.displayName }
+        : dev;
+      const isCustomEdited = Boolean(
+        parsedNotes.customDisplayName || localCustomMeta?.customDisplayName
+      );
+      const presentation = resolveCoherentDevicePresentation(
+        effectiveDev,
+        folderName,
+        isCustomEdited
+      );
+      const netTopo =
+        topologyById.get(dev.id) ?? analyzeDeviceNetworkTopology(dev, pool);
+      const localIp = netTopo.localIp;
+      const publicIp = netTopo.publicIp;
+      const hw = resolveDeviceHardwareTelemetry(dev);
+      const protection = getDeviceProtectionState(dev, customMetaMap);
+      const regTimestamp = getRegistrationTimestamp(dev);
+      const searchIndex = buildDeviceSearchIndex(effectiveDev, {
+        presentation,
+        localIp,
+        publicIp,
+        folderName,
+        customNotes: parsedNotes.notes,
+      });
+
+      map.set(dev.id, {
+        sys,
+        rawNotes,
+        parsedNotes,
+        folderName,
+        rec,
+        effectiveDev,
+        isCustomEdited,
+        presentation,
+        localIp,
+        publicIp,
+        hw,
+        netTopo,
+        protection,
+        regTimestamp,
+        searchIndex,
+      });
+    };
+
+    for (const d of pool) registerDevice(d);
+    for (const d of devices) registerDevice(d);
+    return map;
+  }, [allDevices, devices, groups, customMetaMap, recents]);
+
+  const favoriteSet = useMemo(() => new Set(favoriteIds), [favoriteIds]);
+
+  const onlineCount = useMemo(() => {
+    return devices.filter(isDeviceOnline).length;
+  }, [devices]);
+
+  const favoriteCount = useMemo(() => {
+    return devices.filter((d) => favoriteSet.has(d.id)).length;
+  }, [devices, favoriteSet]);
+
+  const hasActiveSearch = Boolean(searchQuery && searchQuery.trim().length > 0);
+
   const processedDevices = useMemo(() => {
     let list = [...devices];
-    // Por padrão exibe os online; porém quando há texto na caixa de pesquisa, exibe tanto online quanto offline
-    if (onlyOnlineQuickFilter && !hasActiveSearch) {
-      list = list.filter(isDeviceOnline);
-    }
-    if (onlyFavoritesQuickFilter && !hasActiveSearch) {
-      list = list.filter((d) => favoriteIds.includes(d.id));
+    if (hasActiveSearch) {
+      list = list.filter((d) => {
+        const pre = deviceComputedMap.get(d.id);
+        if (!pre) return true;
+        return matchesDeviceSearchIndex(pre.searchIndex, searchQuery, activeSearchScope);
+      });
+    } else {
+      // Por padrão exibe os online; porém quando há texto na caixa de pesquisa, exibe tanto online quanto offline
+      if (onlyOnlineQuickFilter) {
+        list = list.filter(isDeviceOnline);
+      }
+      if (onlyFavoritesQuickFilter) {
+        list = list.filter((d) => favoriteSet.has(d.id));
+      }
     }
 
     list.sort((a, b) => {
-      const favA = favoriteIds.includes(a.id) ? 1 : 0;
-      const favB = favoriteIds.includes(b.id) ? 1 : 0;
+      const favA = favoriteSet.has(a.id) ? 1 : 0;
+      const favB = favoriteSet.has(b.id) ? 1 : 0;
       if (favA !== favB) return favB - favA;
+
+      const preA = deviceComputedMap.get(a.id);
+      const preB = deviceComputedMap.get(b.id);
 
       if (sortBy === 'smart') {
         const onA = isDeviceOnline(a) ? 1 : 0;
         const onB = isDeviceOnline(b) ? 1 : 0;
         if (onA !== onB) return onB - onA;
 
-        const regA = getRegistrationTimestamp(a);
-        const regB = getRegistrationTimestamp(b);
+        const regA = preA ? preA.regTimestamp : getRegistrationTimestamp(a);
+        const regB = preB ? preB.regTimestamp : getRegistrationTimestamp(b);
         if (regA !== regB) return regB - regA;
 
         const ddA = a.datadivas ? 1 : 0;
@@ -812,14 +943,13 @@ export function TeamViewerDeviceTree({
         return 0;
       }
       if (sortBy === 'name') {
-        return resolveCoherentDevicePresentation(a).mainTitle.localeCompare(
-          resolveCoherentDevicePresentation(b).mainTitle,
-          'pt-BR'
-        );
+        const titleA = preA ? preA.presentation.mainTitle : resolveCoherentDevicePresentation(a).mainTitle;
+        const titleB = preB ? preB.presentation.mainTitle : resolveCoherentDevicePresentation(b).mainTitle;
+        return titleA.localeCompare(titleB, 'pt-BR');
       }
       if (sortBy === 'recent') {
-        const regA = getRegistrationTimestamp(a);
-        const regB = getRegistrationTimestamp(b);
+        const regA = preA ? preA.regTimestamp : getRegistrationTimestamp(a);
+        const regB = preB ? preB.regTimestamp : getRegistrationTimestamp(b);
         if (regA !== regB) return regB - regA;
         const tA = a.lastSeenAt ? new Date(a.lastSeenAt).getTime() : 0;
         const tB = b.lastSeenAt ? new Date(b.lastSeenAt).getTime() : 0;
@@ -829,14 +959,25 @@ export function TeamViewerDeviceTree({
     });
 
     return list;
-  }, [devices, onlyOnlineQuickFilter, onlyFavoritesQuickFilter, favoriteIds, sortBy, hasActiveSearch]);
+  }, [
+    devices,
+    onlyOnlineQuickFilter,
+    onlyFavoritesQuickFilter,
+    favoriteSet,
+    sortBy,
+    hasActiveSearch,
+    searchQuery,
+    activeSearchScope,
+    deviceComputedMap,
+  ]);
 
   const categoryCounts = useMemo(() => {
     let clients = 0;
     let xpoint = 0;
     let servers = 0;
     allDevices.forEach((d) => {
-      const fName = getDeviceFolderName(d, groups).toLowerCase();
+      const pre = deviceComputedMap.get(d.id);
+      const fName = (pre ? pre.folderName : getDeviceFolderName(d, groups)).toLowerCase();
       if (fName.includes('servidor') || fName.includes('infra')) servers++;
       else if (fName.includes('x-point') || fName.includes('xpoint')) xpoint++;
       else clients++;
@@ -846,7 +987,7 @@ export function TeamViewerDeviceTree({
       group_xpoint: xpoint,
       group_servers: servers,
     };
-  }, [allDevices, groups]);
+  }, [allDevices, groups, deviceComputedMap]);
 
   return (
     <div className={`tv-tree-container ${compactMode ? 'tv-density-compact' : ''}`}>
@@ -942,7 +1083,7 @@ export function TeamViewerDeviceTree({
         </div>
       </div>
 
-      {/* Barra de Operação Rápida em Mobilidade (1-Tap Quick Filters & Ordenação para PC e Celular) */}
+      {/* Barra de Operação Rápida em Mobilidade (1-Tap Quick Filters, Escopo Multi-Dados & Ordenação) */}
       <div className="tv-mobility-strip" aria-label="Atalhos de mobilidade">
         <div className="tv-mobility-chips">
           <button
@@ -964,6 +1105,46 @@ export function TeamViewerDeviceTree({
             <Star size={13} className={onlyFavoritesQuickFilter || favoriteCount > 0 ? 'fill-amber-400 text-amber-400' : ''} />
             <span>Fixados ({favoriteCount})</span>
           </button>
+
+          <div className="tv-scope-filter-group" role="group" aria-label="Escopo do filtro rápido">
+            {(
+              [
+                { id: 'all', label: 'Tudo', title: 'Filtrar simultaneamente por Nome, IP, Razão Social, Fantasia, CNPJ e ID' },
+                { id: 'name', label: 'Nome', title: 'Filtrar por Nome do Computador, Hostname ou Função (Caixa/Servidor/Totem)' },
+                { id: 'ip', label: 'IP', title: 'Filtrar por IP Local (LAN), IP Público (WAN), Gateway ou Sub-rede' },
+                { id: 'razao', label: 'Razão Social', title: 'Filtrar por Razão Social, Nome Fantasia, Organização ou Cidade' },
+                { id: 'id', label: 'ID / CNPJ', title: 'Filtrar por ID do RustDesk, CNPJ/CPF ou Serial DataDivas' },
+              ] as const
+            ).map((sc) => (
+              <button
+                key={sc.id}
+                type="button"
+                className={`tv-scope-chip ${activeSearchScope === sc.id ? 'active' : ''}`}
+                title={sc.title}
+                onClick={() => handleSelectSearchScope(sc.id)}
+              >
+                {sc.label}
+              </button>
+            ))}
+          </div>
+
+          {hasActiveSearch && (
+            <span className="tv-search-match-pill" role="status">
+              <span>
+                {processedDevices.length} {processedDevices.length === 1 ? 'encontrado' : 'encontrados'}
+              </span>
+              {onClearSearch && (
+                <button
+                  type="button"
+                  className="tv-search-match-clear"
+                  title="Limpar filtro de pesquisa"
+                  onClick={onClearSearch}
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </span>
+          )}
         </div>
 
         <div className="tv-mobility-controls">
@@ -1007,7 +1188,7 @@ export function TeamViewerDeviceTree({
           <div className="tv-folder-empty-state">
             <Monitor size={22} className="tv-empty-icon" />
             <span>Nenhum computador encontrado para este filtro.</span>
-            {(activeCategory || onlyOnlineQuickFilter || onlyFavoritesQuickFilter) && (
+            {(activeCategory || onlyOnlineQuickFilter || onlyFavoritesQuickFilter || hasActiveSearch) && (
               <button
                 type="button"
                 className="tv-btn-secondary"
@@ -1016,6 +1197,8 @@ export function TeamViewerDeviceTree({
                   onSelectCategory?.('');
                   setOnlyOnlineQuickFilter(false);
                   setOnlyFavoritesQuickFilter(false);
+                  handleSelectSearchScope('all');
+                  onClearSearch?.();
                 }}
               >
                 Exibir Todos os Computadores
@@ -1026,33 +1209,22 @@ export function TeamViewerDeviceTree({
           processedDevices.map((dev) => {
             const seenAgeMs = dev.lastSeenAt ? Date.now() - new Date(dev.lastSeenAt).getTime() : Infinity;
             const isOnline = isDeviceOnline(dev);
-            const isFavorite = favoriteIds.includes(dev.id);
+            const isFavorite = favoriteSet.has(dev.id);
             const isExpanded = expandedDeviceIds.includes(dev.id);
             const isMenuOpen = menuOpenForDevice === dev.id;
-            const sys = parseSystemInfo(dev.operatingSystem, dev.osVersion);
-            const rawNotes = getDeviceNotes(dev, customMetaMap);
-            const parsedNotes = parseDeviceNotes(rawNotes);
-            const folderName = getDeviceFolderName(dev, groups);
-            const rec = recents.find((r) => r.deviceId === dev.id || r.rustdeskId === dev.rustdeskId);
-            const localCustomMeta = customMetaMap[dev.id];
-            const effectiveDev = localCustomMeta?.displayName
-              ? { ...dev, displayName: localCustomMeta.displayName }
-              : dev;
-            const isCustomEdited = Boolean(
-              parsedNotes.customDisplayName || localCustomMeta?.customDisplayName
-            );
-            const presentation = resolveCoherentDevicePresentation(
-              effectiveDev,
+            const pre = deviceComputedMap.get(dev.id)!;
+            const {
+              sys,
+              parsedNotes,
               folderName,
-              isCustomEdited
-            );
-            const { localIp, publicIp } = resolveDeviceNetworkIps(dev);
-            const hw = resolveDeviceHardwareTelemetry(dev);
-            const netTopo = analyzeDeviceNetworkTopology(
-              dev,
-              allDevices.length ? allDevices : devices
-            );
-            const protection = getDeviceProtectionState(dev, customMetaMap);
+              rec,
+              presentation,
+              localIp,
+              publicIp,
+              hw,
+              netTopo,
+              protection,
+            } = pre;
             const userIsAdmin = isAdmin ? isAdmin(dev.organizationId) : canManage(dev.organizationId);
             const adminOnlyBlocked = protection.adminOnlyAccess && !userIsAdmin;
 

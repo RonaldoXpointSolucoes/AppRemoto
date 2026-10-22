@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.6.9',
+    date: 'Outubro 2026',
+    title: 'Busca Multi-Dados Instantânea (0ms), Seletores por Escopo & Otimização O(N) de Carregamento',
+    highlight:
+      'Filtragem ultra-rápida sem latência por Nome, IP Local/Público, Razão Social, Fantasia e ID (com suporte a múltiplos termos e vírgulas), eliminação do waterfall de carregamento da página e redução de O(N²) para O(N) na análise de topologia.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Filtro Multi-Dados Instantâneo (Nome, IP, Razão Social, Fantasia, CNPJ e ID)',
+        description:
+          'Índice em memória normalizado (sem acentos) que filtra em 0ms combinando múltiplos termos por espaço (AND) ou vírgula (OR), além de seletores rápidos por escopo (Tudo, Nome, IP, Razão Social, ID/CNPJ).',
+        tag: 'UI/UX',
+      },
+      {
+        title: 'Carregamento Paralelo & Eliminação de Re-render O(N²)',
+        description:
+          'Pré-busca paralela de perfil, organizações e dispositivos na abertura da página, cache em memória para localStorage e algoritmo O(N) de topologia de rede.',
+        tag: 'Infra & Cockpit',
+      },
+    ],
+  },
+  {
     version: 'v1.6.8',
     date: 'Outubro 2026',
     title: 'Design System Mobile-First SaaS Premium & Cartões de Telemetria 100% Responsivos',
     highlight:
       'Refatoração completa da experiência mobile com zero overflow horizontal no cabeçalho, barra de mobilidade em linha única, botões de ação ancorados no topo direito e faixa de telemetria full-width.',
-    isCurrent: true,
     items: [
       {
         title: 'Cartões Mobile Enxutos com Telemetria Full-Width',
