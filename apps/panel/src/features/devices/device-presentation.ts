@@ -380,6 +380,12 @@ export function resolveCoherentDevicePresentation(
 export type DeviceSearchScope = 'all' | 'name' | 'ip' | 'razao' | 'id';
 
 export interface DeviceSearchIndex {
+  mainTitleNorm: string;
+  displayNameNorm: string;
+  hostnameNorm: string;
+  subtitlePrimaryNorm: string;
+  titleWords: string[];
+  subtitleWords: string[];
   fullHaystack: string;
   nameHaystack: string;
   ipHaystack: string;
@@ -390,6 +396,10 @@ export interface DeviceSearchIndex {
 
 export function normalizeSearchText(value: string): string {
   return stripAccents(value).toLowerCase();
+}
+
+function splitSearchWords(normalizedText: string): string[] {
+  return normalizedText.split(/[^a-z0-9]+/).filter(Boolean);
 }
 
 export function buildDeviceSearchIndex(
@@ -407,9 +417,21 @@ export function buildDeviceSearchIndex(
     options?.presentation ?? resolveCoherentDevicePresentation(dev, folderName);
   const dd = dev.datadivas;
 
+  const mainTitleNorm = normalizeSearchText(presentation.mainTitle || '').trim();
+  const displayNameNorm = normalizeSearchText(dev.displayName || '').trim();
+  const hostnameNorm = normalizeSearchText(dev.hostname || '').trim();
+  const subtitlePrimaryNorm = normalizeSearchText(presentation.subtitlePrimary || '').trim();
+  const titleWords = splitSearchWords(`${mainTitleNorm} ${displayNameNorm}`);
+  const subtitleWords = splitSearchWords(
+    normalizeSearchText(
+      [presentation.subtitlePrimary, dd?.nomeFantasia, dd?.razaoSocial, dev.organizationName]
+        .filter(Boolean)
+        .join(' ')
+    )
+  );
+
   const nameParts = [
     presentation.mainTitle,
-    presentation.anchorBrand,
     dev.displayName,
     dev.hostname,
     dd?.nomeMaq,
@@ -433,7 +455,7 @@ export function buildDeviceSearchIndex(
     dd?.nomeFantasia,
     presentation.subtitlePrimary,
     presentation.subtitleSecondary,
-     presentation.anchorBrand,
+    presentation.anchorBrand,
     dev.organizationName,
     folderName,
     dd?.cidade,
@@ -459,6 +481,12 @@ export function buildDeviceSearchIndex(
   ].filter(Boolean) as string[];
 
   return {
+    mainTitleNorm,
+    displayNameNorm,
+    hostnameNorm,
+    subtitlePrimaryNorm,
+    titleWords,
+    subtitleWords,
     fullHaystack: normalizeSearchText(allParts.join(' ')),
     nameHaystack: normalizeSearchText(nameParts.join(' ')),
     ipHaystack: normalizeSearchText(ipParts.join(' ')),
@@ -466,6 +494,117 @@ export function buildDeviceSearchIndex(
     idHaystack: normalizeSearchText(idParts.join(' ')),
     digitValues: idParts.map((v) => v.replace(/\D+/g, '')).filter(Boolean),
   };
+}
+
+function scoreSingleClauseMatch(index: DeviceSearchIndex, rawClause: string): number {
+  const rawTokens = rawClause.split(/\s+/).filter(Boolean);
+  const cleanTokens = rawTokens
+    .map((t) => {
+      const colonIdx = t.indexOf(':');
+      return colonIdx > 0 ? t.slice(colonIdx + 1) : t;
+    })
+    .filter(Boolean);
+
+  if (cleanTokens.length === 0) return 0;
+  const cleanClause = cleanTokens.join(' ');
+  const { mainTitleNorm, displayNameNorm, hostnameNorm, subtitlePrimaryNorm, titleWords, subtitleWords } = index;
+
+  // 1. Nome principal (mainTitle / displayName) idêntico ao filtro
+  if (mainTitleNorm === cleanClause || displayNameNorm === cleanClause) {
+    return 1000;
+  }
+
+  // 2. Nome principal (mainTitle / displayName) começa exatamente com o termo pesquisado (ex: "BURGUER PLUS - SERVIDOR" para "burguer")
+  if (mainTitleNorm.startsWith(cleanClause) || displayNameNorm.startsWith(cleanClause)) {
+    const firstWordExact = titleWords[0] === cleanTokens[0];
+    return firstWordExact ? 960 : 920;
+  }
+
+  // 3. Todas as palavras do filtro batem com o início de palavras do Nome Principal
+  const mainTitleWords = splitSearchWords(mainTitleNorm);
+  const allTokensMatchTitleWordPrefix =
+    mainTitleWords.length > 0 &&
+    cleanTokens.every((tok) => titleWords.some((w) => w.startsWith(tok)));
+
+  if (allTokensMatchTitleWordPrefix) {
+    if (mainTitleWords[0]?.startsWith(cleanTokens[0])) {
+      return mainTitleWords[0] === cleanTokens[0] ? 900 : 890;
+    }
+    const firstIdx = mainTitleWords.findIndex((w) => w.startsWith(cleanTokens[0]));
+    const penalty = firstIdx >= 0 ? Math.min(firstIdx, 10) * 2 : 10;
+    const exactFirstToken = mainTitleWords.some((w) => w === cleanTokens[0]);
+    return (exactFirstToken ? 850 : 820) - penalty;
+  }
+
+  // 4. Nome principal contém o termo como substring (ex: "HAMBURGUER CAMPEÃO - SERVIDOR" contém "burguer")
+  if (mainTitleNorm.includes(cleanClause) || displayNameNorm.includes(cleanClause)) {
+    return 720;
+  }
+  if (cleanTokens.every((tok) => mainTitleNorm.includes(tok) || displayNameNorm.includes(tok))) {
+    return 700;
+  }
+
+  // 5. Busca combinada (ex: Nome + Função/IP) onde ao menos o primeiro termo está no Nome Principal
+  if (cleanTokens.length > 1 && mainTitleWords[0]?.startsWith(cleanTokens[0])) {
+    return 660;
+  }
+
+  // 6. Match em Hostname ou outros campos de nome técnico (nomeMaq, funcao)
+  if (hostnameNorm && hostnameNorm === cleanClause) return 640;
+  if (hostnameNorm && hostnameNorm.startsWith(cleanClause)) return 620;
+  if (hostnameNorm && hostnameNorm.includes(cleanClause)) return 600;
+  if (cleanTokens.every((tok) => index.nameHaystack.includes(tok))) return 580;
+
+  // 7. Match direto por IP, ID RustDesk ou CNPJ
+  const clauseDigits = cleanClause.replace(/\D+/g, '');
+  if (
+    index.ipHaystack.includes(cleanClause) ||
+    index.idHaystack.includes(cleanClause) ||
+    (clauseDigits.length >= 4 && index.digitValues.some((d) => d.includes(clauseDigits)))
+  ) {
+    return 520;
+  }
+
+  // 8. Match em Subtítulo / Nome Fantasia / Razão Social (quando o Nome da máquina NÃO tem o termo)
+  if (subtitlePrimaryNorm.startsWith(cleanClause)) {
+    return 450;
+  }
+  if (cleanTokens.every((tok) => subtitleWords.some((w) => w.startsWith(tok)))) {
+    return 420;
+  }
+  if (subtitlePrimaryNorm.includes(cleanClause)) {
+    return 350;
+  }
+  if (index.razaoHaystack.includes(cleanClause) || cleanTokens.every((tok) => index.razaoHaystack.includes(tok))) {
+    return 200;
+  }
+
+  // 9. Match residual em observações / sistema operacional
+  return 100;
+}
+
+export function scoreDeviceSearchMatch(
+  index: DeviceSearchIndex,
+  rawQuery: string,
+  _scope: DeviceSearchScope = 'all'
+): number {
+  if (!rawQuery) return 0;
+  const trimmed = rawQuery.trim();
+  if (!trimmed) return 0;
+
+  const clauses = normalizeSearchText(trimmed)
+    .split(/[,;|]+/)
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+  if (clauses.length === 0) return 0;
+
+  let bestScore = 0;
+  for (const clause of clauses) {
+    const score = scoreSingleClauseMatch(index, clause);
+    if (score > bestScore) bestScore = score;
+  }
+  return bestScore;
 }
 
 export function matchesDeviceSearchIndex(

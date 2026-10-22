@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.7.2',
+    date: 'Outubro 2026',
+    title: 'Ordenação por Relevância no Filtro de Busca (Prioridade Total para o Nome do Computador)',
+    highlight:
+      'Ao pesquisar qualquer termo no filtro, os computadores cujo Nome Principal começa ou contém o termo pesquisado aparecem obrigatoriamente nas primeiras posições, antes de correspondências secundárias em Razão Social ou Observações.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Ranking Inteligente por Relevância do Nome (Prefix Match > Palavra > Substring)',
+        description:
+          'Prioriza em 1º lugar os computadores cujo nome visível inicia exatamente pelo termo filtrado (ex.: BURGUER PLUS - SERVIDOR ao buscar "burguer"), seguidos por correspondência no nome e, só ao final, máquinas que coincidem apenas na Razão Social.',
+        tag: 'UI/UX',
+      },
+      {
+        title: 'Separação Estrita entre Escopo de Nome da Máquina e Marca da Razão Social',
+        description:
+          'Evita que máquinas com nomes genéricos ou distintos (ex.: SERVER-NOTE HOME ou CAKTUS - SERVIDOR) ultrapassem computadores cujo próprio nome corresponde diretamente ao filtro digitado.',
+        tag: 'TeamViewer',
+      },
+    ],
+  },
+  {
     version: 'v1.7.1',
     date: 'Outubro 2026',
     title: 'Instalador Sem Renomeação do Hostname Windows em Todas as Edições (Win 10/11, 32-bit e Win 7) (EXE v1.3.8)',
     highlight:
       'Remoção completa da alteração do nome real da máquina no Windows durante a instalação, preservando o hostname original do sistema operacional sem necessidade de reinicialização e mantendo a identificação padronizada no painel.',
-    isCurrent: true,
     items: [
       {
         title: 'Preservação Integral do Hostname do Windows (Zero Reinicialização)',

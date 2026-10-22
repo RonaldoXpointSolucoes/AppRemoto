@@ -78,6 +78,7 @@ import {
   resolveCoherentDevicePresentation,
   buildDeviceSearchIndex,
   matchesDeviceSearchIndex,
+  scoreDeviceSearchMatch,
   type CoherentDevicePresentation,
   type DeviceSearchScope,
   type DeviceSearchIndex,
@@ -87,6 +88,7 @@ export {
   resolveCoherentDevicePresentation,
   buildDeviceSearchIndex,
   matchesDeviceSearchIndex,
+  scoreDeviceSearchMatch,
   type CoherentDevicePresentation,
   type DeviceSearchScope,
   type DeviceSearchIndex,
@@ -921,12 +923,23 @@ export function TeamViewerDeviceTree({
     }
 
     list.sort((a, b) => {
+      const preA = deviceComputedMap.get(a.id);
+      const preB = deviceComputedMap.get(b.id);
+
+      // Quando há um filtro de busca ativo, prioriza obrigatoriamente a relevância do NOME (mainTitle / displayName)
+      if (hasActiveSearch) {
+        const scoreA = preA ? scoreDeviceSearchMatch(preA.searchIndex, searchQuery, activeSearchScope) : 0;
+        const scoreB = preB ? scoreDeviceSearchMatch(preB.searchIndex, searchQuery, activeSearchScope) : 0;
+        if (scoreA !== scoreB) return scoreB - scoreA;
+
+        const onA = isDeviceOnline(a) ? 1 : 0;
+        const onB = isDeviceOnline(b) ? 1 : 0;
+        if (onA !== onB) return onB - onA;
+      }
+
       const favA = favoriteSet.has(a.id) ? 1 : 0;
       const favB = favoriteSet.has(b.id) ? 1 : 0;
       if (favA !== favB) return favB - favA;
-
-      const preA = deviceComputedMap.get(a.id);
-      const preB = deviceComputedMap.get(b.id);
 
       if (sortBy === 'smart') {
         const onA = isDeviceOnline(a) ? 1 : 0;
@@ -940,7 +953,9 @@ export function TeamViewerDeviceTree({
         const ddA = a.datadivas ? 1 : 0;
         const ddB = b.datadivas ? 1 : 0;
         if (ddA !== ddB) return ddB - ddA;
-        return 0;
+        const titleA = preA ? preA.presentation.mainTitle : resolveCoherentDevicePresentation(a).mainTitle;
+        const titleB = preB ? preB.presentation.mainTitle : resolveCoherentDevicePresentation(b).mainTitle;
+        return titleA.localeCompare(titleB, 'pt-BR');
       }
       if (sortBy === 'name') {
         const titleA = preA ? preA.presentation.mainTitle : resolveCoherentDevicePresentation(a).mainTitle;

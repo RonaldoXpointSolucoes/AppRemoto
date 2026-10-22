@@ -20,6 +20,7 @@ import {
   buildDeviceSearchIndex,
   matchesDeviceSearchIndex,
   resolveCoherentDevicePresentation,
+  scoreDeviceSearchMatch,
   type DeviceSearchScope,
 } from './device-presentation';
 import { ConnectionHistoryView } from './connection-history-view';
@@ -217,22 +218,47 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   }, [isLocalCategory, filters.organizationId, query.rows]);
 
   const tableDevices = useMemo(() => {
-    if (!filters.search.trim() || serverSearchCommitted) return displayedDevices;
-    return displayedDevices.filter((dev) => {
+    const trimmedSearch = filters.search.trim();
+    if (!trimmedSearch) return displayedDevices;
+
+    const scored: { dev: DeviceView; score: number; title: string }[] = [];
+    for (const dev of displayedDevices) {
       const folderName = getDeviceFolderName(dev);
       const presentation = resolveCoherentDevicePresentation(dev, folderName);
       const sysInfo = parseSystemInfo(dev.operatingSystem, dev.osVersion);
       const localIp = sysInfo.ip || dev.datadivas?.ipMaq;
-      const idx = buildDeviceSearchIndex(dev, presentation, localIp, folderName);
-      return matchesDeviceSearchIndex(idx, filters.search, searchScope);
+      const idx = buildDeviceSearchIndex(dev, {
+        presentation,
+        localIp,
+        publicIp: dev.publicIp,
+        folderName,
+      });
+      if (!serverSearchCommitted && !matchesDeviceSearchIndex(idx, trimmedSearch, searchScope)) {
+        continue;
+      }
+      scored.push({
+        dev,
+        score: scoreDeviceSearchMatch(idx, trimmedSearch, searchScope),
+        title: presentation.mainTitle,
+      });
+    }
+
+    scored.sort((a, b) => {
+      if (a.score !== b.score) return b.score - a.score;
+      const onA = a.dev.status === 'ONLINE' ? 1 : 0;
+      const onB = b.dev.status === 'ONLINE' ? 1 : 0;
+      if (onA !== onB) return onB - onA;
+      return a.title.localeCompare(b.title, 'pt-BR');
     });
+
+    return scored.map((item) => item.dev);
   }, [displayedDevices, filters.search, searchScope, serverSearchCommitted]);
 
   // Notifica o Chatbot Host que o AppRemoto está pronto para receber eventos
   useEffect(() => {
     emitToChatbotHost({
       type: 'XPOINT_REMOTE_READY',
-      version: 'v1.7.1',
+      version: 'v1.7.2',
       embedded: isEmbedMode,
       authenticated: true,
       activeCnpj: chatbotContextRef.current?.cnpj ?? null,
@@ -246,7 +272,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       if (action.action === 'PING') {
         emitToChatbotHost({
           type: 'XPOINT_REMOTE_PONG',
-          version: 'v1.7.1',
+          version: 'v1.7.2',
           authenticated: true,
           activeCnpj: chatbotContextRef.current?.cnpj ?? null,
           timestamp: new Date().toISOString(),
@@ -552,10 +578,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={() => setIsChangelogOpen(true)}
-                title="Clique para ver todas as novidades da versão v1.7.1"
-                aria-label="Ver novidades da versão v1.7.1 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.7.2"
+                aria-label="Ver novidades da versão v1.7.2 (mobile)"
               >
-                v1.7.1
+                v1.7.2
               </button>
             </div>
           </div>
@@ -623,10 +649,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.7.1"
-              aria-label="Ver novidades da versão v1.7.1"
+              title="Clique para ver todas as novidades da versão v1.7.2"
+              aria-label="Ver novidades da versão v1.7.2"
             >
-              v1.7.1
+              v1.7.2
             </button>
           </div>
 

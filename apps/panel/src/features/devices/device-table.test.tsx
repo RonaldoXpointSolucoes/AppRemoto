@@ -336,7 +336,7 @@ describe('DeviceDirectory', () => {
   it('opens the release notes modal when clicking the version number button', async () => {
     renderDirectory(service());
     await screen.findAllByText('Recepcao 01');
-    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.7.1' });
+    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.7.2' });
     expect(versionButtons.length).toBeGreaterThan(0);
     await userEvent.click(versionButtons[0]);
     const dialog = await screen.findByRole('dialog', { name: /Novidades da Plataforma/i });
@@ -599,6 +599,110 @@ describe('DeviceDirectory', () => {
     expect(screen.getAllByText('TBK (Servidor)').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Marcos X-Point').length).toBeGreaterThan(0);
     expect(getDevices).toHaveBeenCalledTimes(1);
+  });
+
+  it('ranks devices whose Name starts with or contains the search filter first, before secondary matches in razaoSocial', async () => {
+    const getDevices = vi.fn().mockResolvedValue({
+      devices: [
+        device({
+          id: 'dev-caktus',
+          createdAt: '2026-10-22T15:00:00.000Z',
+          displayName: 'CAKTUS - SERVIDOR',
+          hostname: 'SERVIDOR',
+          organizationName: 'Caktus Restaurante',
+          status: 'ONLINE',
+          datadivas: {
+            nomeFantasia: 'Caktus Restaurante',
+            razaoSocial: 'CAKTUS RESTAURANTE E HAMBURGUERIA LTDA',
+          },
+        }),
+        device({
+          id: 'dev-server-note',
+          createdAt: '2026-10-22T14:00:00.000Z',
+          displayName: 'SERVER-NOTE HOME',
+          hostname: 'ServerNoteHome',
+          organizationName: 'Burguer Plus Hamburgueria LTDA',
+          status: 'ONLINE',
+          datadivas: {
+            razaoSocial: 'Burguer Plus Hamburgueria LTDA',
+            funcao: 'CAIXA',
+          },
+        }),
+        device({
+          id: 'dev-burguer-srv',
+          createdAt: '2026-10-20T10:00:00.000Z',
+          displayName: 'BURGUER PLUS - SERVIDOR',
+          hostname: 'SERVER',
+          organizationName: 'Burguer Plus Hamburgueria LTDA',
+          status: 'ONLINE',
+          datadivas: {
+            razaoSocial: 'Burguer Plus Hamburgueria LTDA',
+          },
+        }),
+        device({
+          id: 'dev-totem-parede',
+          createdAt: '2026-10-19T10:00:00.000Z',
+          displayName: 'Burguer Plus Totem Parede',
+          hostname: 'DESKTOP-3UEJ5RT',
+          organizationName: 'X-Point Soluções',
+          status: 'ONLINE',
+        }),
+        device({
+          id: 'dev-totem-balcao',
+          createdAt: '2026-10-18T10:00:00.000Z',
+          displayName: 'Burguer Plus Totem Balcão',
+          hostname: 'DESKTOP-S7VUVBE',
+          organizationName: 'X-Point Soluções',
+          status: 'ONLINE',
+        }),
+        device({
+          id: 'dev-edilza',
+          createdAt: '2026-10-21T10:00:00.000Z',
+          displayName: 'EDILZA',
+          hostname: 'EDILZA-PC',
+          organizationName: 'Burguer Plus Hamburgueria LTDA',
+          status: 'OFFLINE',
+          lastSeenAt: '2026-09-01T00:00:00.000Z',
+          datadivas: {
+            razaoSocial: 'Burguer Plus Hamburgueria LTDA',
+            funcao: 'CAIXA',
+          },
+        }),
+        device({
+          id: 'dev-campeao',
+          createdAt: '2026-10-15T10:00:00.000Z',
+          displayName: 'HAMBURGUER CAMPEÃO - SERVIDOR',
+          hostname: 'SERVIDOR',
+          organizationName: 'Vieiras Restaurante Pizzaria e Hamburgueria',
+          status: 'OFFLINE',
+          lastSeenAt: '2026-09-01T00:00:00.000Z',
+        }),
+      ],
+      nextCursor: null,
+    });
+
+    renderDirectory(service({ getDevices }));
+    await screen.findAllByText('BURGUER PLUS - SERVIDOR');
+
+    const quickInput = screen.getByLabelText('Pesquisar e conectar dispositivo');
+    fireEvent.change(quickInput, { target: { value: 'burguer' } });
+
+    const renderedTitles = Array.from(document.querySelectorAll('.tv-display-name')).map((el) =>
+      el.textContent?.trim()
+    );
+
+    expect(renderedTitles.slice(0, 3)).toEqual([
+      'BURGUER PLUS - SERVIDOR',
+      'Burguer Plus Totem Parede',
+      'Burguer Plus Totem Balcão',
+    ]);
+    expect(renderedTitles[3]).toBe('HAMBURGUER CAMPEÃO - SERVIDOR');
+    expect(renderedTitles.indexOf('BURGUER PLUS - SERVIDOR')).toBeLessThan(
+      renderedTitles.indexOf('SERVER-NOTE HOME')
+    );
+    expect(renderedTitles.indexOf('SERVER-NOTE HOME')).toBeLessThan(
+      renderedTitles.indexOf('CAKTUS - SERVIDOR')
+    );
   });
 });
 
