@@ -250,6 +250,14 @@ describe('teamviewer-storage', () => {
 
     saveActiveSessionDraft(null);
     expect(getActiveSessionDraft()).toBeNull();
+
+    const { saveActiveSessionsDraft, getActiveSessionsDraft } = await import('./teamviewer-storage');
+    const draft1 = { ...draft, deviceId: 'dev-1', displayName: 'Máquina 1', draftNotes: 'Obs 1' };
+    const draft2 = { ...draft, deviceId: 'dev-2', displayName: 'Máquina 2', draftNotes: 'Obs 2' };
+    const draft3 = { ...draft, deviceId: 'dev-3', displayName: 'Máquina 3', draftNotes: 'Obs 3' };
+    saveActiveSessionsDraft([draft1, draft2, draft3]);
+    expect(getActiveSessionsDraft()).toHaveLength(3);
+    expect(getActiveSessionsDraft().map((s) => s.draftNotes)).toEqual(['Obs 1', 'Obs 2', 'Obs 3']);
   });
 
   it('ativa por padrao o filtro de computadores online e nao ressuscita tecnicos deletados ao voltar para a tela', async () => {

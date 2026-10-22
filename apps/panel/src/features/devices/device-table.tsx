@@ -52,6 +52,8 @@ import {
   saveUserViewPreferences,
   saveActiveSessionDraft,
   getActiveSessionDraft,
+  saveActiveSessionsDraft,
+  getActiveSessionsDraft,
   type RecentConnectionRecord,
 } from './teamviewer-storage';
 
@@ -157,7 +159,11 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   const [cnpjModalFilter, setCnpjModalFilter] = useState<string | null | undefined>(() =>
     initialChatbotCtx?.openCnpjModal ? initialChatbotCtx.cnpj : undefined,
   );
-  const [activeSession, setActiveSession] = useState<ActiveSession | null>(() => getActiveSessionDraft());
+  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>(() => getActiveSessionsDraft());
+  const [focusedSessionId, setFocusedSessionId] = useState<string | null>(() => {
+    const initial = getActiveSessionsDraft();
+    return initial[initial.length - 1]?.deviceId ?? null;
+  });
   const searchInputRef = useRef<HTMLInputElement>(null);
   const loadedUserRef = useRef<string | null>(initialUserId);
 
@@ -258,7 +264,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   useEffect(() => {
     emitToChatbotHost({
       type: 'XPOINT_REMOTE_READY',
-      version: 'v1.7.2',
+      version: 'v1.7.3',
       embedded: isEmbedMode,
       authenticated: true,
       activeCnpj: chatbotContextRef.current?.cnpj ?? null,
@@ -272,7 +278,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       if (action.action === 'PING') {
         emitToChatbotHost({
           type: 'XPOINT_REMOTE_PONG',
-          version: 'v1.7.2',
+          version: 'v1.7.3',
           authenticated: true,
           activeCnpj: chatbotContextRef.current?.cnpj ?? null,
           timestamp: new Date().toISOString(),
@@ -367,7 +373,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     setTimeout(() => setAssociatedFeedback(false), 3000);
   }
 
-  useEffect(() => onSessionClear(queryClient, () => { setSelected(undefined); setDeviceToDelete(null); setConnectionEvents({}); saveActiveSessionDraft(null); setActiveSession(null); }), [queryClient]);
+  useEffect(() => onSessionClear(queryClient, () => { setSelected(undefined); setDeviceToDelete(null); setConnectionEvents({}); saveActiveSessionDraft(null); saveActiveSessionsDraft([]); setActiveSessions([]); setFocusedSessionId(null); }), [queryClient]);
   const addEvent = (deviceId: string, event: ConnectionLogEvent) => {
     if (sessionEpoch(queryClient) !== epoch) return;
     setConnectionEvents((old) => ({ ...old, [deviceId]: [...(old[deviceId] ?? []), event].slice(-200) }));
@@ -395,10 +401,23 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   }, []);
 
   function handleSessionStart(device: DeviceView) {
+    // Se esta máquina já estiver com sessão ativa em andamento, apenas foca o card dela sem perder o cronômetro nem os rascunhos
+    const existingActive = activeSessions.find((s) => s.deviceId === device.id);
+    if (existingActive) {
+      setFocusedSessionId(device.id);
+      return;
+    }
+
     const techName = query.profile?.displayName || 'Técnico';
     const techEmail = (query.profile as { email?: string } | undefined)?.email;
     const startedAt = new Date().toISOString();
-    const protocolNumber = generateSessionProtocol(startedAt);
+    let protocolNumber = generateSessionProtocol(startedAt);
+    const usedProtocols = new Set(activeSessions.map((s) => s.protocolNumber));
+    let offset = 1;
+    while (usedProtocols.has(protocolNumber)) {
+      protocolNumber = generateSessionProtocol(new Date(Date.now() + offset).toISOString());
+      offset += 1;
+    }
     const sysInfo = parseSystemInfo(device.operatingSystem, device.osVersion);
     const folderName = getDeviceFolderName(device);
     const coherentName = resolveCoherentDevicePresentation(device, folderName).mainTitle;
@@ -452,8 +471,13 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       mode: 'automatic',
       startedAt,
     };
-    saveActiveSessionDraft(nextSession);
-    setActiveSession(nextSession);
+    setActiveSessions((prev) => {
+      const filtered = prev.filter((item) => item.deviceId !== device.id);
+      const updated = [...filtered, nextSession];
+      saveActiveSessionsDraft(updated);
+      return updated;
+    });
+    setFocusedSessionId(device.id);
 
     emitToChatbotHost({
       type: 'XPOINT_REMOTE_SESSION_STARTED',
@@ -578,10 +602,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={() => setIsChangelogOpen(true)}
-                title="Clique para ver todas as novidades da versão v1.7.2"
-                aria-label="Ver novidades da versão v1.7.2 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.7.3"
+                aria-label="Ver novidades da versão v1.7.3 (mobile)"
               >
-                v1.7.2
+                v1.7.3
               </button>
             </div>
           </div>
@@ -649,10 +673,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.7.2"
-              aria-label="Ver novidades da versão v1.7.2"
+              title="Clique para ver todas as novidades da versão v1.7.3"
+              aria-label="Ver novidades da versão v1.7.3"
             >
-              v1.7.2
+              v1.7.3
             </button>
           </div>
 
@@ -1023,27 +1047,93 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
           onClose={() => setIsChangelogOpen(false)}
         />
 
-        {/* Widget Flutuante de Sessão Ativa / Cronômetro de Atendimento */}
+        {/* Widget Flutuante de Sessão Ativa / Cronômetro Multi-Máquinas de Atendimento */}
         <ActiveSessionTracker
-          session={activeSession}
-          onClose={() => {
-            if (activeSession) {
+          sessions={activeSessions}
+          activeSessionId={focusedSessionId}
+          onSelectSession={(deviceId) => setFocusedSessionId(deviceId)}
+          onUpdateSessionDraft={(deviceId, draft) => {
+            setActiveSessions((prev) => {
+              const updated = prev.map((item) =>
+                item.deviceId === deviceId ? { ...item, ...draft } : item
+              );
+              saveActiveSessionsDraft(updated);
+              return updated;
+            });
+          }}
+          onCloseSession={(deviceId) => {
+            const closing = activeSessions.find((item) => item.deviceId === deviceId);
+            if (closing) {
               emitToChatbotHost({
                 type: 'XPOINT_REMOTE_SESSION_ENDED',
-                protocolNumber: activeSession.protocolNumber || '',
-                deviceId: activeSession.deviceId,
-                displayName: activeSession.displayName,
-                rustdeskId: activeSession.rustdeskId,
-                ...(activeSession.datadivas?.cnpj || chatbotContext?.cnpj
-                  ? { cnpj: activeSession.datadivas?.cnpj || chatbotContext?.cnpj }
+                protocolNumber: closing.protocolNumber || '',
+                deviceId: closing.deviceId,
+                displayName: closing.displayName,
+                rustdeskId: closing.rustdeskId,
+                ...(closing.datadivas?.cnpj || chatbotContext?.cnpj
+                  ? { cnpj: closing.datadivas?.cnpj || chatbotContext?.cnpj }
                   : {}),
                 ...(chatbotContext?.contactId ? { contactId: chatbotContext.contactId } : {}),
                 ...(chatbotContext?.conversationId ? { conversationId: chatbotContext.conversationId } : {}),
                 endedAt: new Date().toISOString(),
               });
             }
-            saveActiveSessionDraft(null);
-            setActiveSession(null);
+            const remaining = activeSessions.filter((item) => item.deviceId !== deviceId);
+            saveActiveSessionsDraft(remaining);
+            setActiveSessions(remaining);
+            if (focusedSessionId === deviceId) {
+              setFocusedSessionId(remaining[remaining.length - 1]?.deviceId ?? null);
+            }
+          }}
+          onCloseAllSessions={() => {
+            const endedAt = new Date().toISOString();
+            for (const item of activeSessions) {
+              emitToChatbotHost({
+                type: 'XPOINT_REMOTE_SESSION_ENDED',
+                protocolNumber: item.protocolNumber || '',
+                deviceId: item.deviceId,
+                displayName: item.displayName,
+                rustdeskId: item.rustdeskId,
+                ...(item.datadivas?.cnpj || chatbotContext?.cnpj
+                  ? { cnpj: item.datadivas?.cnpj || chatbotContext?.cnpj }
+                  : {}),
+                ...(chatbotContext?.contactId ? { contactId: chatbotContext.contactId } : {}),
+                ...(chatbotContext?.conversationId ? { conversationId: chatbotContext.conversationId } : {}),
+                endedAt,
+              });
+            }
+            saveActiveSessionsDraft([]);
+            setActiveSessions([]);
+            setFocusedSessionId(null);
+          }}
+          onClose={() => {
+            const targetId = focusedSessionId ?? activeSessions[activeSessions.length - 1]?.deviceId;
+            if (!targetId) {
+              saveActiveSessionsDraft([]);
+              setActiveSessions([]);
+              setFocusedSessionId(null);
+              return;
+            }
+            const closing = activeSessions.find((item) => item.deviceId === targetId);
+            if (closing) {
+              emitToChatbotHost({
+                type: 'XPOINT_REMOTE_SESSION_ENDED',
+                protocolNumber: closing.protocolNumber || '',
+                deviceId: closing.deviceId,
+                displayName: closing.displayName,
+                rustdeskId: closing.rustdeskId,
+                ...(closing.datadivas?.cnpj || chatbotContext?.cnpj
+                  ? { cnpj: closing.datadivas?.cnpj || chatbotContext?.cnpj }
+                  : {}),
+                ...(chatbotContext?.contactId ? { contactId: chatbotContext.contactId } : {}),
+                ...(chatbotContext?.conversationId ? { conversationId: chatbotContext.conversationId } : {}),
+                endedAt: new Date().toISOString(),
+              });
+            }
+            const remaining = activeSessions.filter((item) => item.deviceId !== targetId);
+            saveActiveSessionsDraft(remaining);
+            setActiveSessions(remaining);
+            setFocusedSessionId(remaining[remaining.length - 1]?.deviceId ?? null);
           }}
           onSaved={() => query.refresh()}
         />

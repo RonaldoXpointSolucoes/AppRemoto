@@ -185,10 +185,10 @@ export function TeamViewerSidebar({
                 type="button"
                 className="tv-brand-badge version-badge-btn"
                 onClick={onOpenChangelog}
-                title="Clique para ver todas as novidades da versão v1.7.2"
-                aria-label="Ver novidades da versão v1.7.2"
+                title="Clique para ver todas as novidades da versão v1.7.3"
+                aria-label="Ver novidades da versão v1.7.3"
               >
-                v1.7.2
+                v1.7.3
               </button>
             </div>
           )}

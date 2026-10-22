@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.7.3',
+    date: 'Outubro 2026',
+    title: 'Central Multi-Sessões Simultâneas & Documentação Individual por Máquina (3+ Conexões)',
+    highlight:
+      'Fim da perda de sessões ao conectar em múltiplas máquinas ao mesmo tempo: fila multi-sessão com abas interativas, cronômetros independentes, preservação de rascunho por computador e fluxo sequencial "Salvar e Ir p/ Próxima".',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Dock Multi-Sessão para 2, 3 ou Mais Máquinas Conectadas',
+        description:
+          'Cada conexão aberta é mantida em uma fila persistente com abas clicáveis, contador individual em tempo real, modo minimizado compacto e botão para salvar todas de uma vez.',
+        tag: 'TeamViewer',
+      },
+      {
+        title: 'Documentação Individual sem Perda de Rascunho ("Salvar e Ir p/ Próxima")',
+        description:
+          'Permite alternar entre Servidor, Caixas e Totens dentro do modal de documentação mantendo as ações e observações de cada máquina separadas.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.7.2',
     date: 'Outubro 2026',
     title: 'Ordenação por Relevância no Filtro de Busca (Prioridade Total para o Nome do Computador)',
     highlight:
       'Ao pesquisar qualquer termo no filtro, os computadores cujo Nome Principal começa ou contém o termo pesquisado aparecem obrigatoriamente nas primeiras posições, antes de correspondências secundárias em Razão Social ou Observações.',
-    isCurrent: true,
     items: [
       {
         title: 'Ranking Inteligente por Relevância do Nome (Prefix Match > Palavra > Substring)',

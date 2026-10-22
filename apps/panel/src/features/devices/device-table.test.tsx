@@ -336,7 +336,7 @@ describe('DeviceDirectory', () => {
   it('opens the release notes modal when clicking the version number button', async () => {
     renderDirectory(service());
     await screen.findAllByText('Recepcao 01');
-    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.7.2' });
+    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.7.3' });
     expect(versionButtons.length).toBeGreaterThan(0);
     await userEvent.click(versionButtons[0]);
     const dialog = await screen.findByRole('dialog', { name: /Novidades da Plataforma/i });
@@ -542,6 +542,86 @@ describe('DeviceDirectory', () => {
       );
     } finally {
       clickSpy.mockRestore();
+      localStorage.clear();
+    }
+  });
+
+  it('tracks 3 simultaneous active sessions without losing any card and allows documenting each machine individually', async () => {
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined);
+    try {
+      const threeDevices = [
+        device({ id: 'dev-1', displayName: 'Burguer Plus Servidor', hostname: 'SRV-01', rustdeskId: '111222333' }),
+        device({ id: 'dev-2', displayName: 'Burguer Plus Caixa 01', hostname: 'CX-01', rustdeskId: '444555666' }),
+        device({ id: 'dev-3', displayName: 'Burguer Plus Totem Balcão', hostname: 'TOTEM-01', rustdeskId: '1987892321' }),
+      ];
+      const connectDevice = vi.fn().mockImplementation(async (_id, opts) => ({
+        launchUri: 'rustdesk://connect/1987892321@179.199.142.157:21116?key=public%2Bkey&password=ephemeral-secret',
+        attemptId: opts.attemptId,
+        mode: opts.mode,
+      }));
+      renderDirectory(
+        service({
+          getDevices: vi.fn().mockResolvedValue({ devices: threeDevices, nextCursor: null }),
+          connectDevice,
+          getMe: vi.fn().mockResolvedValue({
+            id: 'tech-1',
+            displayName: 'Ronaldo',
+            globalRole: 'super_admin',
+            authorization: [],
+          }),
+        })
+      );
+
+      const table = await screen.findByRole('table');
+      const connectButtons = await within(table).findAllByRole('button', { name: 'Conectar' });
+      expect(connectButtons).toHaveLength(3);
+
+      // Conecta nas 3 máquinas seguidas
+      await userEvent.click(connectButtons[0]);
+      await userEvent.click(connectButtons[1]);
+      await userEvent.click(connectButtons[2]);
+
+      // O widget mostra as 3 máquinas ativas sem perder nenhuma
+      expect(await screen.findByText('3 máquinas ativas')).toBeInTheDocument();
+      const tablist = screen.getByRole('tablist', { name: 'Alternar entre máquinas conectadas' });
+      expect(within(tablist).getAllByRole('tab')).toHaveLength(3);
+
+      // Abre o modal de documentação e documenta cada máquina individualmente usando "Salvar e Ir p/ Próxima"
+      await userEvent.click(screen.getByRole('button', { name: /Documentar/i }));
+      const dialog = await screen.findByRole('dialog', { name: /Documentação Automatizada de Atendimento/i });
+
+      // Digita observação na Máquina 3 (Totem Balcão)
+      const notesInput = within(dialog).getByLabelText(/Observação Específica para/i);
+      await userEvent.type(notesInput, 'Totem destravado com sucesso');
+      await userEvent.click(within(dialog).getByRole('button', { name: /Salvar e Ir p\/ Próxima \(2\)/i }));
+
+      // Agora restam 2 máquinas na fila e o modal alternou automaticamente para a próxima
+      expect(await screen.findByText('2 máquinas ativas')).toBeInTheDocument();
+      const notesInput2 = within(dialog).getByLabelText(/Observação Específica para/i);
+      expect(notesInput2).toHaveValue('');
+      await userEvent.type(notesInput2, 'Caixa 01 impressora ajustada');
+      await userEvent.click(within(dialog).getByRole('button', { name: /Salvar e Ir p\/ Próxima \(1\)/i }));
+
+      // Resta apenas a última máquina (Servidor)
+      expect(screen.queryByText(/máquinas ativas/i)).not.toBeInTheDocument();
+      const notesInput3 = within(dialog).getByLabelText(/Observação Específica para/i);
+      await userEvent.type(notesInput3, 'Servidor banco sincronizado');
+
+      // Fecha a última sessão pelo botão de fechar do HUD
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Fechar janela de documentação' }));
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Encerrar e salvar telemetria automaticamente' })
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('button', { name: 'Encerrar e salvar telemetria automaticamente' })
+        ).not.toBeInTheDocument()
+      );
+    } finally {
+      clickSpy.mockRestore();
+      localStorage.clear();
     }
   });
 

@@ -301,8 +301,11 @@ export function saveRecentConnection(record: Omit<RecentConnectionRecord, 'conne
 
     const filtered = existing.filter(
       (item) =>
-        item.protocolNumber !== newRecord.protocolNumber &&
-        !(item.deviceId === newRecord.deviceId && item.connectedAt === newRecord.connectedAt)
+        !(
+          item.deviceId === newRecord.deviceId &&
+          (item.protocolNumber === newRecord.protocolNumber ||
+            item.connectedAt === newRecord.connectedAt)
+        )
     );
     const updated = [newRecord, ...filtered].slice(0, 50);
     localStorage.setItem(RECENT_KEY, JSON.stringify(updated));
@@ -329,7 +332,9 @@ export function updateRecentConnectionNotes(
     const updated = existing.map((item) => {
       if (
         (item.deviceId === deviceId && item.connectedAt === connectedAt) ||
-        (extra?.protocolNumber && item.protocolNumber === extra.protocolNumber)
+        (extra?.protocolNumber &&
+          item.deviceId === deviceId &&
+          item.protocolNumber === extra.protocolNumber)
       ) {
         matched = true;
         const merged: RecentConnectionRecord = {
@@ -829,9 +834,15 @@ export interface ActiveSessionDraft {
   clientViewport?: string;
   mode?: 'automatic' | 'manual';
   startedAt: string;
+  draftNotes?: string;
+  draftResolutionStatus?: SessionResolutionStatus;
+  draftSelectedActions?: string[];
+  draftTimelineEvents?: SessionTimelineEvent[];
+  draftSyncToDeviceMeta?: boolean;
 }
 
 const ACTIVE_SESSION_DRAFT_KEY = 'xpoint_tv_active_session_v1';
+const ACTIVE_SESSIONS_LIST_KEY = 'xpoint_tv_active_sessions_v2';
 const ACTIVE_SESSION_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 horas
 
 export function saveActiveSessionDraft(session: ActiveSessionDraft | null): void {
@@ -839,6 +850,7 @@ export function saveActiveSessionDraft(session: ActiveSessionDraft | null): void
   try {
     if (!session) {
       localStorage.removeItem(ACTIVE_SESSION_DRAFT_KEY);
+      localStorage.removeItem(ACTIVE_SESSIONS_LIST_KEY);
       return;
     }
     localStorage.setItem(ACTIVE_SESSION_DRAFT_KEY, JSON.stringify(session));
@@ -860,6 +872,45 @@ export function getActiveSessionDraft(): ActiveSessionDraft | null {
     return parsed;
   } catch {
     return null;
+  }
+}
+
+export function saveActiveSessionsDraft(sessions: ActiveSessionDraft[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!sessions || sessions.length === 0) {
+      localStorage.removeItem(ACTIVE_SESSIONS_LIST_KEY);
+      localStorage.removeItem(ACTIVE_SESSION_DRAFT_KEY);
+      return;
+    }
+    localStorage.setItem(ACTIVE_SESSIONS_LIST_KEY, JSON.stringify(sessions));
+    localStorage.setItem(ACTIVE_SESSION_DRAFT_KEY, JSON.stringify(sessions[sessions.length - 1]));
+  } catch {}
+}
+
+export function getActiveSessionsDraft(): ActiveSessionDraft[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(ACTIVE_SESSIONS_LIST_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as ActiveSessionDraft[];
+      if (Array.isArray(parsed)) {
+        const now = Date.now();
+        const valid = parsed.filter((s) => {
+          if (!s || !s.deviceId || !s.startedAt) return false;
+          const ageMs = now - new Date(s.startedAt).getTime();
+          return !Number.isNaN(ageMs) && ageMs <= ACTIVE_SESSION_MAX_AGE_MS;
+        });
+        if (valid.length !== parsed.length) {
+          saveActiveSessionsDraft(valid);
+        }
+        return valid;
+      }
+    }
+    const single = getActiveSessionDraft();
+    return single ? [single] : [];
+  } catch {
+    return [];
   }
 }
 
