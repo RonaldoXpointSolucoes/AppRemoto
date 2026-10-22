@@ -5,10 +5,7 @@ package setup
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -18,11 +15,10 @@ import (
 )
 
 const (
-	computerNamePhysicalDnsHostname = 5
-	mbYesNo                         = 0x00000004
-	mbIconQuestion                  = 0x00000020
-	mbIconWarning                   = 0x00000030
-	idYes                           = 6
+	mbYesNo        = 0x00000004
+	mbIconQuestion = 0x00000020
+	mbIconWarning  = 0x00000030
+	idYes          = 6
 )
 
 func AskYesNo(question, title string, warning bool) bool {
@@ -57,50 +53,8 @@ func IsDomainJoinedWindows() (bool, string) {
 	return joinStatus == syscall.NetSetupDomainName, name
 }
 
-func ApplyWindowsComputerRename(desiredName string, renameRequested bool) (statusRenomeacao string, erroRenomeacao string, needsReboot bool) {
-	norm, msg, ok := ValidateWindowsHostname(desiredName)
-	if !ok {
-		return "ERRO", msg, false
-	}
-	if !renameRequested {
-		return "NAO_SOLICITADO", "", false
-	}
-
-	currentHost, _ := os.Hostname()
-	currentNorm := NormalizeWindowsHostname(currentHost)
-	if currentNorm != "" && strings.EqualFold(currentNorm, norm) {
-		return "CONFIRMADO", "", false
-	}
-
-	if joined, domainName := IsDomainJoinedWindows(); joined {
-		return "ERRO", fmt.Sprintf("Computador em domínio Active Directory (%s): renomeação automática bloqueada por segurança.", domainName), false
-	}
-
-	kernel32 := windows.NewLazySystemDLL("kernel32.dll")
-	setComputerNameExW := kernel32.NewProc("SetComputerNameExW")
-	r1, _, callErr := setComputerNameExW.Call(
-		uintptr(computerNamePhysicalDnsHostname),
-		uintptr(unsafe.Pointer(ptr(norm))),
-	)
-	if r1 != 0 {
-		return "APLICADO_AGUARDANDO_REBOOT", "", true
-	}
-
-	// Fallback seguro via PowerShell Rename-Computer caso SetComputerNameExW falhe
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command",
-		fmt.Sprintf("Rename-Computer -NewName '%s' -Force -ErrorAction Stop", norm))
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	if out, err := cmd.CombinedOutput(); err != nil {
-		detail := strings.TrimSpace(string(out))
-		if detail == "" && callErr != nil {
-			detail = callErr.Error()
-		}
-		if len(detail) > 200 {
-			detail = detail[:200]
-		}
-		return "ERRO", fmt.Sprintf("Falha ao alterar o nome do Windows para %s: %s", norm, detail), false
-	}
-	return "APLICADO_AGUARDANDO_REBOOT", "", true
+func ApplyWindowsComputerRename(_ string, _ bool) (statusRenomeacao string, erroRenomeacao string, needsReboot bool) {
+	return "NAO_SOLICITADO", "", false
 }
 
 func namingStatePath(ps Paths) string {
@@ -160,14 +114,6 @@ func EnrichDataDivasWithNamingState(info *api.DataDivasInfo, ps Paths) *api.Data
 			info.NomeMaq = state.WindowsHostnameDesejado
 		}
 	}
-	currentHost, _ := os.Hostname()
-	currentNorm := NormalizeWindowsHostname(currentHost)
-	if state.WindowsHostnameDesejado != "" && currentNorm != "" && strings.EqualFold(currentNorm, state.WindowsHostnameDesejado) {
-		state.StatusRenomeacao = "CONFIRMADO"
-		state.ErroRenomeacao = ""
-		state.RebootPromptPending = false
-		_ = SaveNamingState(ps, state)
-	}
 	if state.StatusRenomeacao != "" {
 		info.StatusRenomeacao = state.StatusRenomeacao
 	}
@@ -191,40 +137,10 @@ func PromptCompletionAndOptionalReboot(logPath string) {
 		return
 	}
 	state, err := LoadNamingState(ps)
-	if err != nil || !state.RebootPromptPending || state.StatusRenomeacao != "APLICADO_AGUARDANDO_REBOOT" {
-		summary := "Configuracao concluida. O computador esta disponivel na lista Dispositivos do painel XPoint."
-		if err == nil && state.WindowsHostnameDesejado != "" {
-			summary += fmt.Sprintf("\n\nIdentificação configurada: %s (%s)", state.WindowsHostnameDesejado, RoleDefinitionByCode(state.Role).Label)
-			if state.StatusRenomeacao == "ERRO" && state.ErroRenomeacao != "" {
-				summary += "\nAviso de renomeação do Windows: " + state.ErroRenomeacao
-			}
-		}
-		summary += "\n\nLog: " + logPath
-		Message(summary)
-		return
+	summary := "Configuracao concluida. O computador esta disponivel na lista Dispositivos do painel XPoint."
+	if err == nil && state.WindowsHostnameDesejado != "" {
+		summary += fmt.Sprintf("\n\nIdentificação configurada no painel: %s (%s)", state.WindowsHostnameDesejado, RoleDefinitionByCode(state.Role).Label)
 	}
-
-	state.RebootPromptPending = false
-	_ = SaveNamingState(ps, state)
-
-	currentHost, _ := os.Hostname()
-	promptText := fmt.Sprintf(
-		"Configuração concluída com sucesso!\n\n"+
-			"• Nome configurado no painel: %s (%s)\n"+
-			"• Nome atual no Windows: %s\n"+
-			"• Novo nome real no Windows: %s (aguardando reinicialização)\n\n"+
-			"Para que o novo nome do computador no Windows entre em vigor completamente, é necessário reiniciar o Windows.\n\n"+
-			"Deseja reiniciar este computador agora?\n"+
-			"(Clique em 'Não' para reiniciar depois; o acesso remoto já está ativo e funcionando.)",
-		state.WindowsHostnameDesejado,
-		RoleDefinitionByCode(state.Role).Label,
-		currentHost,
-		state.WindowsHostnameDesejado,
-	)
-
-	if AskYesNo(promptText, "XPoint Remote — Reinicialização do Windows", false) {
-		cmd := exec.Command("shutdown.exe", "/r", "/t", "5", "/c", "XPoint Remote: aplicando novo nome do computador "+state.WindowsHostnameDesejado)
-		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-		_ = cmd.Start()
-	}
+	summary += "\n\nLog: " + logPath
+	Message(summary)
 }

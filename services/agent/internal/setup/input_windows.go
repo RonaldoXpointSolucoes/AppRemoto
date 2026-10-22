@@ -50,9 +50,6 @@ const (
 	lbResetContent       = 0x0184
 	lbSetHorizontalExent = 0x0194
 
-	bmGetCheck  = 0x00F0
-	bmSetCheck  = 0x00F1
-	bstChecked  = 1
 	enChange    = 0x0300
 	emLimitText = 0x00C5
 
@@ -256,18 +253,17 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 	}
 
 	var (
-		headerTitleCtrl, headerSubCtrl                uintptr
-		badgeTitleCtrl, badgeSubCtrl                  uintptr
-		ddTitleCtrl, ddLine1Ctrl, ddLine2Ctrl         uintptr
-		sec1TitleCtrl, sec2TitleCtrl                  uintptr
-		cnpjEdit, companyEdit, groupSummaryLabel      uintptr
-		computersList                                 uintptr
-		operationCombo, roleCombo, machineEdit        uintptr
-		reasonTitleCtrl, reasonLabel                  uintptr
-		renameCheckbox, renameHintCtrl                uintptr
-		statusLabel, footerCtrl                       uintptr
-		queryCnpjBtn, checkBtn, logBtn                uintptr
-		installBtn, cancelBtn                         uintptr
+		headerTitleCtrl, headerSubCtrl          uintptr
+		badgeTitleCtrl, badgeSubCtrl            uintptr
+		ddTitleCtrl, ddLine1Ctrl, ddLine2Ctrl   uintptr
+		sec1TitleCtrl, sec2TitleCtrl            uintptr
+		cnpjEdit, companyEdit, groupSummaryLabel uintptr
+		computersList                           uintptr
+		operationCombo, roleCombo, machineEdit  uintptr
+		reasonTitleCtrl, reasonLabel            uintptr
+		statusLabel, footerCtrl                 uintptr
+		queryCnpjBtn, checkBtn, logBtn          uintptr
+		installBtn, cancelBtn                   uintptr
 	)
 
 	var (
@@ -360,9 +356,6 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 				sit = "◐ PENDENTE"
 			}
 			winInfo := c.WindowsHostnameAtual
-			if c.StatusRenomeacao == "APLICADO_AGUARDANDO_REBOOT" {
-				winInfo += " (aguardando reinício)"
-			}
 			line := fmt.Sprintf("  %-15s │ %-18s │ %-11s │ Host Windows: %s", c.NomeNormalizado, c.FuncaoLabel, sit, winInfo)
 			send.Call(computersList, lbAddString, 0, uintptr(unsafe.Pointer(ptr(line))))
 		}
@@ -667,16 +660,16 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 				drawCard(hdc, 580, 14, 860, 62, 16, brushBadge, colBadgeBorder, 0)
 
 				// 2. Card 1 (Principal): Dados a Preencher Juntos — CNPJ, RAZÃO & NOME PADRÃO (20px radius)
-				drawCard(hdc, 20, 84, 860, 368, 20, brushCard, colCardBorder, 0)
+				drawCard(hdc, 20, 84, 860, 312, 20, brushCard, colCardBorder, 0)
 
 				// Callout box de recomendação dentro do Card 1 (14px radius)
 				drawCard(hdc, 38, 246, 842, 298, 14, brushCallout, colCalloutBorder, 0)
 
 				// 3. Card 2: Contexto Detectado Localmente & Computadores do CNPJ (20px radius)
-				drawCard(hdc, 20, 378, 860, 566, 20, brushCard, colCardBorder, 0)
+				drawCard(hdc, 20, 322, 860, 566, 20, brushCard, colCardBorder, 0)
 
 				// Sub-card DataDivas dentro do Card 2 (12px radius)
-				drawCard(hdc, 38, 412, 842, 468, 12, brushDdCard, colDdBorder, brushAccent)
+				drawCard(hdc, 38, 356, 842, 412, 12, brushDdCard, colDdBorder, brushAccent)
 
 				// 4. Card 3: Barra de Status Operacional (14px radius)
 				drawCard(hdc, 20, 574, 860, 604, 14, brushStatus, colCardBorder, 0)
@@ -743,7 +736,7 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 				setTextColor.Call(wparam, rgb(29, 29, 31))
 				setBkColor.Call(wparam, colCardBg)
 				return brushCard
-			case groupSummaryLabel, renameHintCtrl:
+			case groupSummaryLabel:
 				setTextColor.Call(wparam, rgb(110, 110, 115))
 				setBkColor.Call(wparam, colCardBg)
 				return brushCard
@@ -876,7 +869,7 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 						if roleCode == "PERSONALIZADO" {
 							recomputeSuggestion(false)
 						} else {
-							setText(reasonLabel, fmt.Sprintf("✓ Nome Windows validado: %s (%d/%d caracteres permitidos).", norm, len(norm), MaxWindowsHostnameLength))
+							setText(reasonLabel, fmt.Sprintf("✓ Nome de identificação validado: %s (%d/%d caracteres permitidos).", norm, len(norm), MaxWindowsHostnameLength))
 						}
 					}
 				}
@@ -891,7 +884,7 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 				rawMachine := cleanInput(readControlText(user, machineEdit))
 				normName, validationMsg, validHost := ValidateWindowsHostname(rawMachine)
 				if !validHost {
-					Message("Nome do computador inválido para o Windows:\n\n" + validationMsg + "\n\nUse até 15 caracteres (letras A-Z, números 0-9 e hífen, sem acentos).")
+					Message("Nome do computador inválido:\n\n" + validationMsg + "\n\nUse até 15 caracteres (letras A-Z, números 0-9 e hífen, sem acentos).")
 					return 0
 				}
 				rawCnpj := NormalizeCnpjDigits(cleanInput(readControlText(user, cnpjEdit)))
@@ -907,18 +900,6 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 				}
 				roleCode := currentRoleCode()
 				opChoice := currentOperationChoice()
-				chk, _, _ := send.Call(renameCheckbox, bmGetCheck, 0, 0)
-				renameWin := chk == bstChecked
-
-				if renameWin && strings.EqualFold(NormalizeWindowsHostname(currentHost), "SERVIDOR") && !strings.EqualFold(normName, "SERVIDOR") {
-					if !AskYesNo(
-						fmt.Sprintf("Atenção: Este computador atualmente se chama 'SERVIDOR' no Windows.\n\nVocê selecionou renomeá-lo para '%s' (%s).\n\nTem certeza de que deseja alterar o nome real deste computador no Windows?", normName, RoleDefinitionByCode(roleCode).Label),
-						"Confirmação de Segurança — Computador SERVIDOR",
-						true,
-					) {
-						return 0
-					}
-				}
 
 				candidateInput := &InstallationInput{
 					CompanyName:       companyText,
@@ -930,7 +911,7 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 					DesiredHostname:   normName,
 					OperationMode:     opChoice.Mode,
 					ReplacesDeviceID:  opChoice.ReplacesDeviceID,
-					RenameWindows:     renameWin,
+					RenameWindows:     false,
 				}
 				if !candidateInput.Valid() {
 					Message("Informe os dados da empresa e do computador (até 128 caracteres).")
@@ -961,7 +942,7 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 						WindowsHostnameAtual: currentHost,
 						OperationMode:        opChoice.Mode,
 						ReplacesDeviceID:     opChoice.ReplacesDeviceID,
-						RenameWindows:        renameWin,
+						RenameWindows:        false,
 						RazaoSocial:          companyText,
 						NomeFantasia:         initialFantasia,
 					})
@@ -1143,7 +1124,7 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 	badgeSubCtrl = controlWithFont("STATIC", "Conexão TLS 1.3 • Pacote Oficial XPoint", 594, 38, 252, 16, 0, 0, smallFont)
 
 	// =========================================================================
-	// 2. CARD 1 (PRINCIPAL): DADOS A PREENCHER PRÓXIMOS — CNPJ, RAZÃO & NOME PADRÃO (y: 84..368)
+	// 2. CARD 1 (PRINCIPAL): DADOS A PREENCHER PRÓXIMOS — CNPJ, RAZÃO & NOME PADRÃO (y: 84..312)
 	// =========================================================================
 	sec1TitleCtrl = controlWithFont("STATIC", "1. Dados de Preenchimento — CNPJ, Razão Social e Nome Padrão", 38, 96, 804, 20, 0, 0, secTitleFont)
 
@@ -1188,31 +1169,15 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 	reasonTitleCtrl = controlWithFont("STATIC", "✨ SUGESTÃO INTELIGENTE DO SISTEMA", 52, 252, 776, 16, 0, 0, smallBoldFont)
 	reasonLabel = controlWithFont("STATIC", initialSug.Reason, 52, 270, 776, 22, 0, 0, smallFont)
 
-	renameLabel := fmt.Sprintf("Alterar também o nome real deste computador no Windows para o Nome Padrão (atual: %s)", currentHost)
-	renameCheckbox = controlWithFont("BUTTON", renameLabel, 38, 308, 804, 20, 17, 0x00010003, labelFont)
-	send.Call(renameCheckbox, bmSetCheck, bstChecked, 0)
-
-	renameHintCtrl = controlWithFont(
-		"STATIC",
-		"🔒 Garantia de continuidade: O computador NÃO será reiniciado automaticamente. Ao final da instalação, você poderá escolher se deseja reiniciar agora ou depois.",
-		38,
-		330,
-		804,
-		28,
-		0,
-		0,
-		smallFont,
-	)
-
 	// =========================================================================
-	// 3. CARD 2: DADOS DETECTADOS & COMPUTADORES JÁ REGISTRADOS NO CNPJ (y: 378..566)
+	// 3. CARD 2: DADOS DETECTADOS & COMPUTADORES JÁ REGISTRADOS NO CNPJ (y: 322..566)
 	// =========================================================================
-	sec2TitleCtrl = controlWithFont("STATIC", "2. Diagnóstico Local & Computadores Já Registrados no CNPJ", 38, 388, 804, 18, 0, 0, secTitleFont)
+	sec2TitleCtrl = controlWithFont("STATIC", "2. Diagnóstico Local & Computadores Já Registrados no CNPJ", 38, 332, 804, 18, 0, 0, secTitleFont)
 
 	ddLine1, ddLine2 := formatDataDivasLines(dataDivas, currentHost)
-	ddTitleCtrl = controlWithFont("STATIC", "DADOS DETECTADOS AUTOMATICAMENTE NESTE COMPUTADOR (C:\\DataDivas\\config.ini)", 50, 416, 780, 15, 0, 0, smallBoldFont)
-	ddLine1Ctrl = controlWithFont("STATIC", ddLine1, 50, 432, 780, 16, 0, 0, smallFont)
-	ddLine2Ctrl = controlWithFont("STATIC", ddLine2, 50, 449, 780, 15, 0, 0, smallFont)
+	ddTitleCtrl = controlWithFont("STATIC", "DADOS DETECTADOS AUTOMATICAMENTE NESTE COMPUTADOR (C:\\DataDivas\\config.ini)", 50, 360, 780, 15, 0, 0, smallBoldFont)
+	ddLine1Ctrl = controlWithFont("STATIC", ddLine1, 50, 376, 780, 16, 0, 0, smallFont)
+	ddLine2Ctrl = controlWithFont("STATIC", ddLine2, 50, 393, 780, 15, 0, 0, smallFont)
 
 	initialGroupMsg := "ℹ️ Informe um CNPJ de 14 dígitos acima e clique em Consultar CNPJ para listar os computadores da empresa."
 	if len(initialCnpj) == 11 {
@@ -1220,9 +1185,9 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 	} else if len(initialCnpj) == 14 {
 		initialGroupMsg = "🔄 Sincronizando computadores registrados neste CNPJ…"
 	}
-	groupSummaryLabel = controlWithFont("STATIC", initialGroupMsg, 38, 474, 804, 16, 0, 0, smallFont)
+	groupSummaryLabel = controlWithFont("STATIC", initialGroupMsg, 38, 418, 804, 16, 0, 0, smallFont)
 
-	computersList = controlWithFont("LISTBOX", "", 38, 493, 804, 64, 16, 0x00B00001, monoFont)
+	computersList = controlWithFont("LISTBOX", "", 38, 437, 804, 118, 16, 0x00B00001, monoFont)
 
 	// =========================================================================
 	// 4. CARD 3: STATUS & BOTÕES DE AÇÃO ESTILO APPLE (y: 574..672)

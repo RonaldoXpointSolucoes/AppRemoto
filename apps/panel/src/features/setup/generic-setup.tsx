@@ -205,9 +205,9 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
   const available = installers.filter((item) => item.active && !item.revokedAt);
   return <section className="automatic-setup" aria-labelledby="generic-setup-title">
     <div className="setup-introduction">
-      <p className="eyebrow">Instalador completo 1.3.7 · Windows 10/11 (64 e 32 bits) & Windows 7 · UI Enterprise Segura</p>
+      <p className="eyebrow">Instalador completo 1.3.8 · Windows 10/11 (64 e 32 bits) & Windows 7 · UI Enterprise Segura</p>
       <h1 id="generic-setup-title">Um instalador para todos os computadores.</h1>
-      <p>Baixe uma vez e use o mesmo arquivo nos computadores dos clientes. Se o RustDesk já estiver instalado, ele aplica os padrões da XPoint. Se não estiver, instala tudo com interface moderna de alta confiança, lê automaticamente os dados do <code>C:\DataDivas\config.ini</code>, sugere a função e numeração sequencial por CNPJ e permite renomear o Windows sem reiniciar à força.</p>
+      <p>Baixe uma vez e use o mesmo arquivo nos computadores dos clientes. Se o RustDesk já estiver instalado, ele aplica os padrões da XPoint. Se não estiver, instala tudo com interface moderna de alta confiança, lê automaticamente os dados do <code>C:\DataDivas\config.ini</code> e sugere a função e numeração sequencial por CNPJ sem alterar o nome do computador no Windows.</p>
     </div>
     {loading && <p role="status">Carregando instalador…</p>}
     {!sessionCleared && <div className="installer-form">
@@ -249,7 +249,7 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
     <ol className="automatic-steps" aria-label="Como instalar">
       <li><span aria-hidden="true">1</span><div><strong>Execute no computador do cliente</strong><p>Abra XPoint-Instalar-Completo.exe e aceite a solicitação de administrador do Windows. O cabeçalho de segurança confirma a autenticidade e criptografia TLS.</p></div></li>
       <li><span aria-hidden="true">2</span><div><strong>Confira o CNPJ, a função e o nome sugerido</strong><p>O instalador lê o C:\DataDivas\config.ini, sincroniza os computadores do CNPJ, sugere o próximo número livre (ex.: CAIXA-01, SERVIDOR) e aplica a senha padrão de acesso.</p></div></li>
-      <li><span aria-hidden="true">3</span><div><strong>Aguarde a conclusão com controle de reinicialização</strong><p>A janela mostra cada etapa com transparência. O computador nunca é reiniciado sem permissão e aparece imediatamente no painel com o botão Conectar.</p></div></li>
+      <li><span aria-hidden="true">3</span><div><strong>Aguarde a conclusão imediata</strong><p>A janela mostra cada etapa com transparência. O computador aparece imediatamente no painel com o botão Conectar.</p></div></li>
     </ol>
     <p>Se houver falha, o instalador cria um <strong>log com o mesmo nome do executável</strong>, na mesma pasta. Ele informa a etapa e o código do erro.</p>
     <Link href="/devices" className="command-button guide-link">Ver dispositivos</Link>

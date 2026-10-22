@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.7.1',
+    date: 'Outubro 2026',
+    title: 'Instalador Sem Renomeação do Hostname Windows em Todas as Edições (Win 10/11, 32-bit e Win 7) (EXE v1.3.8)',
+    highlight:
+      'Remoção completa da alteração do nome real da máquina no Windows durante a instalação, preservando o hostname original do sistema operacional sem necessidade de reinicialização e mantendo a identificação padronizada no painel.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Preservação Integral do Hostname do Windows (Zero Reinicialização)',
+        description:
+          'O instalador registra a função e o Nome Padrão apenas no painel XPoint Remote (ex.: EMPRESA - CAIXA 01), sem tocar no hostname do Windows (SetComputerNameExW / Rename-Computer) nem solicitar reboot ao concluir.',
+        tag: 'UI/UX',
+      },
+      {
+        title: 'Novos Instaladores Unificados EXE v1.3.8 (Windows 10/11, 32 bits e Windows 7)',
+        description:
+          'Atualização simultânea dos três pacotes (x64, x86 32-bit e Windows 7 SP1) com interface enxuta e validação de integridade.',
+        tag: 'Infra & Cockpit',
+      },
+    ],
+  },
+  {
     version: 'v1.7.0',
     date: 'Outubro 2026',
     title: 'Conexão Remota Instantânea via Relay Direto (hbbs/hbbr) & Eliminação de Race Condition de Pareamento',
     highlight:
       'Eliminação do atraso de 6 a 10 segundos de NAT hole-punching malsucedido em CGNAT (ALWAYS_USE_RELAY=Y), correção da condição de corrida de pareamento simultâneo no hbbr (TOKIO_WORKER_THREADS=1 + RUST_LOG=warn) e redução de 50% nas leituras do endpoint /connect.',
-    isCurrent: true,
     items: [
       {
         title: 'Pareamento Imediato via Relay (Zero Espera de Hole-Punching UDP/CGNAT)',

@@ -370,8 +370,6 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 			if json.Unmarshal(b, &o) == nil && o.EnrollmentID == p.EnrollmentID && o.At.After(started) {
 				r.Record(6, "HEARTBEAT_CONFIRMED", "OK", nil)
 				if pkg.Generic.SchemaVersion == 2 && input != nil && input.DesiredHostname != "" {
-					r.Record(6, "WINDOWS_RENAME", "START", nil)
-					statusRenomeacao, erroRenomeacao, needsReboot := ApplyWindowsComputerRename(input.DesiredHostname, input.RenameWindows)
 					opMode := input.OperationMode
 					if opMode == "" {
 						opMode = "NEW_INSTALL"
@@ -386,12 +384,12 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 						NomeFantasia:            input.NomeFantasia,
 						Role:                    roleCode,
 						WindowsHostnameDesejado: input.DesiredHostname,
-						StatusRenomeacao:        statusRenomeacao,
-						ErroRenomeacao:          erroRenomeacao,
+						StatusRenomeacao:        "NAO_SOLICITADO",
+						ErroRenomeacao:          "",
 						ReservationID:           input.ReservationID,
 						OperationMode:           opMode,
 						ReplacesDeviceID:        input.ReplacesDeviceID,
-						RebootPromptPending:     needsReboot,
+						RebootPromptPending:     false,
 					})
 					if IsValidCnpj14(input.Cnpj) {
 						devUUID, rdID, curHost := discoverLocalMachineContext()
@@ -408,13 +406,12 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 								ReplacesDeviceID:        input.ReplacesDeviceID,
 								WindowsHostnameAtual:    curHost,
 								WindowsHostnameDesejado: input.DesiredHostname,
-								StatusRenomeacao:        statusRenomeacao,
-								ErroRenomeacao:          erroRenomeacao,
+								StatusRenomeacao:        "NAO_SOLICITADO",
+								ErroRenomeacao:          "",
 							})
 							cancelConfirm()
 						}
 					}
-					r.Record(6, "WINDOWS_RENAME", "OK", nil)
 				}
 				if r.Err() != nil {
 					return "LOG_WRITE"
