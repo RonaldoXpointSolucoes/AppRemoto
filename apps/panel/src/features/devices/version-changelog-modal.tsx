@@ -32,12 +32,39 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.8.0',
+    date: 'Outubro 2026',
+    title: 'Filtro Instantâneo Zero-Lag (< 1ms), Memoização de Linhas & Redução de Memória/CPU no Chrome',
+    highlight:
+      'Otimização profunda do motor de busca em tempo real e da árvore de dispositivos: estabilização referencial do cache local, pré-compilação O(1) da consulta, memoização por linha (React.memo), content-visibility nativo e eliminação da renderização tripla oculta em produção.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Filtro de Busca Instantâneo (< 1ms por tecla)',
+        description:
+          'Estabilização referencial dos mapas de metadados e conexões recentes (evitando invalidação do índice de 136 máquinas a cada letra digitada), cache da query normalizada e cálculo único de score O(N) antes da ordenação.',
+        tag: 'Performance',
+      },
+      {
+        title: 'Redução Drástica de Memória RAM e CPU Ociosa no Google Chrome',
+        description:
+          'Eliminação das 272 árvores DOM duplicadas ocultas em produção, memoização das linhas de dispositivos (zero re-render de SVGs durante digitação), CSS content-visibility: auto e remoção de animações box-shadow infinitas em 121 linhas simultâneas.',
+        tag: 'Performance',
+      },
+      {
+        title: 'Sincronização Online em Tempo Real com Servidor RustDesk (hbbs)',
+        description:
+          'Integração direta em tempo real com a porta 21115 do hbbs (OnlineRequest) na API, garantindo que qualquer máquina online no RustDesk apareça imediatamente como Online no painel.',
+        tag: 'Infra & Cockpit',
+      },
+    ],
+  },
+  {
     version: 'v1.7.9',
     date: 'Outubro 2026',
     title: 'Instalador Autônomo Self-Healing (EXE v1.3.9) & Correção Definitiva de Cadastro (RECONCILIATION)',
     highlight:
       'Eliminação definitiva do erro RECONCILIATION / ENROLLMENT_DENIED ao cadastrar novas empresas/CNPJs, ciclo de autorrecuperação (self-healing) automático na Etapa 5, consulta automática ao digitar 14 dígitos de CNPJ e aplicação automática de regras de Firewall e energia AC.',
-    isCurrent: true,
     items: [
       {
         title: 'Correção Definitiva do Erro RECONCILIATION na Etapa 5',

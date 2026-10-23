@@ -1,7 +1,8 @@
 'use client';
 
-import type {
-  DeviceListQuery,
+import {
+  type DeviceView,
+  type DeviceListQuery,
   DeviceDetailsResponse,
   UpdateDeviceResponse,
   DeleteDeviceResponse,
@@ -62,6 +63,8 @@ function deviceQuery(filters: DeviceFiltersValue, cursor?: string): DeviceListQu
     limit: 25,
   };
 }
+
+const EMPTY_DEVICE_ROWS: DeviceView[] = [];
 
 export function isUnauthorized(error: unknown): boolean {
   return error instanceof ApiClientError && error.status === 401;
@@ -181,7 +184,7 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
     profile: profile.data,
     organizations,
     devices,
-    rows: currentSession ? page?.devices ?? [] : [],
+    rows: currentSession ? page?.devices ?? EMPTY_DEVICE_ROWS : EMPTY_DEVICE_ROWS,
     error: organizationInitialError ? organizations.error : deviceInitialError ? devices.error : null,
     backgroundError,
     isOrganizationLoading: !currentSession || organizations.isPending,

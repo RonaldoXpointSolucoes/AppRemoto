@@ -384,6 +384,7 @@ export interface DeviceSearchIndex {
   displayNameNorm: string;
   hostnameNorm: string;
   subtitlePrimaryNorm: string;
+  mainTitleWords: string[];
   titleWords: string[];
   subtitleWords: string[];
   fullHaystack: string;
@@ -421,6 +422,7 @@ export function buildDeviceSearchIndex(
   const displayNameNorm = normalizeSearchText(dev.displayName || '').trim();
   const hostnameNorm = normalizeSearchText(dev.hostname || '').trim();
   const subtitlePrimaryNorm = normalizeSearchText(presentation.subtitlePrimary || '').trim();
+  const mainTitleWords = splitSearchWords(mainTitleNorm);
   const titleWords = splitSearchWords(`${mainTitleNorm} ${displayNameNorm}`);
   const subtitleWords = splitSearchWords(
     normalizeSearchText(
@@ -485,6 +487,7 @@ export function buildDeviceSearchIndex(
     displayNameNorm,
     hostnameNorm,
     subtitlePrimaryNorm,
+    mainTitleWords,
     titleWords,
     subtitleWords,
     fullHaystack: normalizeSearchText(allParts.join(' ')),
@@ -496,18 +499,98 @@ export function buildDeviceSearchIndex(
   };
 }
 
-function scoreSingleClauseMatch(index: DeviceSearchIndex, rawClause: string): number {
-  const rawTokens = rawClause.split(/\s+/).filter(Boolean);
-  const cleanTokens = rawTokens
-    .map((t) => {
-      const colonIdx = t.indexOf(':');
-      return colonIdx > 0 ? t.slice(colonIdx + 1) : t;
-    })
+interface PreparedSearchToken {
+  raw: string;
+  prefix: string | null;
+  val: string;
+  digits: string;
+}
+
+interface PreparedSearchClause {
+  raw: string;
+  cleanTokens: string[];
+  cleanClause: string;
+  clauseDigits: string;
+  isNumericLike: boolean;
+  tokens: PreparedSearchToken[];
+}
+
+let cachedRawQuery = '';
+let cachedPreparedClauses: PreparedSearchClause[] = [];
+
+function getPreparedSearchClauses(rawQuery: string): PreparedSearchClause[] {
+  if (!rawQuery) return [];
+  if (rawQuery === cachedRawQuery) return cachedPreparedClauses;
+
+  const trimmed = rawQuery.trim();
+  if (!trimmed) {
+    cachedRawQuery = rawQuery;
+    cachedPreparedClauses = [];
+    return cachedPreparedClauses;
+  }
+
+  const rawClauses = normalizeSearchText(trimmed)
+    .split(/[,;|]+/)
+    .map((c) => c.trim())
     .filter(Boolean);
 
+  const prepared: PreparedSearchClause[] = [];
+  for (const clause of rawClauses) {
+    const rawTokens = clause.split(/\s+/).filter(Boolean);
+    const tokens: PreparedSearchToken[] = [];
+    const cleanTokens: string[] = [];
+
+    for (const tok of rawTokens) {
+      const colonIdx = tok.indexOf(':');
+      const prefix = colonIdx > 0 ? tok.slice(0, colonIdx) : null;
+      const val = colonIdx > 0 ? tok.slice(colonIdx + 1) : tok;
+      if (val) {
+        cleanTokens.push(val);
+      }
+      tokens.push({
+        raw: tok,
+        prefix,
+        val,
+        digits: val.replace(/\D+/g, ''),
+      });
+    }
+
+    const cleanClause = cleanTokens.join(' ');
+    const clauseDigits = clause.replace(/\D+/g, '');
+    const isNumericLike =
+      clauseDigits.length >= 3 && /^[\d\s.\-/]+$/.test(clause) && !clause.includes('.');
+
+    prepared.push({
+      raw: clause,
+      cleanTokens,
+      cleanClause,
+      clauseDigits,
+      isNumericLike,
+      tokens,
+    });
+  }
+
+  cachedRawQuery = rawQuery;
+  cachedPreparedClauses = prepared;
+  return prepared;
+}
+
+function scorePreparedClauseMatch(
+  index: DeviceSearchIndex,
+  clause: PreparedSearchClause
+): number {
+  const { cleanTokens, cleanClause, clauseDigits } = clause;
   if (cleanTokens.length === 0) return 0;
-  const cleanClause = cleanTokens.join(' ');
-  const { mainTitleNorm, displayNameNorm, hostnameNorm, subtitlePrimaryNorm, titleWords, subtitleWords } = index;
+
+  const {
+    mainTitleNorm,
+    displayNameNorm,
+    hostnameNorm,
+    subtitlePrimaryNorm,
+    mainTitleWords,
+    titleWords,
+    subtitleWords,
+  } = index;
 
   // 1. Nome principal (mainTitle / displayName) idêntico ao filtro
   if (mainTitleNorm === cleanClause || displayNameNorm === cleanClause) {
@@ -521,7 +604,6 @@ function scoreSingleClauseMatch(index: DeviceSearchIndex, rawClause: string): nu
   }
 
   // 3. Todas as palavras do filtro batem com o início de palavras do Nome Principal
-  const mainTitleWords = splitSearchWords(mainTitleNorm);
   const allTokensMatchTitleWordPrefix =
     mainTitleWords.length > 0 &&
     cleanTokens.every((tok) => titleWords.some((w) => w.startsWith(tok)));
@@ -556,7 +638,6 @@ function scoreSingleClauseMatch(index: DeviceSearchIndex, rawClause: string): nu
   if (cleanTokens.every((tok) => index.nameHaystack.includes(tok))) return 580;
 
   // 7. Match direto por IP, ID RustDesk ou CNPJ
-  const clauseDigits = cleanClause.replace(/\D+/g, '');
   if (
     index.ipHaystack.includes(cleanClause) ||
     index.idHaystack.includes(cleanClause) ||
@@ -575,7 +656,10 @@ function scoreSingleClauseMatch(index: DeviceSearchIndex, rawClause: string): nu
   if (subtitlePrimaryNorm.includes(cleanClause)) {
     return 350;
   }
-  if (index.razaoHaystack.includes(cleanClause) || cleanTokens.every((tok) => index.razaoHaystack.includes(tok))) {
+  if (
+    index.razaoHaystack.includes(cleanClause) ||
+    cleanTokens.every((tok) => index.razaoHaystack.includes(tok))
+  ) {
     return 200;
   }
 
@@ -588,20 +672,12 @@ export function scoreDeviceSearchMatch(
   rawQuery: string,
   _scope: DeviceSearchScope = 'all'
 ): number {
-  if (!rawQuery) return 0;
-  const trimmed = rawQuery.trim();
-  if (!trimmed) return 0;
-
-  const clauses = normalizeSearchText(trimmed)
-    .split(/[,;|]+/)
-    .map((c) => c.trim())
-    .filter(Boolean);
-
+  const clauses = getPreparedSearchClauses(rawQuery);
   if (clauses.length === 0) return 0;
 
   let bestScore = 0;
-  for (const clause of clauses) {
-    const score = scoreSingleClauseMatch(index, clause);
+  for (let i = 0; i < clauses.length; i++) {
+    const score = scorePreparedClauseMatch(index, clauses[i]);
     if (score > bestScore) bestScore = score;
   }
   return bestScore;
@@ -612,15 +688,7 @@ export function matchesDeviceSearchIndex(
   rawQuery: string,
   scope: DeviceSearchScope = 'all'
 ): boolean {
-  if (!rawQuery) return true;
-  const trimmed = rawQuery.trim();
-  if (!trimmed) return true;
-
-  const clauses = normalizeSearchText(trimmed)
-    .split(/[,;|]+/)
-    .map((c) => c.trim())
-    .filter(Boolean);
-
+  const clauses = getPreparedSearchClauses(rawQuery);
   if (clauses.length === 0) return true;
 
   const scopedHaystack =
@@ -634,57 +702,74 @@ export function matchesDeviceSearchIndex(
             ? index.idHaystack
             : index.fullHaystack;
 
-  return clauses.some((clause) => {
-    if (scopedHaystack.includes(clause)) return true;
+  for (let i = 0; i < clauses.length; i++) {
+    const clause = clauses[i];
+    if (scopedHaystack.includes(clause.raw)) return true;
 
     if (scope === 'all' || scope === 'id') {
-      const clauseDigits = clause.replace(/\D+/g, '');
-      const isNumericLike =
-        clauseDigits.length >= 3 && /^[\d\s.\-/]+$/.test(clause) && !clause.includes('.');
       if (
-        (clauseDigits.length >= 6 || isNumericLike) &&
-        index.digitValues.some((d) => d.includes(clauseDigits))
+        (clause.clauseDigits.length >= 6 || clause.isNumericLike) &&
+        index.digitValues.some((d) => d.includes(clause.clauseDigits))
       ) {
         return true;
       }
     }
 
-    const tokens = clause.split(/\s+/).filter(Boolean);
-    if (tokens.length === 0) return false;
+    const { tokens } = clause;
+    if (tokens.length === 0) continue;
 
-    return tokens.every((tok) => {
-      const colonIdx = tok.indexOf(':');
-      if (colonIdx > 0) {
-        const prefix = tok.slice(0, colonIdx);
-        const val = tok.slice(colonIdx + 1);
-        if (!val) return true;
-        if (prefix === 'nome' || prefix === 'host' || prefix === 'pc' || prefix === 'funcao') {
-          return index.nameHaystack.includes(val);
+    let allMatch = true;
+    for (let j = 0; j < tokens.length; j++) {
+      const tok = tokens[j];
+      if (tok.prefix) {
+        if (!tok.val) continue;
+        const p = tok.prefix;
+        if (p === 'nome' || p === 'host' || p === 'pc' || p === 'funcao') {
+          if (!index.nameHaystack.includes(tok.val)) {
+            allMatch = false;
+            break;
+          }
+          continue;
         }
-        if (prefix === 'ip' || prefix === 'rede' || prefix === 'lan' || prefix === 'wan') {
-          return index.ipHaystack.includes(val);
+        if (p === 'ip' || p === 'rede' || p === 'lan' || p === 'wan') {
+          if (!index.ipHaystack.includes(tok.val)) {
+            allMatch = false;
+            break;
+          }
+          continue;
         }
-        if (prefix === 'razao' || prefix === 'fantasia' || prefix === 'empresa' || prefix === 'cliente') {
-          return index.razaoHaystack.includes(val);
+        if (p === 'razao' || p === 'fantasia' || p === 'empresa' || p === 'cliente') {
+          if (!index.razaoHaystack.includes(tok.val)) {
+            allMatch = false;
+            break;
+          }
+          continue;
         }
-        if (prefix === 'id' || prefix === 'cnpj' || prefix === 'serial') {
-          const valDigits = val.replace(/\D+/g, '');
-          return (
-            index.idHaystack.includes(val) ||
-            (valDigits.length >= 3 && index.digitValues.some((d) => d.includes(valDigits)))
-          );
+        if (p === 'id' || p === 'cnpj' || p === 'serial') {
+          const matchedId =
+            index.idHaystack.includes(tok.val) ||
+            (tok.digits.length >= 3 && index.digitValues.some((d) => d.includes(tok.digits)));
+          if (!matchedId) {
+            allMatch = false;
+            break;
+          }
+          continue;
         }
       }
 
-      if (scopedHaystack.includes(tok)) return true;
+      if (scopedHaystack.includes(tok.raw)) continue;
       if (scope === 'all' || scope === 'id') {
-        const tokDigits = tok.replace(/\D+/g, '');
-        if (tokDigits.length >= 4 && index.digitValues.some((d) => d.includes(tokDigits))) {
-          return true;
+        if (tok.digits.length >= 4 && index.digitValues.some((d) => d.includes(tok.digits))) {
+          continue;
         }
       }
-      return false;
-    });
-  });
+      allMatch = false;
+      break;
+    }
+
+    if (allMatch) return true;
+  }
+
+  return false;
 }
 

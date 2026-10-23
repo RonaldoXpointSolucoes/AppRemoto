@@ -9,7 +9,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { OrganizationView } from '../../lib/api';
 import { ApiClientError } from '../../lib/api';
 import { DeviceDirectory, type DeviceDirectoryService } from './device-table';
-import { getRecentConnections } from './teamviewer-storage';
+import {
+  getRecentConnections,
+  getCustomMetadataMap,
+  getDeviceFolderMap,
+  getFavoriteDeviceIds,
+} from './teamviewer-storage';
 import { resolveCoherentDevicePresentation } from './teamviewer-device-tree';
 import { LoginForm } from '../auth/login-form';
 
@@ -337,7 +342,7 @@ describe('DeviceDirectory', () => {
   it('opens the release notes modal when clicking the version number button', async () => {
     renderDirectory(service());
     await screen.findAllByText('Recepcao 01');
-    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.7.9' });
+    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.8.0' });
     expect(versionButtons.length).toBeGreaterThan(0);
     await userEvent.click(versionButtons[0]);
     const dialog = await screen.findByRole('dialog', { name: /Novidades da Plataforma/i });
@@ -776,6 +781,42 @@ describe('DeviceDirectory', () => {
     expect(renderedTitles.indexOf('SERVER-NOTE HOME')).toBeLessThan(
       renderedTitles.indexOf('CAKTUS - SERVIDOR')
     );
+  });
+
+  it('maintains referential stability on storage getters and omits redundant offscreen DOM mirrors for large fleets (> 15 devices)', async () => {
+    localStorage.clear();
+    expect(getCustomMetadataMap()).toBe(getCustomMetadataMap());
+    expect(getRecentConnections()).toBe(getRecentConnections());
+    expect(getDeviceFolderMap()).toBe(getDeviceFolderMap());
+    expect(getFavoriteDeviceIds()).toBe(getFavoriteDeviceIds());
+
+    const largeFleet = Array.from({ length: 20 }, (_, i) =>
+      device({
+        id: `dev-fleet-${i + 1}`,
+        displayName: i === 14 ? 'MARCENARIA - SERVIDOR' : `Estacao Operacional ${i + 1}`,
+        hostname: `HOST-${i + 1}`,
+        rustdeskId: String(400000000 + i),
+        status: 'ONLINE',
+      })
+    );
+
+    renderDirectory(
+      service({
+        getDevices: vi.fn().mockResolvedValue({ devices: largeFleet, nextCursor: null }),
+      })
+    );
+
+    await screen.findByText('MARCENARIA - SERVIDOR');
+    // Com 20 máquinas em modo Pastas (teamviewer), a tabela espelho oculta não é montada no DOM, economizando memória do Chrome
+    expect(document.querySelector('table.device-table')).toBeNull();
+
+    // O filtro rápido no topo responde instantaneamente em memória
+    const quickInput = screen.getByLabelText('Pesquisar e conectar dispositivo');
+    fireEvent.change(quickInput, { target: { value: 'marcenaria' } });
+    const renderedTitles = Array.from(document.querySelectorAll('.tv-display-name')).map((el) =>
+      el.textContent?.trim()
+    );
+    expect(renderedTitles).toEqual(['MARCENARIA - SERVIDOR']);
   });
 });
 

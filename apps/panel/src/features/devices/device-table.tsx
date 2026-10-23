@@ -207,23 +207,41 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   }, [resolvedUserId, isEmbedMode]);
 
   // Salva automaticamente os filtros e preferências de visualização do usuário sempre que alterados
-  // (exceto quando o filtro temporário veio do Chatbot para não sobrescrever a preferência padrão do técnico)
+  // (exceto quando o filtro temporário veio do Chatbot para não sobrescrever a preferência padrão do técnico).
+  // Debounce leve quando apenas `search` muda para evitar escrita síncrona no localStorage a cada tecla.
+  const prevNonSearchPrefsRef = useRef('');
   useEffect(() => {
     if (!activeUserId || loadedUserRef.current !== activeUserId || chatbotContext) return;
-    saveUserViewPreferences(activeUserId, {
+    const payload = {
       organizationId: filters.organizationId,
       status: filters.status,
       search: filters.search,
       viewMode,
       sidebarCollapsed,
-    });
+    };
+    const nonSearchKey = `${activeUserId}::${filters.organizationId}::${filters.status}::${viewMode}::${sidebarCollapsed}`;
+    if (prevNonSearchPrefsRef.current !== nonSearchKey) {
+      prevNonSearchPrefsRef.current = nonSearchKey;
+      saveUserViewPreferences(activeUserId, payload);
+      return;
+    }
+    const timer = setTimeout(() => {
+      saveUserViewPreferences(activeUserId, payload);
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      saveUserViewPreferences(activeUserId, payload);
+    };
   }, [activeUserId, chatbotContext, filters.organizationId, filters.status, filters.search, viewMode, sidebarCollapsed]);
 
   const displayedDevices = useMemo(() => {
     return isLocalCategory ? filterDevicesByCategory(query.rows, filters.organizationId) : query.rows;
   }, [isLocalCategory, filters.organizationId, query.rows]);
 
+  const shouldRenderLegacyMirror = viewMode === 'table' || query.rows.length <= 15;
+
   const tableDevices = useMemo(() => {
+    if (!shouldRenderLegacyMirror) return displayedDevices;
     const trimmedSearch = filters.search.trim();
     if (!trimmedSearch) return displayedDevices;
 
@@ -258,13 +276,13 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     });
 
     return scored.map((item) => item.dev);
-  }, [displayedDevices, filters.search, searchScope, serverSearchCommitted]);
+  }, [shouldRenderLegacyMirror, displayedDevices, filters.search, searchScope, serverSearchCommitted]);
 
   // Notifica o Chatbot Host que o AppRemoto está pronto para receber eventos
   useEffect(() => {
     emitToChatbotHost({
       type: 'XPOINT_REMOTE_READY',
-      version: 'v1.7.9',
+      version: 'v1.8.0',
       embedded: isEmbedMode,
       authenticated: true,
       activeCnpj: chatbotContextRef.current?.cnpj ?? null,
@@ -278,7 +296,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       if (action.action === 'PING') {
         emitToChatbotHost({
           type: 'XPOINT_REMOTE_PONG',
-          version: 'v1.7.9',
+          version: 'v1.8.0',
           authenticated: true,
           activeCnpj: chatbotContextRef.current?.cnpj ?? null,
           timestamp: new Date().toISOString(),
@@ -639,18 +657,25 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     }
   }
 
+  const handleOpenQuickConnect = useCallback(() => setIsAddOpen(true), []);
+  const handleOpenChangelog = useCallback(() => setIsChangelogOpen(true), []);
+  const handleToggleSidebarCollapse = useCallback(() => setSidebarCollapsed((c) => !c), []);
+  const logoutFnRef = useRef(handleLogout);
+  logoutFnRef.current = handleLogout;
+  const handleLogoutStable = useCallback(() => void logoutFnRef.current(), []);
+
   return (
     <div className="tv-app-shell">
       {/* Sidebar Lateral TeamViewer */}
       <TeamViewerSidebar
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        onOpenQuickConnect={() => setIsAddOpen(true)}
-        onOpenChangelog={() => setIsChangelogOpen(true)}
-        onLogout={() => void handleLogout()}
+        onOpenQuickConnect={handleOpenQuickConnect}
+        onOpenChangelog={handleOpenChangelog}
+        onLogout={handleLogoutStable}
         logoutPending={logoutPending}
         collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        onToggleCollapse={handleToggleSidebarCollapse}
         devices={query.rows}
       />
 
@@ -667,11 +692,11 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               <button
                 type="button"
                 className="version-badge version-badge-btn"
-                onClick={() => setIsChangelogOpen(true)}
-                title="Clique para ver todas as novidades da versão v1.7.9"
-                aria-label="Ver novidades da versão v1.7.9 (mobile)"
+                onClick={handleOpenChangelog}
+                title="Clique para ver todas as novidades da versão v1.8.0"
+                aria-label="Ver novidades da versão v1.8.0 (mobile)"
               >
-                v1.7.9
+                v1.8.0
               </button>
             </div>
           </div>
@@ -738,11 +763,11 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
             <button
               type="button"
               className="version-badge version-badge-btn"
-              onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.7.9"
-              aria-label="Ver novidades da versão v1.7.9"
+              onClick={handleOpenChangelog}
+              title="Clique para ver todas as novidades da versão v1.8.0"
+              aria-label="Ver novidades da versão v1.8.0"
             >
-              v1.7.9
+              v1.8.0
             </button>
           </div>
 
@@ -1051,10 +1076,12 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                             }}
                             isAdmin={query.isAdmin}
                           />
-                          {/* Tabela mantida acessível no DOM para leitores e testes de conformidade */}
-                          <div style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
-                            <DeviceRows devices={tableDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} isAdmin={query.isAdmin} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
-                          </div>
+                          {/* Tabela mantida acessível no DOM para leitores e testes de conformidade em listas pequenas */}
+                          {shouldRenderLegacyMirror && (
+                            <div style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
+                              <DeviceRows devices={tableDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} isAdmin={query.isAdmin} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
+                            </div>
+                          )}
                         </>
                       ) : (
                         <DeviceRows devices={tableDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} isAdmin={query.isAdmin} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />

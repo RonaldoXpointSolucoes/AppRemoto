@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import type { DeviceView } from '@appremoto/contracts';
 import {
   Monitor,
@@ -51,7 +51,9 @@ function formatSidebarAccessDateTime(iso: string): string {
   }
 }
 
-export function TeamViewerSidebar({
+const EMPTY_DEVICES: DeviceView[] = [];
+
+export const TeamViewerSidebar = memo(function TeamViewerSidebar({
   activeTab,
   onTabChange,
   onOpenQuickConnect,
@@ -60,7 +62,7 @@ export function TeamViewerSidebar({
   logoutPending,
   collapsed,
   onToggleCollapse,
-  devices = [],
+  devices = EMPTY_DEVICES,
 }: {
   activeTab: TeamViewerTab;
   onTabChange(tab: TeamViewerTab): void;
@@ -90,11 +92,13 @@ export function TeamViewerSidebar({
   }, []);
 
   useEffect(() => {
+    if (collapsed) return;
     let cancelled = false;
     async function fetchServerRecents() {
       try {
         if (
           typeof window === 'undefined' ||
+          (typeof document !== 'undefined' && document.visibilityState === 'hidden') ||
           !process.env.NEXT_PUBLIC_API_BASE_URL ||
           !process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT
         ) {
@@ -120,12 +124,12 @@ export function TeamViewerSidebar({
       }
     }
     void fetchServerRecents();
-    const timer = setInterval(() => void fetchServerRecents(), 30_000);
+    const timer = setInterval(() => void fetchServerRecents(), 60_000);
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [localRecents.length]);
+  }, [localRecents.length, collapsed]);
 
   const recentEntries = useMemo<SidebarAccessEntry[]>(() => {
     const combined: SidebarAccessEntry[] = [];
@@ -185,10 +189,10 @@ export function TeamViewerSidebar({
                 type="button"
                 className="tv-brand-badge version-badge-btn"
                 onClick={onOpenChangelog}
-                title="Clique para ver todas as novidades da versão v1.7.9"
-                aria-label="Ver novidades da versão v1.7.9"
+                title="Clique para ver todas as novidades da versão v1.8.0"
+                aria-label="Ver novidades da versão v1.8.0"
               >
-                v1.7.9
+                v1.8.0
               </button>
             </div>
           )}
@@ -353,4 +357,4 @@ export function TeamViewerSidebar({
       </div>
     </aside>
   );
-}
+});

@@ -251,13 +251,21 @@ const CUSTOM_META_KEY = 'xpoint_device_custom_meta_v1';
 
 const storageJsonCache = new Map<string, { raw: string; parsed: unknown }>();
 let groupsMergedCache: { key: string; groups: DeviceGroup[] } | null = null;
+const EMPTY_RECENT_LIST: RecentConnectionRecord[] = [];
+const EMPTY_STRING_MAP: Record<string, string> = {};
+const EMPTY_CUSTOM_META_MAP: Record<string, DeviceCustomMetadata> = {};
+const EMPTY_STRING_ARRAY: string[] = [];
 
 function readCachedStorageJson<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
   try {
     const raw = localStorage.getItem(key);
     if (!raw) {
-      storageJsonCache.delete(key);
+      const emptyCached = storageJsonCache.get(key);
+      if (emptyCached && emptyCached.raw === '') {
+        return emptyCached.parsed as T;
+      }
+      storageJsonCache.set(key, { raw: '', parsed: fallback });
       return fallback;
     }
     const cached = storageJsonCache.get(key);
@@ -273,7 +281,7 @@ function readCachedStorageJson<T>(key: string, fallback: T): T {
 }
 
 export function getRecentConnections(): RecentConnectionRecord[] {
-  return readCachedStorageJson<RecentConnectionRecord[]>(RECENT_KEY, []);
+  return readCachedStorageJson<RecentConnectionRecord[]>(RECENT_KEY, EMPTY_RECENT_LIST);
 }
 
 export function saveRecentConnection(record: Omit<RecentConnectionRecord, 'connectedAt'> & { connectedAt?: string }): RecentConnectionRecord[] {
@@ -391,7 +399,7 @@ export function defaultGroups(): DeviceGroup[] {
 }
 
 export function getDeviceFolderMap(): Record<string, string> {
-  return readCachedStorageJson<Record<string, string>>(FOLDER_MAP_KEY, {});
+  return readCachedStorageJson<Record<string, string>>(FOLDER_MAP_KEY, EMPTY_STRING_MAP);
 }
 
 export function saveDeviceFolderMap(map: Record<string, string>): void {
@@ -492,7 +500,7 @@ export function deleteDeviceGroup(groupId: string): DeviceGroup[] {
 
   // Move dispositivos da pasta excluída para a pasta padrão Clientes
   const orphanedIds = target.deviceIds || [];
-  const folderMap = getDeviceFolderMap();
+  const folderMap = { ...getDeviceFolderMap() };
   for (const id of orphanedIds) {
     folderMap[id] = 'group_clients';
   }
@@ -517,7 +525,7 @@ export function assignDeviceToGroup(
   extraKeys?: { deviceUuid?: string; rustdeskId?: string; hostname?: string }
 ): DeviceGroup[] {
   // Salva no mapa direto de pastas
-  const folderMap = getDeviceFolderMap();
+  const folderMap = { ...getDeviceFolderMap() };
   folderMap[deviceIdentifier] = targetGroupId;
   if (extraKeys?.deviceUuid) folderMap[extraKeys.deviceUuid] = targetGroupId;
   if (extraKeys?.rustdeskId) folderMap[extraKeys.rustdeskId] = targetGroupId;
@@ -537,7 +545,10 @@ export function assignDeviceToGroup(
 }
 
 export function getCustomMetadataMap(): Record<string, DeviceCustomMetadata> {
-  return readCachedStorageJson<Record<string, DeviceCustomMetadata>>(CUSTOM_META_KEY, {});
+  return readCachedStorageJson<Record<string, DeviceCustomMetadata>>(
+    CUSTOM_META_KEY,
+    EMPTY_CUSTOM_META_MAP
+  );
 }
 
 export function saveDeviceCustomMetadata(deviceId: string, metadata: DeviceCustomMetadata): void {
@@ -554,9 +565,9 @@ export function saveDeviceCustomMetadata(deviceId: string, metadata: DeviceCusto
 const FAVORITES_KEY = 'xpoint_favorite_devices_v1';
 
 export function getFavoriteDeviceIds(userId?: string | null): string[] {
-  if (typeof window === 'undefined') return [];
+  if (typeof window === 'undefined') return EMPTY_STRING_ARRAY;
   const key = userId ? `${FAVORITES_KEY}_${userId}` : FAVORITES_KEY;
-  return readCachedStorageJson<string[]>(key, []);
+  return readCachedStorageJson<string[]>(key, EMPTY_STRING_ARRAY);
 }
 
 export function toggleFavoriteDeviceId(deviceId: string, userId?: string | null): string[] {
