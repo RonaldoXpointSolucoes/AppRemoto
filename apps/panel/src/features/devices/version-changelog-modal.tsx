@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.7.8',
+    date: 'Outubro 2026',
+    title: 'Telemetria Compacta em Detalhes & Documentação 100% Automática (Zero Cliques)',
+    highlight:
+      'Movimentação das pílulas de rede e hardware (IP Local, IP Público, Mesma Rede/Roteador, CPU, RAM e HD) para dentro da gaveta "Ver detalhes" deixando o card principal muito mais limpo, e automação silenciosa completa da documentação de sessão sem exibir popups manuais ao conectar.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'IPs, Rede e Hardware Exclusivos no "Ver detalhes"',
+        description:
+          'As etiquetas de IP Local, IP Público, Mesma Rede/Roteador e indicadores de CPU/RAM/HD agora ficam organizadas dentro da gaveta "Ver detalhes", mantendo a linha principal limpa e direta no desktop e mobile.',
+        tag: 'UI/UX',
+      },
+      {
+        title: 'Documentação de Conexão 100% Automática (Sem Cliques Manuais)',
+        description:
+          'Remoção do card flutuante de documentação manual (ActiveSessionTracker). Ao clicar em Conectar, o protocolo XP, ações executadas, linha do tempo e duração da sessão são gravados e atualizados automaticamente em segundo plano no Histórico de Acessos.',
+        tag: 'Performance',
+      },
+    ],
+  },
+  {
     version: 'v1.7.7',
     date: 'Outubro 2026',
     title: 'Correção de Responsividade Mobile: Busca Compacta (44px), Escopos sem Corte e Pílulas Adaptativas',
     highlight:
       'Eliminação do estiramento vertical de 380px na barra de busca no celular (causado por flex-basis em coluna), organização em camadas dos seletores de escopo (Tudo, Nome, IP, Razão Social, ID/CNPJ) sem corte lateral e ajuste das pílulas de categoria e telemetria.',
-    isCurrent: true,
     items: [
       {
         title: 'Barra de Pesquisa Mobile Compacta (44px) sem Estiramento Vertical',

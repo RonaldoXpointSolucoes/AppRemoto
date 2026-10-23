@@ -1383,79 +1383,6 @@ export function TeamViewerDeviceTree({
                           {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                         </button>
                       </div>
-
-                      <div className="tv-inline-telemetry-strip">
-                        <button
-                          type="button"
-                          className={`tv-inline-ip-badge tv-ip-local ${localIp ? '' : 'is-missing'}`}
-                          title={
-                            localIp
-                              ? `IP Local da Máquina na LAN: ${localIp} (clique para copiar)`
-                              : 'IP Local na rede interna ainda não reportado pelo agente'
-                          }
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!localIp) return;
-                            void navigator.clipboard.writeText(localIp).then(() => {
-                              showToast(`IP Local ${localIp} copiado!`);
-                            });
-                          }}
-                        >
-                          <Laptop size={11} className="tv-ip-icon" />
-                          <span>IP Local: {localIp ?? 'N/D'}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className={`tv-inline-ip-badge tv-ip-public ${publicIp ? '' : 'is-missing'}`}
-                          title={
-                            publicIp
-                              ? `IP Público (WAN / Internet): ${publicIp} (clique para copiar)`
-                              : 'IP Público ainda não registrado no servidor'
-                          }
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!publicIp) return;
-                            void navigator.clipboard.writeText(publicIp).then(() => {
-                              showToast(`IP Público ${publicIp} copiado!`);
-                            });
-                          }}
-                        >
-                          <Globe size={11} className="tv-ip-icon" />
-                          <span>IP Público: {publicIp ?? 'N/D'}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className={`tv-inline-net-topology-badge status-${netTopo.status}`}
-                          title={`${netTopo.summaryTitle} — ${netTopo.summaryDescription} (clique para abrir o mapa de rede)`}
-                          onClick={(e) => toggleDeviceDetails(dev.id, e)}
-                        >
-                          <Network size={11} className="tv-ip-icon" />
-                          <span>{netTopo.badgeLabel}</span>
-                        </button>
-                        <span className="tv-inline-hw-group" aria-label="Telemetria de Hardware">
-                          <span
-                            className={`tv-inline-hw-pill tone-${hw.cpu.tone}`}
-                            title={`Processador: ${hw.cpu.detailLabel}`}
-                          >
-                            <Cpu size={10} />
-                            <span>{hw.cpu.compactLabel}</span>
-                          </span>
-                          <span
-                            className={`tv-inline-hw-pill tone-${hw.ram.tone}`}
-                            title={`Memória RAM: ${hw.ram.detailLabel}`}
-                          >
-                            <Activity size={10} />
-                            <span>{hw.ram.compactLabel}</span>
-                          </span>
-                          <span
-                            className={`tv-inline-hw-pill tone-${hw.disk.tone}`}
-                            title={`Disco / Armazenamento (HD/SSD): ${hw.disk.detailLabel}`}
-                          >
-                            <HardDrive size={10} />
-                            <span>{hw.disk.compactLabel}</span>
-                          </span>
-                        </span>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -1670,6 +1597,78 @@ export function TeamViewerDeviceTree({
                 {/* Gaveta Expansível Full-Width: Ocupa todas as 4 colunas da linha quando "Ver detalhes" está ativo */}
                 {isExpanded && (
                   <div className="tv-row-expanded-drawer" role="region" aria-label={`Detalhes de ${dev.displayName}`}>
+                    {/* Faixa de Resumo Rápido de Rede & Hardware (IP Local, IP Público, Roteador, CPU, RAM, HD) */}
+                    <div className="tv-inline-telemetry-strip">
+                      <button
+                        type="button"
+                        className={`tv-inline-ip-badge tv-ip-local ${localIp ? '' : 'is-missing'}`}
+                        title={
+                          localIp
+                            ? `IP Local da Máquina na LAN: ${localIp} (clique para copiar)`
+                            : 'IP Local na rede interna ainda não reportado pelo agente'
+                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!localIp) return;
+                          void navigator.clipboard.writeText(localIp).then(() => {
+                            showToast(`IP Local ${localIp} copiado!`);
+                          });
+                        }}
+                      >
+                        <Laptop size={11} className="tv-ip-icon" />
+                        <span>IP Local: {localIp ?? 'N/D'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`tv-inline-ip-badge tv-ip-public ${publicIp ? '' : 'is-missing'}`}
+                        title={
+                          publicIp
+                            ? `IP Público (WAN / Internet): ${publicIp} (clique para copiar)`
+                            : 'IP Público ainda não registrado no servidor'
+                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!publicIp) return;
+                          void navigator.clipboard.writeText(publicIp).then(() => {
+                            showToast(`IP Público ${publicIp} copiado!`);
+                          });
+                        }}
+                      >
+                        <Globe size={11} className="tv-ip-icon" />
+                        <span>IP Público: {publicIp ?? 'N/D'}</span>
+                      </button>
+                      <span
+                        className={`tv-inline-net-topology-badge status-${netTopo.status}`}
+                        title={`${netTopo.summaryTitle} — ${netTopo.summaryDescription}`}
+                      >
+                        <Network size={11} className="tv-ip-icon" />
+                        <span>{netTopo.badgeLabel}</span>
+                      </span>
+                      <span className="tv-inline-hw-group" aria-label="Telemetria de Hardware">
+                        <span
+                          className={`tv-inline-hw-pill tone-${hw.cpu.tone}`}
+                          title={`Processador: ${hw.cpu.detailLabel}`}
+                        >
+                          <Cpu size={10} />
+                          <span>{hw.cpu.compactLabel}</span>
+                        </span>
+                        <span
+                          className={`tv-inline-hw-pill tone-${hw.ram.tone}`}
+                          title={`Memória RAM: ${hw.ram.detailLabel}`}
+                        >
+                          <Activity size={10} />
+                          <span>{hw.ram.compactLabel}</span>
+                        </span>
+                        <span
+                          className={`tv-inline-hw-pill tone-${hw.disk.tone}`}
+                          title={`Disco / Armazenamento (HD/SSD): ${hw.disk.detailLabel}`}
+                        >
+                          <HardDrive size={10} />
+                          <span>{hw.disk.compactLabel}</span>
+                        </span>
+                      </span>
+                    </div>
+
                     {/* Cabeçalho da Gaveta: Especificações de Sistema + Ações Rápidas */}
                     <div className="tv-drawer-header-bar">
                       <div className="tv-subtext-secondary">

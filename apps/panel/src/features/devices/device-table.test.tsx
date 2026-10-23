@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { OrganizationView } from '../../lib/api';
 import { ApiClientError } from '../../lib/api';
 import { DeviceDirectory, type DeviceDirectoryService } from './device-table';
+import { getRecentConnections } from './teamviewer-storage';
 import { resolveCoherentDevicePresentation } from './teamviewer-device-tree';
 import { LoginForm } from '../auth/login-form';
 
@@ -336,7 +337,7 @@ describe('DeviceDirectory', () => {
   it('opens the release notes modal when clicking the version number button', async () => {
     renderDirectory(service());
     await screen.findAllByText('Recepcao 01');
-    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.7.7' });
+    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.7.8' });
     expect(versionButtons.length).toBeGreaterThan(0);
     await userEvent.click(versionButtons[0]);
     const dialog = await screen.findByRole('dialog', { name: /Novidades da Plataforma/i });
@@ -477,7 +478,7 @@ describe('DeviceDirectory', () => {
     expect(document.body.style.overflow).toBe('');
   });
 
-  it('always displays both IP Local and IP Público badges for every device', async () => {
+  it('keeps IP Local and IP Público badges inside Ver detalhes to keep the main row clean', async () => {
     renderDirectory(
       service({
         getDevices: vi.fn().mockResolvedValue({
@@ -499,13 +500,24 @@ describe('DeviceDirectory', () => {
       })
     );
 
+    await screen.findAllByText('GABRIEL-X-POINT');
+    // Ocultos na linha principal recolhida
+    expect(screen.queryByText('IP Local: 192.168.0.240')).not.toBeInTheDocument();
+    expect(screen.queryByText('IP Público: 179.199.142.157')).not.toBeInTheDocument();
+
+    // Exibidos ao expandir "Ver detalhes"
+    const detailButtons = screen.getAllByRole('button', { name: /Ver detalhes de/i });
+    for (const btn of detailButtons) {
+      await userEvent.click(btn);
+    }
+
     expect((await screen.findAllByText('IP Local: 192.168.0.240')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('IP Público: 179.199.142.157').length).toBeGreaterThan(0);
     expect(screen.getAllByText('IP Local: N/D').length).toBeGreaterThan(0);
     expect(screen.getAllByText('IP Público: N/D').length).toBeGreaterThan(0);
   });
 
-  it('starts and ends an active remote session cleanly without hook mismatch crashes', async () => {
+  it('starts and documents an active remote session automatically in background without showing a manual popup', async () => {
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     try {
       const connectDevice = vi.fn().mockImplementation(async (_id, opts) => ({
@@ -528,25 +540,28 @@ describe('DeviceDirectory', () => {
       const table = await screen.findByRole('table');
       await userEvent.click(await within(table).findByRole('button', { name: 'Conectar' }));
 
-      const closeSessionBtn = await screen.findByRole('button', {
-        name: 'Encerrar e salvar telemetria automaticamente',
-      });
-      expect(closeSessionBtn).toBeInTheDocument();
-      expect(screen.getByText('Auto 1-Click')).toBeInTheDocument();
+      await waitFor(() => expect(connectDevice).toHaveBeenCalledTimes(1));
 
-      await userEvent.click(closeSessionBtn);
-      await waitFor(() =>
-        expect(
-          screen.queryByRole('button', { name: 'Encerrar e salvar telemetria automaticamente' })
-        ).not.toBeInTheDocument()
-      );
+      // Não exibe tela/modal flutuante de documentação manual
+      expect(
+        screen.queryByRole('button', { name: 'Encerrar e salvar telemetria automaticamente' })
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Documentar/i })).not.toBeInTheDocument();
+
+      // A documentação já foi registrada 100% automaticamente em background
+      const recents = getRecentConnections();
+      expect(recents).toHaveLength(1);
+      expect(recents[0].displayName).toBe('Recepcao 01');
+      expect(recents[0].resolutionStatus).toBe('resolved');
+      expect(recents[0].protocolNumber).toMatch(/^XP-\d{8}-\d{4}$/);
+      expect(recents[0].executedActions?.length).toBeGreaterThan(0);
     } finally {
       clickSpy.mockRestore();
       localStorage.clear();
     }
   });
 
-  it('tracks 3 simultaneous active sessions without losing any card and allows documenting each machine individually', async () => {
+  it('documents 3 simultaneous active sessions automatically in background without requiring manual clicks', async () => {
     const clickSpy = vi
       .spyOn(HTMLAnchorElement.prototype, 'click')
       .mockImplementation(() => undefined);
@@ -583,42 +598,20 @@ describe('DeviceDirectory', () => {
       await userEvent.click(connectButtons[1]);
       await userEvent.click(connectButtons[2]);
 
-      // O widget mostra as 3 máquinas ativas sem perder nenhuma
-      expect(await screen.findByText('3 máquinas ativas')).toBeInTheDocument();
-      const tablist = screen.getByRole('tablist', { name: 'Alternar entre máquinas conectadas' });
-      expect(within(tablist).getAllByRole('tab')).toHaveLength(3);
+      await waitFor(() => expect(connectDevice).toHaveBeenCalledTimes(3));
 
-      // Abre o modal de documentação e documenta cada máquina individualmente usando "Salvar e Ir p/ Próxima"
-      await userEvent.click(screen.getByRole('button', { name: /Documentar/i }));
-      const dialog = await screen.findByRole('dialog', { name: /Documentação Automatizada de Atendimento/i });
+      // Nenhum popup de documentação manual apareceu
+      expect(screen.queryByRole('button', { name: /Documentar/i })).not.toBeInTheDocument();
 
-      // Digita observação na Máquina 3 (Totem Balcão)
-      const notesInput = within(dialog).getByLabelText(/Observação Específica para/i);
-      fireEvent.change(notesInput, { target: { value: 'Totem destravado com sucesso' } });
-      await userEvent.click(within(dialog).getByRole('button', { name: /Salvar e Ir p\/ Próxima \(2\)/i }));
-
-      // Agora restam 2 máquinas na fila e o modal alternou automaticamente para a próxima
-      expect(await screen.findByText('2 máquinas ativas')).toBeInTheDocument();
-      const notesInput2 = within(dialog).getByLabelText(/Observação Específica para/i);
-      expect(notesInput2).toHaveValue('');
-      fireEvent.change(notesInput2, { target: { value: 'Caixa 01 impressora ajustada' } });
-      await userEvent.click(within(dialog).getByRole('button', { name: /Salvar e Ir p\/ Próxima \(1\)/i }));
-
-      // Resta apenas a última máquina (Servidor)
-      expect(screen.queryByText(/máquinas ativas/i)).not.toBeInTheDocument();
-      const notesInput3 = within(dialog).getByLabelText(/Observação Específica para/i);
-      fireEvent.change(notesInput3, { target: { value: 'Servidor banco sincronizado' } });
-
-      // Fecha a última sessão pelo botão de fechar do HUD
-      await userEvent.click(within(dialog).getByRole('button', { name: 'Fechar janela de documentação' }));
-      await userEvent.click(
-        screen.getByRole('button', { name: 'Encerrar e salvar telemetria automaticamente' })
-      );
-      await waitFor(() =>
-        expect(
-          screen.queryByRole('button', { name: 'Encerrar e salvar telemetria automaticamente' })
-        ).not.toBeInTheDocument()
-      );
+      // Todas as 3 máquinas foram documentadas automaticamente no histórico
+      const recents = getRecentConnections();
+      expect(recents).toHaveLength(3);
+      expect(recents.map((r) => r.deviceId)).toEqual(['dev-3', 'dev-2', 'dev-1']);
+      for (const entry of recents) {
+        expect(entry.resolutionStatus).toBe('resolved');
+        expect(entry.protocolNumber).toMatch(/^XP-\d{8}-\d{4}$/);
+        expect(entry.timelineEvents?.length).toBeGreaterThanOrEqual(3);
+      }
     } finally {
       clickSpy.mockRestore();
       localStorage.clear();

@@ -24,7 +24,7 @@ import {
   type DeviceSearchScope,
 } from './device-presentation';
 import { ConnectionHistoryView } from './connection-history-view';
-import { ActiveSessionTracker, type ActiveSession } from './active-session-tracker';
+import type { ActiveSession } from './active-session-tracker';
 import { AddConnectionDialog } from './add-connection-dialog';
 import { VersionChangelogModal } from './version-changelog-modal';
 import { CnpjManagementModal } from './cnpj-management-modal';
@@ -40,6 +40,7 @@ import { ChatbotIntegrationModal } from '../embed/chatbot-integration-modal';
 import { parseSystemInfo } from './system-info';
 import {
   saveRecentConnection,
+  updateRecentConnectionNotes,
   filterDevicesByCategory,
   getDeviceFolderName,
   getDeviceProtectionState,
@@ -51,7 +52,6 @@ import {
   getUserViewPreferences,
   saveUserViewPreferences,
   saveActiveSessionDraft,
-  getActiveSessionDraft,
   saveActiveSessionsDraft,
   getActiveSessionsDraft,
   type RecentConnectionRecord,
@@ -401,13 +401,6 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   }, []);
 
   function handleSessionStart(device: DeviceView) {
-    // Se esta máquina já estiver com sessão ativa em andamento, apenas foca o card dela sem perder o cronômetro nem os rascunhos
-    const existingActive = activeSessions.find((s) => s.deviceId === device.id);
-    if (existingActive) {
-      setFocusedSessionId(device.id);
-      return;
-    }
-
     const techName = query.profile?.displayName || 'Técnico';
     const techEmail = (query.profile as { email?: string } | undefined)?.email;
     const startedAt = new Date().toISOString();
@@ -423,6 +416,32 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     const coherentName = resolveCoherentDevicePresentation(device, folderName).mainTitle;
     const isFavorite = getFavoriteDeviceIds().includes(device.id);
     const clientEnv = detectClientTelemetry();
+    const localIp = sysInfo.ip || device.datadivas?.ipMaq;
+    const startTimeStr = new Intl.DateTimeFormat('pt-BR', { timeStyle: 'medium' }).format(
+      new Date(startedAt)
+    );
+    const initialTimeline = [
+      {
+        time: startTimeStr,
+        label: `Handshake seguro autenticado para ${coherentName} (ID ${device.rustdeskId})`,
+      },
+      {
+        time: startTimeStr,
+        label: `Sessão iniciada por ${techName} via ${clientEnv.clientPlatform}`,
+      },
+      {
+        time: startTimeStr,
+        label: `Telemetria da estação capturada: ${sysInfo.osName}${localIp ? ` · IP ${localIp}` : ''}`,
+      },
+      {
+        time: startTimeStr,
+        label: `Documentação técnica registrada automaticamente sem intervenção manual`,
+      },
+    ];
+    const autoActions = [
+      'Acesso Remoto Autenticado via Painel XPoint',
+      'Inspeção Preventiva de Saúde e Desempenho',
+    ];
 
     saveRecentConnection({
       protocolNumber,
@@ -436,7 +455,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       operatingSystem: sysInfo.osName,
       osBuild: sysInfo.versionLabel,
       osBadge: sysInfo.badge,
-      localIp: sysInfo.ip || device.datadivas?.ipMaq,
+      localIp,
       datadivas: device.datadivas,
       deviceStatusAtStart: device.status,
       lastSeenBeforeConnect: device.lastSeenAt ?? undefined,
@@ -445,6 +464,12 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       technicianEmail: techEmail,
       ...clientEnv,
       connectedAt: startedAt,
+      endedAt: startedAt,
+      durationSeconds: 1,
+      resolutionStatus: 'resolved',
+      executedActions: autoActions,
+      timelineEvents: initialTimeline,
+      notes: 'Documentação de conexão registrada automaticamente pelo sistema.',
       mode: 'automatic',
     });
 
@@ -460,7 +485,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       operatingSystem: sysInfo.osName,
       osBuild: sysInfo.versionLabel,
       osBadge: sysInfo.badge,
-      localIp: sysInfo.ip || device.datadivas?.ipMaq,
+      localIp,
       datadivas: device.datadivas,
       deviceStatusAtStart: device.status,
       lastSeenBeforeConnect: device.lastSeenAt ?? undefined,
@@ -470,6 +495,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       ...clientEnv,
       mode: 'automatic',
       startedAt,
+      draftResolutionStatus: 'resolved',
+      draftSelectedActions: autoActions,
+      draftTimelineEvents: initialTimeline,
+      draftNotes: 'Documentação de conexão registrada automaticamente pelo sistema.',
     };
     setActiveSessions((prev) => {
       const filtered = prev.filter((item) => item.deviceId !== device.id);
@@ -493,6 +522,43 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       startedAt,
     });
   }
+
+  // Finalização e atualização automática da duração das sessões em segundo plano (sem cliques manuais)
+  useEffect(() => {
+    if (activeSessions.length === 0 || typeof window === 'undefined') return;
+
+    function syncBackgroundSessions() {
+      const nowIso = new Date().toISOString();
+      const nowMs = Date.now();
+      for (const s of activeSessions) {
+        const startMs = new Date(s.startedAt).getTime();
+        const elapsedSec = Number.isFinite(startMs)
+          ? Math.max(1, Math.floor((nowMs - startMs) / 1000))
+          : 1;
+        updateRecentConnectionNotes(
+          s.deviceId,
+          s.startedAt,
+          s.draftNotes ?? 'Documentação de conexão registrada automaticamente pelo sistema.',
+          elapsedSec,
+          {
+            protocolNumber: s.protocolNumber,
+            endedAt: nowIso,
+            durationSeconds: elapsedSec,
+            resolutionStatus: s.draftResolutionStatus ?? 'resolved',
+            executedActions: s.draftSelectedActions,
+            timelineEvents: s.draftTimelineEvents,
+          }
+        );
+      }
+    }
+
+    window.addEventListener('focus', syncBackgroundSessions);
+    window.addEventListener('pagehide', syncBackgroundSessions);
+    return () => {
+      window.removeEventListener('focus', syncBackgroundSessions);
+      window.removeEventListener('pagehide', syncBackgroundSessions);
+    };
+  }, [activeSessions]);
 
   function handleConnectAgainFromHistory(rec: RecentConnectionRecord) {
     const found = query.rows.find((d) => d.id === rec.deviceId || d.rustdeskId === rec.rustdeskId);
@@ -673,10 +739,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={() => setIsChangelogOpen(true)}
-              title="Clique para ver todas as novidades da versão v1.7.7"
-              aria-label="Ver novidades da versão v1.7.7"
+              title="Clique para ver todas as novidades da versão v1.7.8"
+              aria-label="Ver novidades da versão v1.7.8"
             >
-              v1.7.7
+              v1.7.8
             </button>
           </div>
 
@@ -1045,97 +1111,6 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
         <VersionChangelogModal
           isOpen={isChangelogOpen}
           onClose={() => setIsChangelogOpen(false)}
-        />
-
-        {/* Widget Flutuante de Sessão Ativa / Cronômetro Multi-Máquinas de Atendimento */}
-        <ActiveSessionTracker
-          sessions={activeSessions}
-          activeSessionId={focusedSessionId}
-          onSelectSession={(deviceId) => setFocusedSessionId(deviceId)}
-          onUpdateSessionDraft={(deviceId, draft) => {
-            setActiveSessions((prev) => {
-              const updated = prev.map((item) =>
-                item.deviceId === deviceId ? { ...item, ...draft } : item
-              );
-              saveActiveSessionsDraft(updated);
-              return updated;
-            });
-          }}
-          onCloseSession={(deviceId) => {
-            const closing = activeSessions.find((item) => item.deviceId === deviceId);
-            if (closing) {
-              emitToChatbotHost({
-                type: 'XPOINT_REMOTE_SESSION_ENDED',
-                protocolNumber: closing.protocolNumber || '',
-                deviceId: closing.deviceId,
-                displayName: closing.displayName,
-                rustdeskId: closing.rustdeskId,
-                ...(closing.datadivas?.cnpj || chatbotContext?.cnpj
-                  ? { cnpj: closing.datadivas?.cnpj || chatbotContext?.cnpj }
-                  : {}),
-                ...(chatbotContext?.contactId ? { contactId: chatbotContext.contactId } : {}),
-                ...(chatbotContext?.conversationId ? { conversationId: chatbotContext.conversationId } : {}),
-                endedAt: new Date().toISOString(),
-              });
-            }
-            const remaining = activeSessions.filter((item) => item.deviceId !== deviceId);
-            saveActiveSessionsDraft(remaining);
-            setActiveSessions(remaining);
-            if (focusedSessionId === deviceId) {
-              setFocusedSessionId(remaining[remaining.length - 1]?.deviceId ?? null);
-            }
-          }}
-          onCloseAllSessions={() => {
-            const endedAt = new Date().toISOString();
-            for (const item of activeSessions) {
-              emitToChatbotHost({
-                type: 'XPOINT_REMOTE_SESSION_ENDED',
-                protocolNumber: item.protocolNumber || '',
-                deviceId: item.deviceId,
-                displayName: item.displayName,
-                rustdeskId: item.rustdeskId,
-                ...(item.datadivas?.cnpj || chatbotContext?.cnpj
-                  ? { cnpj: item.datadivas?.cnpj || chatbotContext?.cnpj }
-                  : {}),
-                ...(chatbotContext?.contactId ? { contactId: chatbotContext.contactId } : {}),
-                ...(chatbotContext?.conversationId ? { conversationId: chatbotContext.conversationId } : {}),
-                endedAt,
-              });
-            }
-            saveActiveSessionsDraft([]);
-            setActiveSessions([]);
-            setFocusedSessionId(null);
-          }}
-          onClose={() => {
-            const targetId = focusedSessionId ?? activeSessions[activeSessions.length - 1]?.deviceId;
-            if (!targetId) {
-              saveActiveSessionsDraft([]);
-              setActiveSessions([]);
-              setFocusedSessionId(null);
-              return;
-            }
-            const closing = activeSessions.find((item) => item.deviceId === targetId);
-            if (closing) {
-              emitToChatbotHost({
-                type: 'XPOINT_REMOTE_SESSION_ENDED',
-                protocolNumber: closing.protocolNumber || '',
-                deviceId: closing.deviceId,
-                displayName: closing.displayName,
-                rustdeskId: closing.rustdeskId,
-                ...(closing.datadivas?.cnpj || chatbotContext?.cnpj
-                  ? { cnpj: closing.datadivas?.cnpj || chatbotContext?.cnpj }
-                  : {}),
-                ...(chatbotContext?.contactId ? { contactId: chatbotContext.contactId } : {}),
-                ...(chatbotContext?.conversationId ? { conversationId: chatbotContext.conversationId } : {}),
-                endedAt: new Date().toISOString(),
-              });
-            }
-            const remaining = activeSessions.filter((item) => item.deviceId !== targetId);
-            saveActiveSessionsDraft(remaining);
-            setActiveSessions(remaining);
-            setFocusedSessionId(remaining[remaining.length - 1]?.deviceId ?? null);
-          }}
-          onSaved={() => query.refresh()}
         />
 
         {deviceToDelete && (
