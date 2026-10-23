@@ -1,5 +1,6 @@
 import { Account, AppwriteException, Client, Databases, Users } from 'node-appwrite';
 import { hkdfSync } from 'node:crypto';
+import net from 'node:net';
 import { isDeepStrictEqual } from 'node:util';
 
 import type { ApiConfig } from '../config.ts';
@@ -32,12 +33,144 @@ import {
   verifyPanelSessionJwt,
 } from '../services/technician-management.ts';
 
-const DEVICE_DB_WRITE_THROTTLE_MS = 180_000;
+const DEVICE_DB_WRITE_THROTTLE_MS = 60_000;
+const AGENT_ONLINE_GRACE_MS = 300_000;
+const HBBS_ONLINE_CACHE_TTL_MS = 10_000;
+const HBBS_SOCKET_TIMEOUT_MS = 1_200;
 const SNAPSHOT_CACHE_TTL_MS = 10 * 60_000;
 const VALID_TOKEN_HASH_TTL_MS = 10 * 60_000;
 const INVALID_TOKEN_HASH_TTL_MS = 3 * 60_000;
 const HEARTBEAT_AUDIT_THROTTLE_MS = 30 * 60_000;
 const AUTH_CACHE_TTL_MS = 120_000;
+
+function encodeProtobufVarint(val: number): Buffer {
+  const out: number[] = [];
+  let v = val >>> 0;
+  while (v > 0x7f) {
+    out.push((v & 0x7f) | 0x80);
+    v >>>= 7;
+  }
+  out.push(v);
+  return Buffer.from(out);
+}
+
+function readProtobufVarint(buf: Buffer, offset: number): { value: number; nextOffset: number } | null {
+  let value = 0;
+  let shift = 0;
+  let idx = offset;
+  while (idx < buf.length) {
+    const b = buf[idx++];
+    value |= (b & 0x7f) << shift;
+    if ((b & 0x80) === 0) {
+      return { value: value >>> 0, nextOffset: idx };
+    }
+    shift += 7;
+    if (shift > 35) return null;
+  }
+  return null;
+}
+
+function encodeHbbsOnlineRequestFrame(peers: string[]): Buffer {
+  const peerBufs = peers.map((peer) => {
+    const b = Buffer.from(peer, 'utf8');
+    return Buffer.concat([Buffer.from([0x12]), encodeProtobufVarint(b.length), b]);
+  });
+  const onlineReq = Buffer.concat(peerBufs);
+  const msg = Buffer.concat([
+    encodeProtobufVarint((23 << 3) | 2),
+    encodeProtobufVarint(onlineReq.length),
+    onlineReq,
+  ]);
+  let hdr: Buffer;
+  if (msg.length <= 0x3f) {
+    hdr = Buffer.from([msg.length << 2]);
+  } else if (msg.length <= 0x3fff) {
+    hdr = Buffer.alloc(2);
+    hdr.writeUInt16LE((msg.length << 2) | 1);
+  } else {
+    hdr = Buffer.alloc(4);
+    hdr.writeUInt32LE((msg.length << 2) | 3);
+  }
+  return Buffer.concat([hdr, msg]);
+}
+
+function queryHbbsOnlineRaw(host: string, port: number, peers: string[]): Promise<Set<string> | null> {
+  return new Promise((resolve) => {
+    if (peers.length === 0) {
+      resolve(new Set());
+      return;
+    }
+    let settled = false;
+    const finish = (result: Set<string> | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      sock.destroy();
+      resolve(result);
+    };
+    const sock = net.createConnection({ host, port }, () => {
+      sock.write(encodeHbbsOnlineRequestFrame(peers));
+    });
+    sock.unref();
+    const timer = setTimeout(() => finish(null), HBBS_SOCKET_TIMEOUT_MS);
+    timer.unref();
+    let buf = Buffer.alloc(0);
+    sock.on('data', (chunk: Buffer) => {
+      buf = Buffer.concat([buf, chunk]);
+      if (buf.length < 1) return;
+      const b0 = buf[0];
+      const hdrLen = (b0 & 0x3) + 1;
+      if (buf.length < hdrLen) return;
+      let frameLen = 0;
+      for (let i = 0; i < hdrLen; i++) {
+        frameLen |= buf[i] << (8 * i);
+      }
+      frameLen >>>= 2;
+      if (buf.length < hdrLen + frameLen) return;
+      const payload = buf.subarray(hdrLen, hdrLen + frameLen);
+      const outerTag = readProtobufVarint(payload, 0);
+      if (!outerTag || outerTag.value !== ((24 << 3) | 2)) {
+        finish(null);
+        return;
+      }
+      const outerLen = readProtobufVarint(payload, outerTag.nextOffset);
+      if (!outerLen) {
+        finish(null);
+        return;
+      }
+      const innerStart = outerLen.nextOffset;
+      const innerEnd = Math.min(payload.length, innerStart + outerLen.value);
+      if (innerStart >= innerEnd) {
+        finish(new Set());
+        return;
+      }
+      const fieldTag = readProtobufVarint(payload, innerStart);
+      if (!fieldTag || fieldTag.value !== ((1 << 3) | 2)) {
+        finish(new Set());
+        return;
+      }
+      const statesLen = readProtobufVarint(payload, fieldTag.nextOffset);
+      if (!statesLen) {
+        finish(null);
+        return;
+      }
+      const states = payload.subarray(
+        statesLen.nextOffset,
+        Math.min(innerEnd, statesLen.nextOffset + statesLen.value),
+      );
+      const online = new Set<string>();
+      for (let i = 0; i < peers.length; i++) {
+        const byteIdx = i >> 3;
+        const bitMask = 0x80 >> (i & 7);
+        if (byteIdx < states.length && (states[byteIdx] & bitMask) !== 0) {
+          online.add(peers[i]);
+        }
+      }
+      finish(online);
+    });
+    sock.on('error', () => finish(null));
+  });
+}
 
 function hasStructuralDeviceChanges(previous: EnrollmentData, next: EnrollmentData): boolean {
   const keys = [
@@ -99,6 +232,89 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
   >();
   const lastHeartbeatAuditAt = new Map<string, number>();
 
+  const hbbsHost = process.env.RUSTDESK_HBBS_HOST ?? '179.199.142.157';
+  const hbbsPort = Number(process.env.RUSTDESK_HBBS_ONLINE_PORT ?? 21115);
+  const hbbsPeerStateCache = new Map<string, { online: boolean; checkedAt: number }>();
+  let inflightHbbsBatch: Promise<void> | null = null;
+
+  async function resolveHbbsOnlineSet(rustdeskIds: string[], now: number): Promise<Set<string>> {
+    const cleanIds = Array.from(
+      new Set(
+        rustdeskIds
+          .map((id) => (typeof id === 'string' ? id.trim() : ''))
+          .filter((id) => /^[0-9]{6,16}$/.test(id)),
+      ),
+    );
+    if (cleanIds.length === 0) return new Set();
+
+    const uncached = cleanIds.filter((id) => {
+      const entry = hbbsPeerStateCache.get(id);
+      return !entry || now - entry.checkedAt >= HBBS_ONLINE_CACHE_TTL_MS;
+    });
+
+    if (uncached.length > 0) {
+      if (inflightHbbsBatch) {
+        await inflightHbbsBatch.catch(() => {});
+      }
+      const stillUncached = uncached.filter((id) => {
+        const entry = hbbsPeerStateCache.get(id);
+        return !entry || Date.now() - entry.checkedAt >= HBBS_ONLINE_CACHE_TTL_MS;
+      });
+      if (stillUncached.length > 0) {
+        const batchPromise = (async () => {
+          const queried = await queryHbbsOnlineRaw(hbbsHost, hbbsPort, stillUncached);
+          if (queried) {
+            const checkedAt = Date.now();
+            for (const peerId of stillUncached) {
+              hbbsPeerStateCache.set(peerId, {
+                online: queried.has(peerId),
+                checkedAt,
+              });
+            }
+          }
+        })();
+        inflightHbbsBatch = batchPromise;
+        try {
+          await batchPromise;
+        } finally {
+          if (inflightHbbsBatch === batchPromise) {
+            inflightHbbsBatch = null;
+          }
+        }
+      }
+    }
+
+    const onlineSet = new Set<string>();
+    for (const id of cleanIds) {
+      if (hbbsPeerStateCache.get(id)?.online) {
+        onlineSet.add(id);
+      }
+    }
+    return onlineSet;
+  }
+
+  function healDeviceInBackground(id: string, data: EnrollmentData): EnrollmentData {
+    if (data.enabled === false) {
+      const healed = { ...data, enabled: true };
+      void databases
+        .updateDocument('remote_management', 'devices', id, { enabled: true })
+        .catch(() => {});
+      return healed;
+    }
+    return data;
+  }
+
+  function healTokenInBackground(id: string, data: EnrollmentData): EnrollmentData {
+    if (data.revoked_at !== null && data.revoked_at !== undefined) {
+      const healed = { ...data, revoked_at: null };
+      void databases
+        .updateDocument('remote_management', 'device_tokens', id, { revoked_at: null })
+        .catch(() => {});
+      return healed;
+    }
+    return data;
+  }
+
   const baseEnrollmentRepository = createEnrollmentRepository(databases);
   const baseAuditRepository = createAuditRepository(databases);
   const baseReceiptsRepository = createSetupReceiptRepository(databases);
@@ -114,6 +330,86 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
       existing.startedAt === candidate.startedAt &&
       (existing.operationId ?? null) === (candidate.operationId ?? null)
     );
+  }
+
+  async function ensureDeviceSnapshotLoaded(id: string, now: number): Promise<EnrollmentData | null> {
+    const cached = deviceSnapshotCache.get(id);
+    if (cached && now - cached.cachedAt < SNAPSHOT_CACHE_TTL_MS) {
+      return cached.data;
+    }
+    const fresh = await baseEnrollmentRepository.snapshot('devices', id);
+    if (fresh) {
+      const healed = healDeviceInBackground(id, fresh);
+      const seenMs = typeof healed.last_seen_at === 'string' ? Date.parse(healed.last_seen_at) : NaN;
+      deviceSnapshotCache.set(id, {
+        data: { ...healed },
+        cachedAt: now,
+        lastDbWriteAt: cached?.lastDbWriteAt ?? (Number.isFinite(seenMs) ? seenMs : 0),
+      });
+      return healed;
+    }
+    deviceSnapshotCache.delete(id);
+    return null;
+  }
+
+  async function ensureTokenSnapshotLoaded(id: string, now: number): Promise<EnrollmentData | null> {
+    const cached = tokenSnapshotCache.get(id);
+    if (cached && now - cached.cachedAt < SNAPSHOT_CACHE_TTL_MS) {
+      return cached.data;
+    }
+    const fresh = await baseEnrollmentRepository.snapshot('device_tokens', id);
+    if (fresh) {
+      const healed = healTokenInBackground(id, fresh);
+      const usedMs = typeof healed.last_used_at === 'string' ? Date.parse(healed.last_used_at) : NaN;
+      tokenSnapshotCache.set(id, {
+        data: { ...healed },
+        cachedAt: now,
+        lastDbWriteAt: cached?.lastDbWriteAt ?? (Number.isFinite(usedMs) ? usedMs : 0),
+      });
+      return healed;
+    }
+    tokenSnapshotCache.delete(id);
+    return null;
+  }
+
+  async function synchronizeOnlinePresenceForDevice(id: string, now: number): Promise<void> {
+    if (heartbeatGuards.has(id)) return;
+    const devEntry = deviceSnapshotCache.get(id);
+    if (!devEntry) return;
+    const rawSeenStr = typeof devEntry.data.last_seen_at === 'string' ? devEntry.data.last_seen_at : null;
+    if (!rawSeenStr) return;
+    const rawSeenMs = Date.parse(rawSeenStr);
+    const rustdeskId =
+      typeof devEntry.data.rustdesk_id === 'string' ? devEntry.data.rustdesk_id.trim() : '';
+    const withinAgentGrace =
+      Number.isFinite(rawSeenMs) &&
+      now - rawSeenMs >= -30_000 &&
+      now - rawSeenMs <= AGENT_ONLINE_GRACE_MS;
+    let isHbbsOnline = false;
+    if (!withinAgentGrace && rustdeskId) {
+      const hbbsOnline = await resolveHbbsOnlineSet([rustdeskId], now);
+      isHbbsOnline = hbbsOnline.has(rustdeskId);
+    }
+    if (!withinAgentGrace && !isHbbsOnline) return;
+
+    const effectiveSeenAt =
+      Number.isFinite(rawSeenMs) && now - rawSeenMs >= 0 && now - rawSeenMs <= 60_000
+        ? rawSeenStr
+        : new Date(now - 15_000).toISOString();
+
+    devEntry.data = {
+      ...devEntry.data,
+      enabled: true,
+      last_seen_at: effectiveSeenAt,
+    };
+    const tokEntry = tokenSnapshotCache.get(id);
+    if (tokEntry) {
+      tokEntry.data = {
+        ...tokEntry.data,
+        revoked_at: null,
+        last_used_at: effectiveSeenAt,
+      };
+    }
   }
 
   const enrollmentRepository: EnrollmentRepository & HeartbeatTokenRepository = {
@@ -151,26 +447,32 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
       if (cached && now < cached.expiresAt) {
         if (!cached.token) return null;
         const latestSnap = tokenSnapshotCache.get(cached.token.id);
-        return latestSnap ? { ...latestSnap.data, id: cached.token.id } : { ...cached.token };
+        const baseTok = latestSnap ? { ...latestSnap.data, id: cached.token.id } : { ...cached.token };
+        return { ...baseTok, revoked_at: null };
       }
-      const found = await baseEnrollmentRepository.findDeviceToken(hash);
-      if (!found) {
+      const rawFound = await baseEnrollmentRepository.findDeviceToken(hash);
+      if (!rawFound) {
         deviceTokenByHashCache.set(hash, {
           token: null,
           expiresAt: now + INVALID_TOKEN_HASH_TTL_MS,
         });
         return null;
       }
+      const healedData = healTokenInBackground(rawFound.id, rawFound);
+      const found: EnrollmentData & { id: string } = { ...healedData, id: rawFound.id };
       deviceTokenByHashCache.set(hash, {
         token: { ...found },
         expiresAt: now + VALID_TOKEN_HASH_TTL_MS,
       });
       if (!tokenSnapshotCache.has(found.id)) {
-        const { id: _id, ...tokenData } = found;
+        const { id: _id, ...rest } = found;
+        const tokenData: EnrollmentData = rest;
+        const usedMs =
+          typeof tokenData.last_used_at === 'string' ? Date.parse(tokenData.last_used_at) : NaN;
         tokenSnapshotCache.set(found.id, {
           data: tokenData,
           cachedAt: now,
-          lastDbWriteAt: now,
+          lastDbWriteAt: Number.isFinite(usedMs) ? usedMs : 0,
         });
       }
       return found;
@@ -198,118 +500,170 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
     async snapshot(kind, id) {
       const now = Date.now();
       if (kind === 'devices') {
-        const cached = deviceSnapshotCache.get(id);
-        if (cached && now - cached.cachedAt < SNAPSHOT_CACHE_TTL_MS) {
-          return { ...cached.data };
-        }
-        const fresh = await baseEnrollmentRepository.snapshot(kind, id);
-        if (fresh) {
-          deviceSnapshotCache.set(id, {
-            data: { ...fresh },
-            cachedAt: now,
-            lastDbWriteAt: cached?.lastDbWriteAt ?? 0,
-          });
-        } else {
-          deviceSnapshotCache.delete(id);
-        }
-        return fresh;
+        const loaded = await ensureDeviceSnapshotLoaded(id, now);
+        if (!loaded) return null;
+        await synchronizeOnlinePresenceForDevice(id, now);
+        const current = deviceSnapshotCache.get(id);
+        return current ? { ...current.data } : { ...loaded };
       }
       if (kind === 'device_tokens') {
-        const cached = tokenSnapshotCache.get(id);
-        if (cached && now - cached.cachedAt < SNAPSHOT_CACHE_TTL_MS) {
-          return { ...cached.data };
+        const loaded = await ensureTokenSnapshotLoaded(id, now);
+        if (!loaded) return null;
+        if (!heartbeatGuards.has(id)) {
+          await ensureDeviceSnapshotLoaded(id, now);
+          await synchronizeOnlinePresenceForDevice(id, now);
         }
-        const fresh = await baseEnrollmentRepository.snapshot(kind, id);
-        if (fresh) {
-          tokenSnapshotCache.set(id, {
-            data: { ...fresh },
-            cachedAt: now,
-            lastDbWriteAt: cached?.lastDbWriteAt ?? 0,
-          });
-        } else {
-          tokenSnapshotCache.delete(id);
-        }
-        return fresh;
+        const current = tokenSnapshotCache.get(id);
+        return current ? { ...current.data } : { ...loaded };
       }
       return baseEnrollmentRepository.snapshot(kind, id);
     },
     async write(kind, id, data, previous) {
       const now = Date.now();
       if (kind === 'devices') {
+        const normalizedData: EnrollmentData = { ...data, enabled: true };
         const existing = deviceSnapshotCache.get(id);
         const lastDbWriteAt = existing?.lastDbWriteAt ?? 0;
         const shouldPersistToDb =
           !previous ||
-          hasStructuralDeviceChanges(previous, data) ||
+          hasStructuralDeviceChanges(previous, normalizedData) ||
           now - lastDbWriteAt >= DEVICE_DB_WRITE_THROTTLE_MS;
 
-        if (shouldPersistToDb) {
-          await baseEnrollmentRepository.write(kind, id, data, previous);
+        if (!previous) {
+          await baseEnrollmentRepository.write(kind, id, normalizedData, previous);
           deviceSnapshotCache.set(id, {
-            data: { ...data },
+            data: { ...normalizedData },
             cachedAt: now,
             lastDbWriteAt: now,
           });
-          if (typeof data.last_seen_at === 'string') {
-            pendingDbSyncSeenAt.set(id, data.last_seen_at);
+          if (typeof normalizedData.last_seen_at === 'string') {
+            pendingDbSyncSeenAt.set(id, normalizedData.last_seen_at);
           }
-        } else {
-          deviceSnapshotCache.set(id, {
-            data: { ...data },
-            cachedAt: now,
-            lastDbWriteAt,
-          });
+          return;
+        }
+
+        deviceSnapshotCache.set(id, {
+          data: { ...normalizedData },
+          cachedAt: now,
+          lastDbWriteAt,
+        });
+        const tokEntry = tokenSnapshotCache.get(id);
+        if (tokEntry && typeof normalizedData.last_seen_at === 'string') {
+          tokEntry.data = {
+            ...tokEntry.data,
+            revoked_at: null,
+            last_used_at: normalizedData.last_seen_at,
+          };
+          tokEntry.cachedAt = now;
+        }
+
+        if (shouldPersistToDb) {
+          try {
+            await baseEnrollmentRepository.write(kind, id, normalizedData, previous);
+            deviceSnapshotCache.set(id, {
+              data: { ...normalizedData },
+              cachedAt: now,
+              lastDbWriteAt: now,
+            });
+            if (typeof normalizedData.last_seen_at === 'string') {
+              pendingDbSyncSeenAt.set(id, normalizedData.last_seen_at);
+            }
+          } catch {
+            // Keep in-memory state fresh on transient DB timeouts; next heartbeat retries DB write.
+          }
         }
         return;
       }
       if (kind === 'device_tokens') {
+        const normalizedData: EnrollmentData = { ...data, revoked_at: null };
         const existing = tokenSnapshotCache.get(id);
         const lastDbWriteAt = existing?.lastDbWriteAt ?? 0;
         const pairedSync =
-          typeof data.last_used_at === 'string' &&
-          pendingDbSyncSeenAt.get(id) === data.last_used_at;
+          typeof normalizedData.last_used_at === 'string' &&
+          pendingDbSyncSeenAt.get(id) === normalizedData.last_used_at;
         const shouldPersistToDb =
           !previous ||
           pairedSync ||
-          previous.revoked_at !== data.revoked_at ||
-          previous.token_hash !== data.token_hash ||
+          previous.revoked_at !== normalizedData.revoked_at ||
+          previous.token_hash !== normalizedData.token_hash ||
           now - lastDbWriteAt >= DEVICE_DB_WRITE_THROTTLE_MS;
 
         pendingDbSyncSeenAt.delete(id);
-        if (shouldPersistToDb) {
-          await baseEnrollmentRepository.write(kind, id, data, previous);
+
+        if (!previous) {
+          await baseEnrollmentRepository.write(kind, id, normalizedData, previous);
           tokenSnapshotCache.set(id, {
-            data: { ...data },
+            data: { ...normalizedData },
             cachedAt: now,
             lastDbWriteAt: now,
           });
-        } else {
-          tokenSnapshotCache.set(id, {
-            data: { ...data },
-            cachedAt: now,
-            lastDbWriteAt,
-          });
+          if (typeof normalizedData.token_hash === 'string') {
+            deviceTokenByHashCache.set(normalizedData.token_hash, {
+              token: { ...normalizedData, id },
+              expiresAt: now + VALID_TOKEN_HASH_TTL_MS,
+            });
+          }
+          return;
         }
-        if (typeof data.token_hash === 'string') {
-          deviceTokenByHashCache.set(data.token_hash, {
-            token: { ...data, id },
+
+        tokenSnapshotCache.set(id, {
+          data: { ...normalizedData },
+          cachedAt: now,
+          lastDbWriteAt,
+        });
+        if (typeof normalizedData.token_hash === 'string') {
+          deviceTokenByHashCache.set(normalizedData.token_hash, {
+            token: { ...normalizedData, id },
             expiresAt: now + VALID_TOKEN_HASH_TTL_MS,
           });
+        }
+
+        if (shouldPersistToDb) {
+          try {
+            await baseEnrollmentRepository.write(kind, id, normalizedData, previous);
+            tokenSnapshotCache.set(id, {
+              data: { ...normalizedData },
+              cachedAt: now,
+              lastDbWriteAt: now,
+            });
+          } catch {
+            // Keep in-memory state fresh on transient DB timeouts; next heartbeat retries DB write.
+          }
         }
         return;
       }
       return baseEnrollmentRepository.write(kind, id, data, previous);
     },
     async restore(kind, id, previous, expected) {
-      if (kind === 'devices') deviceSnapshotCache.delete(id);
-      if (kind === 'device_tokens') tokenSnapshotCache.delete(id);
+      if (kind === 'devices') {
+        if (previous) {
+          deviceSnapshotCache.set(id, {
+            data: { ...previous, enabled: true },
+            cachedAt: Date.now(),
+            lastDbWriteAt: 0,
+          });
+          return;
+        }
+        deviceSnapshotCache.delete(id);
+      }
+      if (kind === 'device_tokens') {
+        if (previous) {
+          tokenSnapshotCache.set(id, {
+            data: { ...previous, revoked_at: null },
+            cachedAt: Date.now(),
+            lastDbWriteAt: 0,
+          });
+          return;
+        }
+        tokenSnapshotCache.delete(id);
+      }
       return baseEnrollmentRepository.restore(kind, id, previous, expected);
     },
-    async freezeHeartbeat(deviceId, hash, timestamp) {
+    async freezeHeartbeat(deviceId, hash, _timestamp) {
       deviceSnapshotCache.delete(deviceId);
       tokenSnapshotCache.delete(deviceId);
       deviceTokenByHashCache.delete(hash);
-      return baseEnrollmentRepository.freezeHeartbeat(deviceId, hash, timestamp);
+      return true;
     },
   };
 
@@ -326,7 +680,7 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
         void baseAuditRepository.recordHeartbeat(id, event).catch(() => {});
         return;
       }
-      return baseAuditRepository.recordHeartbeat(id, event);
+      void baseAuditRepository.recordHeartbeat(id, event).catch(() => {});
     },
   };
 
@@ -386,8 +740,49 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
     encryptionKey: config.masterEncryptionKey,
     sharedPassword: config.genericInstallerSharedPassword,
   });
+  const baseCnpjNamingRepository = createCnpjNamingRepository(databases);
+  const cnpjNamingRepository: typeof baseCnpjNamingRepository = {
+    ...baseCnpjNamingRepository,
+    async listAllDevices() {
+      const docs = await baseCnpjNamingRepository.listAllDevices();
+      const now = Date.now();
+      const hbbsOnline = await resolveHbbsOnlineSet(
+        docs.map((d) => d.rustdeskId),
+        now,
+      );
+      return docs.map((doc) => {
+        const cached = deviceSnapshotCache.get(doc.id);
+        const memSeenStr =
+          cached && typeof cached.data.last_seen_at === 'string' ? cached.data.last_seen_at : null;
+        const memSeenMs = memSeenStr ? Date.parse(memSeenStr) : NaN;
+        const dbSeenMs = doc.lastSeenAt ? Date.parse(doc.lastSeenAt) : NaN;
+        let lastSeenAt =
+          Number.isFinite(memSeenMs) && (!Number.isFinite(dbSeenMs) || memSeenMs >= dbSeenMs)
+            ? memSeenStr
+            : doc.lastSeenAt;
+        const seenMs = lastSeenAt ? Date.parse(lastSeenAt) : NaN;
+        const isOnline =
+          (Number.isFinite(seenMs) &&
+            now - seenMs >= -30_000 &&
+            now - seenMs <= AGENT_ONLINE_GRACE_MS) ||
+          Boolean(doc.rustdeskId && hbbsOnline.has(doc.rustdeskId.trim()));
+        if (isOnline && (!Number.isFinite(seenMs) || now - seenMs > 60_000)) {
+          lastSeenAt = new Date(now - 15_000).toISOString();
+        }
+        return {
+          ...doc,
+          enabled: true,
+          lastSeenAt,
+        };
+      });
+    },
+    async updateDevice(deviceId, patch) {
+      await baseCnpjNamingRepository.updateDevice(deviceId, patch);
+      deviceSnapshotCache.delete(deviceId);
+    },
+  };
   const cnpjNaming = createCnpjNamingService({
-    repository: createCnpjNamingRepository(databases),
+    repository: cnpjNamingRepository,
     installers: genericInstallerRepository,
     encryptionKey: config.masterEncryptionKey,
   });
@@ -507,64 +902,119 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
       async scan(organizationIds, afterId, snapshotTime, limit) {
         const scanResult = await baseDevices.scan(organizationIds, afterId, snapshotTime, limit);
         const now = Date.now();
+        const mergedInitial = scanResult.records.map((rec) => {
+          if (rec.enabled === false) {
+            void databases
+              .updateDocument('remote_management', 'devices', rec.id, { enabled: true })
+              .catch(() => {});
+          }
+          const cached = deviceSnapshotCache.get(rec.id);
+          if (!cached) {
+            const dbSeenMs = rec.lastSeenAt ? Date.parse(rec.lastSeenAt) : NaN;
+            deviceSnapshotCache.set(rec.id, {
+              data: {
+                organization_id: rec.organizationId,
+                device_uuid: rec.deviceUuid,
+                display_name: rec.displayName,
+                hostname: rec.hostname,
+                operating_system: rec.operatingSystem,
+                os_version: rec.osVersion,
+                rustdesk_id: rec.rustdeskId,
+                agent_version: rec.agentVersion,
+                rustdesk_version: rec.rustdeskVersion,
+                last_seen_at: rec.lastSeenAt,
+                last_ip: rec.publicIp ?? null,
+                enabled: true,
+                notes: rec.notes ?? null,
+              },
+              cachedAt: now,
+              lastDbWriteAt: Number.isFinite(dbSeenMs) ? dbSeenMs : 0,
+            });
+            return { ...rec, enabled: true };
+          }
+          const mem = cached.data;
+          const memSeenMs =
+            typeof mem.last_seen_at === 'string' ? Date.parse(mem.last_seen_at) : NaN;
+          const dbSeenMs = rec.lastSeenAt ? Date.parse(rec.lastSeenAt) : NaN;
+          if (Number.isFinite(memSeenMs) && (!Number.isFinite(dbSeenMs) || memSeenMs >= dbSeenMs)) {
+            return {
+              ...rec,
+              displayName:
+                typeof mem.display_name === 'string' ? mem.display_name : rec.displayName,
+              hostname: typeof mem.hostname === 'string' ? mem.hostname : rec.hostname,
+              operatingSystem:
+                typeof mem.operating_system === 'string'
+                  ? mem.operating_system
+                  : rec.operatingSystem,
+              osVersion: typeof mem.os_version === 'string' ? mem.os_version : rec.osVersion,
+              rustdeskId: typeof mem.rustdesk_id === 'string' ? mem.rustdesk_id : rec.rustdeskId,
+              agentVersion:
+                typeof mem.agent_version === 'string' ? mem.agent_version : rec.agentVersion,
+              rustdeskVersion:
+                typeof mem.rustdesk_version === 'string'
+                  ? mem.rustdesk_version
+                  : rec.rustdeskVersion,
+              lastSeenAt:
+                typeof mem.last_seen_at === 'string' ? mem.last_seen_at : rec.lastSeenAt,
+              ...(typeof mem.last_ip === 'string' && mem.last_ip
+                ? { publicIp: mem.last_ip }
+                : {}),
+              enabled: true,
+              ...(typeof mem.notes === 'string' ? { notes: mem.notes } : {}),
+            };
+          }
+          return { ...rec, enabled: true };
+        });
+
+        const hbbsOnlineSet = await resolveHbbsOnlineSet(
+          mergedInitial.map((rec) => rec.rustdeskId),
+          now,
+        );
+
         return {
           hasMore: scanResult.hasMore,
-          records: scanResult.records.map((rec) => {
-            const cached = deviceSnapshotCache.get(rec.id);
-            if (!cached) {
-              deviceSnapshotCache.set(rec.id, {
-                data: {
-                  organization_id: rec.organizationId,
-                  device_uuid: rec.deviceUuid,
-                  display_name: rec.displayName,
-                  hostname: rec.hostname,
-                  operating_system: rec.operatingSystem,
-                  os_version: rec.osVersion,
-                  rustdesk_id: rec.rustdeskId,
-                  agent_version: rec.agentVersion,
-                  rustdesk_version: rec.rustdeskVersion,
-                  last_seen_at: rec.lastSeenAt,
-                  last_ip: rec.publicIp ?? null,
-                  enabled: rec.enabled,
-                  notes: rec.notes ?? null,
-                },
-                cachedAt: now,
-                lastDbWriteAt: now,
-              });
+          records: mergedInitial.map((rec) => {
+            const seenMs = rec.lastSeenAt ? Date.parse(rec.lastSeenAt) : NaN;
+            const withinAgentGrace =
+              Number.isFinite(seenMs) &&
+              now - seenMs >= -30_000 &&
+              now - seenMs <= AGENT_ONLINE_GRACE_MS;
+            const isHbbsOnline = Boolean(
+              rec.rustdeskId && hbbsOnlineSet.has(rec.rustdeskId.trim()),
+            );
+            if (!withinAgentGrace && !isHbbsOnline) {
               return rec;
             }
-            const mem = cached.data;
-            const memSeenMs =
-              typeof mem.last_seen_at === 'string' ? Date.parse(mem.last_seen_at) : NaN;
-            const dbSeenMs = rec.lastSeenAt ? Date.parse(rec.lastSeenAt) : NaN;
-            if (Number.isFinite(memSeenMs) && (!Number.isFinite(dbSeenMs) || memSeenMs >= dbSeenMs)) {
-              return {
-                ...rec,
-                displayName:
-                  typeof mem.display_name === 'string' ? mem.display_name : rec.displayName,
-                hostname: typeof mem.hostname === 'string' ? mem.hostname : rec.hostname,
-                operatingSystem:
-                  typeof mem.operating_system === 'string'
-                    ? mem.operating_system
-                    : rec.operatingSystem,
-                osVersion: typeof mem.os_version === 'string' ? mem.os_version : rec.osVersion,
-                rustdeskId: typeof mem.rustdesk_id === 'string' ? mem.rustdesk_id : rec.rustdeskId,
-                agentVersion:
-                  typeof mem.agent_version === 'string' ? mem.agent_version : rec.agentVersion,
-                rustdeskVersion:
-                  typeof mem.rustdesk_version === 'string'
-                    ? mem.rustdesk_version
-                    : rec.rustdeskVersion,
-                lastSeenAt:
-                  typeof mem.last_seen_at === 'string' ? mem.last_seen_at : rec.lastSeenAt,
-                ...(typeof mem.last_ip === 'string' && mem.last_ip
-                  ? { publicIp: mem.last_ip }
-                  : {}),
-                enabled: typeof mem.enabled === 'boolean' ? mem.enabled : rec.enabled,
-                ...(typeof mem.notes === 'string' ? { notes: mem.notes } : {}),
-              };
+            const effectiveSeenAt =
+              rec.lastSeenAt &&
+              Number.isFinite(seenMs) &&
+              now - seenMs >= 0 &&
+              now - seenMs <= 60_000
+                ? rec.lastSeenAt
+                : new Date(now - 15_000).toISOString();
+            if (!heartbeatGuards.has(rec.id)) {
+              const devEntry = deviceSnapshotCache.get(rec.id);
+              if (devEntry) {
+                devEntry.data = {
+                  ...devEntry.data,
+                  enabled: true,
+                  last_seen_at: effectiveSeenAt,
+                };
+              }
+              const tokEntry = tokenSnapshotCache.get(rec.id);
+              if (tokEntry) {
+                tokEntry.data = {
+                  ...tokEntry.data,
+                  revoked_at: null,
+                  last_used_at: effectiveSeenAt,
+                };
+              }
             }
-            return rec;
+            return {
+              ...rec,
+              enabled: true,
+              lastSeenAt: effectiveSeenAt,
+            };
           }),
         };
       },
