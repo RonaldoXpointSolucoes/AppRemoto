@@ -111,9 +111,7 @@ function queryHbbsOnlineRaw(host: string, port: number, peers: string[]): Promis
     const sock = net.createConnection({ host, port }, () => {
       sock.write(encodeHbbsOnlineRequestFrame(peers));
     });
-    sock.unref();
     const timer = setTimeout(() => finish(null), HBBS_SOCKET_TIMEOUT_MS);
-    timer.unref();
     let buf = Buffer.alloc(0);
     sock.on('data', (chunk: Buffer) => {
       buf = Buffer.concat([buf, chunk]);
