@@ -1,16 +1,14 @@
 FROM node:24-alpine
 
 WORKDIR /app
-RUN apk add --no-cache curl
-RUN npm install --global pnpm@11.19.0
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY apps/api/package.json apps/api/package.json
-COPY packages/contracts/package.json packages/contracts/package.json
-RUN pnpm install --prod --frozen-lockfile --filter @appremoto/api...
-
-COPY apps/api/src apps/api/src
-COPY packages/contracts/src packages/contracts/src
+RUN --mount=type=bind,source=apps/api/prebuilt/standalone.tar.gz,target=/tmp/standalone.tar.gz \
+    printf '#!/bin/sh\nexec wget -q -O- http://127.0.0.1:${PORT:-3000}/health\n' > /usr/local/bin/curl && \
+    chmod +x /usr/local/bin/curl && \
+    tar -xzf /tmp/standalone.tar.gz -C /app && \
+    mkdir -p /app/node_modules/@appremoto && \
+    ln -s ../../packages/contracts /app/node_modules/@appremoto/contracts && \
+    chown -R node:node /app
 
 ENV NODE_ENV=production
 EXPOSE 3000
