@@ -6,13 +6,15 @@ const defaultApiBaseUrl = 'https://qyrjepou8xchzlfirsbrhwr9.179.199.142.157.ssli
 
 const resolvedAppwriteEndpoint =
   process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT &&
-  !process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT.includes('aogc088s00c4osck8k0ks0c4')
+  !process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT.includes('aogc088s00c4osck8k0ks0c4') &&
+  !process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT.includes('aw.xpointsolucoes.com.br')
     ? process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT
     : defaultAppwriteEndpoint;
 
 const resolvedAppwriteProjectId =
   process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID &&
-  process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID !== '69db5246001f7f0ef0a9'
+  process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID !== '69db5246001f7f0ef0a9' &&
+  process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID !== '69d837d70019eb86b3a9'
     ? process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID
     : defaultAppwriteProjectId;
 
