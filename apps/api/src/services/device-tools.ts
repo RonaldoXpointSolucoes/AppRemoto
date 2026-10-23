@@ -39,6 +39,10 @@ export function createDeviceTools(deps: Dependencies): DeviceToolsService {
         item.canView && item[permission]) || !await repo.organizationActive(organization.id)) throw denied();
     return { device, organization };
   }
+  function isTechnicianAdmin(technician: AuthenticatedTechnician, organizationId: string): boolean {
+    return technician.globalRole === 'super_admin' ||
+      technician.authorization.some((item) => item.organizationId === organizationId && item.canView && item.role === 'admin');
+  }
   function view(id: string, device: EnrollmentData, name: string): DeviceView {
     const age = typeof device.last_seen_at === 'string' ? now().getTime() - Date.parse(device.last_seen_at) : NaN;
     const { datadivas, cleanNotes } = extractDataDivasFromNotes(typeof device.notes === 'string' ? device.notes : null);
@@ -84,13 +88,26 @@ export function createDeviceTools(deps: Dependencies): DeviceToolsService {
     },
     async update(technician, deviceId, input, sourceIp) {
       const request = UpdateDeviceRequestSchema.parse(input);
-      await authorizedDevice(technician, deviceId, 'canManageDevices');
+      const { device: initialDevice, organization: initialOrg } = await authorizedDevice(technician, deviceId, 'canManageDevices');
+      const initialCleanNotes = extractDataDivasFromNotes(typeof initialDevice.notes === 'string' ? initialDevice.notes : null).cleanNotes;
+      const initialPolicy = extractDeviceAccessPolicy(initialCleanNotes);
+      const requestedCleanNotes = extractDataDivasFromNotes(request.notes).cleanNotes;
+      const requestedPolicy = extractDeviceAccessPolicy(requestedCleanNotes);
+      if ((initialPolicy.adminOnlyAccess || requestedPolicy.adminOnlyAccess) && !isTechnicianAdmin(technician, initialOrg.id)) {
+        throw denied();
+      }
       if (!deps.guard || !deps.receipts.updateDeviceFields) throw unavailable();
       const guard = { deviceId, deviceTokenId: deviceId, startedAt: now().toISOString() };
       if (!await deps.guard.beginHeartbeatGuard(guard)) throw new DeviceToolError('DEVICE_BUSY', 409);
       let uncertain = false;
       try {
         const { device: priorDevice, organization } = await authorizedDevice(technician, deviceId, 'canManageDevices');
+        const previousDisplayName = typeof priorDevice.display_name === 'string' ? priorDevice.display_name : '';
+        const priorCleanNotes = extractDataDivasFromNotes(typeof priorDevice.notes === 'string' ? priorDevice.notes : null).cleanNotes;
+        const priorPolicy = extractDeviceAccessPolicy(priorCleanNotes);
+        if ((priorPolicy.adminOnlyAccess || requestedPolicy.adminOnlyAccess) && !isTechnicianAdmin(technician, organization.id)) {
+          throw denied();
+        }
         const event = { organizationId: organization.id, actorId: technician.userId, deviceId, sourceIp };
         await audit.recordOperator(randomUUID(), { ...event, action: 'device.update.requested' });
         const existingDataDivas = extractDataDivasFromNotes(typeof priorDevice.notes === 'string' ? priorDevice.notes : null).datadivas;
@@ -104,7 +121,18 @@ export function createDeviceTools(deps: Dependencies): DeviceToolsService {
         await deps.receipts.updateDeviceFields(deviceId, { displayName: request.displayName, notes: persistedNotes });
         const { device } = await authorizedDevice(technician, deviceId, 'canManageDevices');
         if (device.display_name !== request.displayName || device.notes !== persistedNotes) throw unavailable();
-        await audit.recordOperator(randomUUID(), { ...event, action: 'device.update' });
+        await audit.recordOperator(randomUUID(), {
+          ...event,
+          action: 'device.update',
+          deviceChange: {
+            previousDisplayName,
+            displayName: request.displayName,
+            hostname: typeof device.hostname === 'string' ? device.hostname : '',
+            rustdeskId: typeof device.rustdesk_id === 'string' ? device.rustdesk_id : '',
+            actorName: technician.displayName,
+            adminOnlyAccess: requestedPolicy.adminOnlyAccess,
+          },
+        });
         const { cleanNotes } = extractDataDivasFromNotes(typeof device.notes === 'string' ? device.notes : null);
         return UpdateDeviceResponseSchema.parse({ device: view(deviceId, device, organization.name), notes: cleanNotes });
       } catch (error) {
@@ -116,9 +144,26 @@ export function createDeviceTools(deps: Dependencies): DeviceToolsService {
       }
     },
     async delete(technician, deviceId, sourceIp) {
-      const { organization } = await authorizedDevice(technician, deviceId, 'canManageDevices');
+      const { device, organization } = await authorizedDevice(technician, deviceId, 'canManageDevices');
+      const cleanNotes = extractDataDivasFromNotes(typeof device.notes === 'string' ? device.notes : null).cleanNotes;
+      const policy = extractDeviceAccessPolicy(cleanNotes);
+      if (policy.adminOnlyAccess && !isTechnicianAdmin(technician, organization.id)) {
+        throw denied();
+      }
       if (!deps.receipts.deleteDevice) throw unavailable();
-      const event = { organizationId: organization.id, actorId: technician.userId, deviceId, sourceIp };
+      const event = {
+        organizationId: organization.id,
+        actorId: technician.userId,
+        deviceId,
+        sourceIp,
+        deviceChange: {
+          displayName: typeof device.display_name === 'string' ? device.display_name : '',
+          hostname: typeof device.hostname === 'string' ? device.hostname : '',
+          rustdeskId: typeof device.rustdesk_id === 'string' ? device.rustdesk_id : '',
+          actorName: technician.displayName,
+          adminOnlyAccess: policy.adminOnlyAccess,
+        },
+      };
       await audit.recordOperator(randomUUID(), { ...event, action: 'device.delete' });
       await deps.receipts.deleteDevice(deviceId);
       return DeleteDeviceResponseSchema.parse({ ok: true, deviceId });

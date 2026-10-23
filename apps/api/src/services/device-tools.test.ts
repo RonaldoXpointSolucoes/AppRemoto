@@ -315,3 +315,60 @@ test('connection launch enforces per-device access password and admin-only acces
   assert.equal(launch.attemptId, okAttemptId);
   assert.ok(launch.launchUri.startsWith('rustdesk://connect/'));
 });
+
+test('adminOnlyAccess blocks non-admin technicians from editing or deleting the device and records deviceChange audit metadata for admins', async () => {
+  const { encodeDeviceAccessNotes } = await import('@appremoto/contracts');
+  const f = fixture();
+  f.rows.get('devices/device')!.notes = encodeDeviceAccessNotes({
+    folderName: 'Servidores e infra',
+    adminOnlyAccess: true,
+    notes: 'Servidor Crítico',
+  });
+
+  const nonAdminTech = {
+    ...technician,
+    globalRole: null,
+    authorization: [{ organizationId: 'org', role: 'technician' as const, canView: true, canConnect: true, canManageDevices: true }],
+  };
+
+  await assert.rejects(
+    f.service.update!(nonAdminTech, 'device', { displayName: 'Tentativa Edição', notes: '' }, '127.0.0.1'),
+    OperatorSetupDenied,
+  );
+  await assert.rejects(
+    f.service.delete!(nonAdminTech, 'device', '127.0.0.1'),
+    OperatorSetupDenied,
+  );
+  assert.equal(f.rows.get('devices/device')!.display_name, 'PC');
+
+  const adminTech = { ...technician, displayName: 'Admin Master', globalRole: 'super_admin' as const };
+  const updated = await f.service.update!(
+    adminTech,
+    'device',
+    {
+      displayName: 'Servidor Financeiro Master',
+      notes: encodeDeviceAccessNotes({ folderName: 'Servidores e infra', adminOnlyAccess: true, notes: 'Servidor Crítico' }),
+    },
+    '127.0.0.1',
+  );
+  assert.equal(updated.device.displayName, 'Servidor Financeiro Master');
+  const updateAudit = [...f.audits.values()].find((a) => a.action === 'device.update');
+  assert.deepEqual(updateAudit?.deviceChange, {
+    previousDisplayName: 'PC',
+    displayName: 'Servidor Financeiro Master',
+    hostname: 'PC',
+    rustdeskId: '123456789',
+    actorName: 'Admin Master',
+    adminOnlyAccess: true,
+  });
+
+  await f.service.delete!(adminTech, 'device', '127.0.0.1');
+  const deleteAudit = [...f.audits.values()].find((a) => a.action === 'device.delete');
+  assert.deepEqual(deleteAudit?.deviceChange, {
+    displayName: 'Servidor Financeiro Master',
+    hostname: 'PC',
+    rustdeskId: '123456789',
+    actorName: 'Admin Master',
+    adminOnlyAccess: true,
+  });
+});

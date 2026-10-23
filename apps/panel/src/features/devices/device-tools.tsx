@@ -19,10 +19,18 @@ import {
   analyzeDeviceNetworkTopology,
 } from './system-info';
 import { resolveCoherentDevicePresentation } from './device-presentation';
-import { parseDeviceNotes, encodeDeviceNotes, hashDeviceAccessPassword, saveDeviceCustomMetadata } from './teamviewer-storage';
+import {
+  parseDeviceNotes,
+  encodeDeviceNotes,
+  hashDeviceAccessPassword,
+  saveDeviceCustomMetadata,
+  getDeviceProtectionState,
+  recordDeviceAuditLog,
+} from './teamviewer-storage';
 
-export function DeviceTools({ device, service, canConnect, canManage, events, onEvent, onClose, onSaved, onSessionExpired }: {
+export function DeviceTools({ device, service, canConnect, canManage, isAdmin, technicianName, technicianEmail, events, onEvent, onClose, onSaved, onSessionExpired }: {
   device: DeviceView; service: DeviceDirectoryService; canConnect: boolean; canManage: boolean;
+  isAdmin?: boolean; technicianName?: string; technicianEmail?: string;
   events: ConnectionLogEvent[]; onEvent(event: ConnectionLogEvent): void; onClose(): void; onSaved(): void; onSessionExpired?(): void;
 }) {
   const client = useQueryClient();
@@ -88,11 +96,17 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
     });
     return () => { cancelled = true; };
   }, [client, device.id, epoch, revision, service]);
+  const effectiveIsAdmin = isAdmin ?? canManage;
+  const initialProtection = getDeviceProtectionState(device);
+  const adminOnlyBlocked = (adminOnlyAccess || Boolean(device.adminOnlyAccess) || initialProtection.adminOnlyAccess) && !effectiveIsAdmin;
+  const canEditOrDelete = canManage && !adminOnlyBlocked;
+
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (!canManage || !service.updateDevice || busy || !current()) return;
+    if (!canEditOrDelete || !service.updateDevice || busy || !current()) return;
     setBusy(true); setMessage('');
     try {
+      const previousDisplayName = details?.device.displayName ?? device.displayName;
       const nextPasswordHash = newAccessPassword.trim()
         ? hashDeviceAccessPassword(newAccessPassword.trim())
         : clearAccessPassword
@@ -111,6 +125,21 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
         accessPasswordHash: nextPasswordHash,
       });
       const result = await service.updateDevice(device.id, { displayName: displayName.trim(), notes: encodedNotes });
+      recordDeviceAuditLog({
+        action: previousDisplayName.trim() !== displayName.trim() ? 'EDIT_NAME' : 'EDIT_DEVICE',
+        deviceId: device.id,
+        rustdeskId: device.rustdeskId,
+        hostname: device.hostname,
+        organizationName: device.organizationName,
+        previousDisplayName,
+        newDisplayName: displayName.trim(),
+        previousFolderName: folderName,
+        newFolderName: folderName,
+        newNotes: notes.trim(),
+        adminOnlyAccess,
+        technicianName: technicianName || 'Administrador / Técnico',
+        technicianEmail,
+      });
       if (!current()) return;
       setAccessPasswordHash(nextPasswordHash);
       setNewAccessPassword('');
@@ -137,10 +166,23 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
     });
   }
   async function handleDelete() {
-    if (!canManage || !service.deleteDevice || deleteBusy || !current()) return;
+    if (!canEditOrDelete || !service.deleteDevice || deleteBusy || !current()) return;
     setDeleteBusy(true); setDeleteError('');
     try {
       await service.deleteDevice(device.id);
+      recordDeviceAuditLog({
+        action: 'DELETE_DEVICE',
+        deviceId: device.id,
+        rustdeskId: device.rustdeskId,
+        hostname: device.hostname,
+        organizationName: device.organizationName,
+        previousDisplayName: details?.device.displayName ?? device.displayName,
+        newDisplayName: details?.device.displayName ?? device.displayName,
+        previousFolderName: folderName,
+        adminOnlyAccess,
+        technicianName: technicianName || 'Administrador / Técnico',
+        technicianEmail,
+      });
       if (!current()) return;
       onSaved();
       onClose();
@@ -522,7 +564,8 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
           : <p>Seu perfil não tem permissão para iniciar conexões neste cliente.</p>}
       </section>
       <section className="device-tools-section"><div className="device-section-heading"><h3>Informações do computador</h3>
-        {canManage && service.updateDevice && details && !editing && <button className="command-button" type="button" onClick={() => setEditing(true)}>Editar informações</button>}</div>
+        {canEditOrDelete && service.updateDevice && details && !editing && <button className="command-button" type="button" onClick={() => setEditing(true)}>Editar informações</button>}
+        {adminOnlyBlocked && <span style={{ fontSize: '0.78rem', color: '#fda4af', fontWeight: 600 }}>🔒 Bloqueado: Somente Admin pode editar ou excluir</span>}</div>
         {editing ? <form className="device-edit-form" onSubmit={(event) => void save(event)}>
           <label className="field">Nome do computador<input value={displayName} required maxLength={128} disabled={busy} onChange={(event) => setDisplayName(event.target.value)} /></label>
           <label className="field">Observações<textarea value={notes} maxLength={2048} rows={4} disabled={busy} onChange={(event) => setNotes(event.target.value)} /></label>
@@ -547,10 +590,10 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
             </div>
           )}
           <label className="field" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <input type="checkbox" checked={adminOnlyAccess} disabled={busy} onChange={(event) => setAdminOnlyAccess(event.target.checked)} />
+            <input type="checkbox" checked={adminOnlyAccess} disabled={busy || !effectiveIsAdmin} onChange={(event) => setAdminOnlyAccess(event.target.checked)} />
             <span>Acesso restrito somente a Administrador</span>
           </label>
-          <div className="device-inline-actions"><button className="primary-button" disabled={busy || !canManage || !displayName.trim()} type="submit">Salvar alterações</button>
+          <div className="device-inline-actions"><button className="primary-button" disabled={busy || !canEditOrDelete || !displayName.trim()} type="submit">Salvar alterações</button>
           <button className="command-button" type="button" disabled={busy} onClick={() => {
             const parsed = parseDeviceNotes(details?.notes ?? '');
             setEditing(false);
@@ -584,7 +627,7 @@ export function DeviceTools({ device, service, canConnect, canManage, events, on
         <p>O arquivo contém códigos e horários, sem senhas, links de acesso ou tokens. Eventos ainda não salvos na API ficam apenas nesta página até encerrar a sessão ou recarregar.</p>
       </section>
 
-      {canManage && service.deleteDevice && (
+      {canEditOrDelete && service.deleteDevice && (
         <section className="device-tools-section">
           <div className="device-section-heading">
             <h3>Zona de exclusão</h3>

@@ -928,5 +928,164 @@ export function getActiveSessionsDraft(): ActiveSessionDraft[] {
   }
 }
 
+export type DeviceAuditActionType =
+  | 'EDIT_NAME'
+  | 'EDIT_DEVICE'
+  | 'MOVE_FOLDER'
+  | 'DELETE_DEVICE';
+
+export interface DeviceAuditLogRecord {
+  id: string;
+  protocolNumber: string;
+  action: DeviceAuditActionType;
+  timestamp: string;
+  deviceId: string;
+  rustdeskId: string;
+  hostname: string;
+  organizationName: string;
+  previousDisplayName?: string;
+  newDisplayName: string;
+  previousFolderName?: string;
+  newFolderName?: string;
+  previousNotes?: string;
+  newNotes?: string;
+  adminOnlyAccess?: boolean;
+  technicianName: string;
+  technicianEmail?: string;
+  clientPlatform?: string;
+  summary: string;
+}
+
+const DEVICE_AUDIT_LOGS_KEY = 'xpoint_device_audit_logs_v1';
+const COCKPIT_LOGS_STORAGE_KEY = 'xpoint_cockpit_logs_v1';
+const EMPTY_AUDIT_LOGS_LIST: DeviceAuditLogRecord[] = [];
+
+export function generateAuditLogProtocol(isoDate?: string): string {
+  const d = isoDate ? new Date(isoDate) : new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const suffix = String(Math.floor(1000 + (d.getTime() % 9000))).padStart(4, '0');
+  return `LOG-${yyyy}${mm}${dd}-${suffix}`;
+}
+
+export function getDeviceAuditLogs(): DeviceAuditLogRecord[] {
+  return readCachedStorageJson<DeviceAuditLogRecord[]>(
+    DEVICE_AUDIT_LOGS_KEY,
+    EMPTY_AUDIT_LOGS_LIST
+  );
+}
+
+export function recordDeviceAuditLog(
+  input: Omit<
+    DeviceAuditLogRecord,
+    'id' | 'protocolNumber' | 'timestamp' | 'clientPlatform' | 'summary'
+  > & {
+    timestamp?: string;
+    summary?: string;
+  }
+): DeviceAuditLogRecord[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const existing = getDeviceAuditLogs();
+    const timestamp = input.timestamp || new Date().toISOString();
+    const protocolNumber = generateAuditLogProtocol(timestamp);
+    const telemetry = detectClientTelemetry();
+    const prevName = (input.previousDisplayName || '').trim();
+    const nextName = (input.newDisplayName || '').trim();
+    const nameChanged = Boolean(prevName && nextName && prevName !== nextName);
+
+    const resolvedAction: DeviceAuditActionType =
+      input.action === 'DELETE_DEVICE'
+        ? 'DELETE_DEVICE'
+        : nameChanged
+          ? 'EDIT_NAME'
+          : input.action;
+
+    let autoSummary = input.summary || '';
+    if (!autoSummary) {
+      if (resolvedAction === 'DELETE_DEVICE') {
+        autoSummary = `Exclusão do cliente/máquina "${nextName || input.hostname}" (Hostname: ${input.hostname} | ID RustDesk: ${input.rustdeskId}) realizada por ${input.technicianName}.`;
+      } else if (resolvedAction === 'EDIT_NAME') {
+        autoSummary = `Edição de nome de cliente existente: de "${prevName}" para "${nextName}" (Hostname: ${input.hostname} | ID RustDesk: ${input.rustdeskId}) por ${input.technicianName}.`;
+      } else if (resolvedAction === 'MOVE_FOLDER') {
+        autoSummary = `Movimentação de pasta do cliente "${nextName}": de "${input.previousFolderName || 'Clientes'}" para "${input.newFolderName || 'Clientes'}" por ${input.technicianName}.`;
+      } else {
+        autoSummary = `Edição de cadastro do cliente "${nextName}" (Hostname: ${input.hostname} | Pasta: ${input.newFolderName || input.previousFolderName || 'Clientes'}${input.adminOnlyAccess ? ' | Somente Admin' : ''}) por ${input.technicianName}.`;
+      }
+    }
+
+    const record: DeviceAuditLogRecord = {
+      id: `aud-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      protocolNumber,
+      action: resolvedAction,
+      timestamp,
+      deviceId: input.deviceId,
+      rustdeskId: input.rustdeskId,
+      hostname: input.hostname,
+      organizationName: input.organizationName || 'XPoint',
+      previousDisplayName: prevName || undefined,
+      newDisplayName: nextName || input.hostname,
+      previousFolderName: input.previousFolderName,
+      newFolderName: input.newFolderName,
+      previousNotes: input.previousNotes,
+      newNotes: input.newNotes,
+      adminOnlyAccess: input.adminOnlyAccess,
+      technicianName: input.technicianName || 'Operador',
+      technicianEmail: input.technicianEmail,
+      clientPlatform: telemetry.clientPlatform,
+      summary: autoSummary,
+    };
+
+    const updated = [record, ...existing].slice(0, 200);
+    const raw = JSON.stringify(updated);
+    localStorage.setItem(DEVICE_AUDIT_LOGS_KEY, raw);
+    storageJsonCache.set(DEVICE_AUDIT_LOGS_KEY, { raw, parsed: updated });
+
+    // Também registra no Cockpit de Telemetria para visibilidade imediata em Logs de Auditoria
+    try {
+      const rawCockpit = localStorage.getItem(COCKPIT_LOGS_STORAGE_KEY);
+      const currentCockpit = rawCockpit ? (JSON.parse(rawCockpit) as unknown[]) : [];
+      const cockpitEntry = {
+        id: record.id,
+        timestamp,
+        timeFormatted: new Date(timestamp).toLocaleTimeString('pt-BR'),
+        level: resolvedAction === 'DELETE_DEVICE' ? 'warn' : 'info',
+        component: 'APPWRITE DB',
+        message: `[AuditLog • ${protocolNumber}] ${autoSummary}`,
+        details: {
+          type: 'audit',
+          protocolNumber,
+          action: resolvedAction,
+          deviceId: record.deviceId,
+          rustdeskId: record.rustdeskId,
+          hostname: record.hostname,
+          previousDisplayName: record.previousDisplayName,
+          newDisplayName: record.newDisplayName,
+          previousFolderName: record.previousFolderName,
+          newFolderName: record.newFolderName,
+          adminOnlyAccess: record.adminOnlyAccess,
+          technicianName: record.technicianName,
+          technicianEmail: record.technicianEmail,
+          timestamp,
+        },
+      };
+      localStorage.setItem(
+        COCKPIT_LOGS_STORAGE_KEY,
+        JSON.stringify([cockpitEntry, ...(Array.isArray(currentCockpit) ? currentCockpit : [])].slice(0, 200))
+      );
+    } catch {}
+
+    try {
+      window.dispatchEvent(new CustomEvent('xpoint:device-audit-logs-updated'));
+    } catch {}
+
+    return updated;
+  } catch {
+    return [];
+  }
+}
+
+
 
 

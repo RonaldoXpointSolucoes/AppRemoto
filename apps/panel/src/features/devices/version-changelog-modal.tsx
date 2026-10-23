@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.8.2',
+    date: 'Outubro 2026',
+    title: 'Logs de Auditoria de Edição/Exclusão de Clientes + Bloqueio Estrito em Máquinas "Somente Admin"',
+    highlight:
+      'Criação da trilha completa de logs de auditoria para exclusão e edição de nome de clientes existentes (com histórico antes/depois, operador, horário e protocolo) e bloqueio completo de edição/exclusão em máquinas marcadas como "Somente Admin" para técnicos que não são administradores.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Logs de Auditoria para Edição de Nome e Exclusão de Clientes',
+        description:
+          'Toda edição de nome/cadastro ou exclusão de um cliente existente gera automaticamente um registro de auditoria (LOG-YYYYMMDD-XXXX) com nome anterior, novo nome, hostname, ID RustDesk e operador responsável, visível na Central de Auditoria, no modal de edição da máquina e no Cockpit.',
+        tag: 'Segurança',
+      },
+      {
+        title: 'Bloqueio de Edição e Exclusão em Máquinas "Somente Admin"',
+        description:
+          'Máquinas configuradas como "Somente Admin" agora bloqueiam os botões de edição, exclusão, movimentação de pasta e comandos remotos para técnicos comuns no painel e rejeitam requisições na API com verificação estrita de perfil Administrador.',
+        tag: 'Segurança',
+      },
+    ],
+  },
+  {
     version: 'v1.8.1',
     date: 'Outubro 2026',
     title: 'Ícone & Destaque Esmeralda para Máquinas Online + Limpeza Automática do Filtro ao Reabrir',
     highlight:
       'Refinamento visual dos computadores Online na lista (ícone de monitor com tela ativa e pulso de sinal, avatar esmeralda, faixa lateral e badge de alto contraste em modo Claro/Escuro) e limpeza automática do campo de filtro sempre que o sistema é fechado e reaberto.',
-    isCurrent: true,
     items: [
       {
         title: 'Novo Ícone de Monitor Ativo e Destaque Visual para Máquinas Online',

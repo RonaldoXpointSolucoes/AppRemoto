@@ -30,6 +30,15 @@ export interface HeartbeatAudit {
   recoveryRequired: boolean;
 }
 
+export interface DeviceManagementAuditMetadata {
+  previousDisplayName?: string;
+  displayName?: string;
+  hostname?: string;
+  rustdeskId?: string;
+  actorName?: string;
+  adminOnlyAccess?: boolean;
+}
+
 export interface OperatorAudit {
   organizationId: string;
   actorId: string;
@@ -40,6 +49,7 @@ export interface OperatorAudit {
   action: 'enrollment.create' | 'device.connect' | 'device.connect.event' | 'device.update.requested' | 'device.update' | 'device.delete' | 'installation.prepare';
   result?: 'success' | 'failure';
   connection?: Omit<ConnectionHistoryEvent, 'id' | 'at'>;
+  deviceChange?: DeviceManagementAuditMetadata;
 }
 export interface ConnectionAuditRecord {
   organizationId: string; actorId: string; deviceId: string; action: 'device.connect' | 'device.connect.event';
@@ -90,7 +100,15 @@ export function createAuditRepository(databases: Databases): AuditRepository & H
         id, at: new Date(0).toISOString() });
       const metadata = connection ? { attemptId: connection.attemptId, mode: connection.mode,
         stage: connection.stage, code: connection.code, source: connection.source } :
-        event.enrollmentId ? { enrollmentId: event.enrollmentId } : {};
+        event.enrollmentId ? { enrollmentId: event.enrollmentId } :
+        event.deviceChange ? {
+          ...(typeof event.deviceChange.previousDisplayName === 'string' ? { previousDisplayName: event.deviceChange.previousDisplayName } : {}),
+          ...(typeof event.deviceChange.displayName === 'string' ? { displayName: event.deviceChange.displayName } : {}),
+          ...(typeof event.deviceChange.hostname === 'string' ? { hostname: event.deviceChange.hostname } : {}),
+          ...(typeof event.deviceChange.rustdeskId === 'string' ? { rustdeskId: event.deviceChange.rustdeskId } : {}),
+          ...(typeof event.deviceChange.actorName === 'string' ? { actorName: event.deviceChange.actorName } : {}),
+          ...(typeof event.deviceChange.adminOnlyAccess === 'boolean' ? { adminOnlyAccess: event.deviceChange.adminOnlyAccess } : {}),
+        } : {};
       const data = { organization_id: event.organizationId, actor_type: event.actorType ?? 'technician', actor_id: event.actorId,
         device_id: event.deviceId ?? null, action: event.action, result: event.result ?? 'success', source_ip: event.sourceIp,
         metadata_json: JSON.stringify(metadata) };

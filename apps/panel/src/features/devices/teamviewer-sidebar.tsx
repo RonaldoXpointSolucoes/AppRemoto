@@ -189,10 +189,10 @@ export const TeamViewerSidebar = memo(function TeamViewerSidebar({
                 type="button"
                 className="tv-brand-badge version-badge-btn"
                 onClick={onOpenChangelog}
-                title="Clique para ver todas as novidades da versão v1.8.1"
-                aria-label="Ver novidades da versão v1.8.1"
+                title="Clique para ver todas as novidades da versão v1.8.2"
+                aria-label="Ver novidades da versão v1.8.2"
               >
-                v1.8.1
+                v1.8.2
               </button>
             </div>
           )}

@@ -279,6 +279,46 @@ describe('teamviewer-storage', () => {
     const reloaded = getTechnicians();
     expect(reloaded.some((t) => t.email === 'david_ladivas@hotmail.com')).toBe(false);
   });
+
+  it('registra logs detalhados de auditoria para edicao de nome de cliente existente e exclusao de maquina', async () => {
+    const { recordDeviceAuditLog, getDeviceAuditLogs } = await import('./teamviewer-storage');
+
+    expect(getDeviceAuditLogs()).toEqual([]);
+
+    recordDeviceAuditLog({
+      action: 'EDIT_NAME',
+      deviceId: 'dev-100',
+      rustdeskId: '123456789',
+      hostname: 'CAIXA-01',
+      organizationName: 'XPoint',
+      previousDisplayName: 'Cliente Antigo',
+      newDisplayName: 'Burguer Plus - Caixa 01',
+      previousFolderName: 'Clientes',
+      newFolderName: 'Clientes',
+      adminOnlyAccess: true,
+      technicianName: 'Ronaldo',
+    });
+
+    recordDeviceAuditLog({
+      action: 'DELETE_DEVICE',
+      deviceId: 'dev-200',
+      rustdeskId: '987654321',
+      hostname: 'PC-ANTIGO',
+      organizationName: 'XPoint',
+      previousDisplayName: 'Máquina Desativada',
+      newDisplayName: 'Máquina Desativada',
+      technicianName: 'Ronaldo',
+    });
+
+    const logs = getDeviceAuditLogs();
+    expect(logs).toHaveLength(2);
+    expect(logs[0].action).toBe('DELETE_DEVICE');
+    expect(logs[0].summary).toContain('Exclusão do cliente/máquina "Máquina Desativada"');
+    expect(logs[1].action).toBe('EDIT_NAME');
+    expect(logs[1].previousDisplayName).toBe('Cliente Antigo');
+    expect(logs[1].newDisplayName).toBe('Burguer Plus - Caixa 01');
+    expect(logs[1].summary).toContain('de "Cliente Antigo" para "Burguer Plus - Caixa 01"');
+  });
 });
 
 

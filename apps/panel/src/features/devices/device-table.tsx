@@ -54,6 +54,7 @@ import {
   saveActiveSessionDraft,
   saveActiveSessionsDraft,
   getActiveSessionsDraft,
+  recordDeviceAuditLog,
   type RecentConnectionRecord,
 } from './teamviewer-storage';
 
@@ -94,7 +95,7 @@ function DeviceRows({ devices, statusState, service, canConnect, canManage, isAd
       )}
       <div className="device-action-row">
         {service.getDeviceDetails && service.getConnectionHistory && <button type="button" className="text-button" onClick={() => onDetails(device)}>Detalhes e opções</button>}
-        {service.deleteDevice && canManage(device.organizationId) && <button type="button" className="danger-icon-button" title={`Excluir ${device.displayName}`} aria-label={`Excluir ${device.displayName}`} onClick={() => onDeletePrompt(device)}>
+        {service.deleteDevice && canManage(device.organizationId) && !adminOnlyBlocked && <button type="button" className="danger-icon-button" title={`Excluir ${device.displayName}`} aria-label={`Excluir ${device.displayName}`} onClick={() => onDeletePrompt(device)}>
           <Trash2 size={16} aria-hidden="true" />
         </button>}
       </div>
@@ -626,12 +627,37 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
     }
   }
 
+  function handlePromptDelete(device: DeviceView) {
+    const protection = getDeviceProtectionState(device);
+    if (protection.adminOnlyAccess && !query.isAdmin(device.organizationId)) {
+      return;
+    }
+    setDeviceToDelete(device);
+  }
+
   async function handleDirectDelete(device: DeviceView) {
     if (!service.deleteDevice || isDeleting) return;
+    const protection = getDeviceProtectionState(device);
+    if (protection.adminOnlyAccess && !query.isAdmin(device.organizationId)) {
+      setDeleteDirectError('Acesso negado: Somente Administradores podem excluir esta máquina.');
+      return;
+    }
     setIsDeleting(true);
     setDeleteDirectError('');
     try {
       await service.deleteDevice(device.id);
+      recordDeviceAuditLog({
+        action: 'DELETE_DEVICE',
+        deviceId: device.id,
+        rustdeskId: device.rustdeskId,
+        hostname: device.hostname,
+        organizationName: device.organizationName,
+        previousDisplayName: device.displayName,
+        newDisplayName: device.displayName,
+        previousFolderName: getDeviceFolderName(device),
+        adminOnlyAccess: protection.adminOnlyAccess,
+        technicianName: query.profile?.displayName || 'Administrador / Técnico',
+      });
       setDeviceToDelete(null);
       query.refresh();
     } catch (error) {
@@ -700,10 +726,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={handleOpenChangelog}
-                title="Clique para ver todas as novidades da versão v1.8.1"
-                aria-label="Ver novidades da versão v1.8.1 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.8.2"
+                aria-label="Ver novidades da versão v1.8.2 (mobile)"
               >
-                v1.8.1
+                v1.8.2
               </button>
             </div>
           </div>
@@ -1063,7 +1089,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                             canConnect={query.canConnect}
                             canManage={query.canManage}
                             onDetails={setSelected}
-                            onDeletePrompt={setDeviceToDelete}
+                            onDeletePrompt={handlePromptDelete}
                             onEvent={addEvent}
                             onSessionExpired={handleExpiredAction}
                             onSessionStarted={handleSessionStart}
@@ -1083,16 +1109,17 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                               setFilters((prev) => ({ ...prev, search: '' }));
                             }}
                             isAdmin={query.isAdmin}
+                            technicianName={query.profile?.displayName || 'Administrador / Técnico'}
                           />
                           {/* Tabela mantida acessível no DOM para leitores e testes de conformidade em listas pequenas */}
                           {shouldRenderLegacyMirror && (
                             <div style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
-                              <DeviceRows devices={tableDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} isAdmin={query.isAdmin} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
+                              <DeviceRows devices={tableDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} isAdmin={query.isAdmin} onDetails={setSelected} onDeletePrompt={handlePromptDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
                             </div>
                           )}
                         </>
                       ) : (
-                        <DeviceRows devices={tableDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} isAdmin={query.isAdmin} onDetails={setSelected} onDeletePrompt={setDeviceToDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
+                        <DeviceRows devices={tableDevices} statusState={query.backgroundError ? 'unavailable' : query.isRefreshing ? 'refreshing' : 'current'} service={service} canConnect={query.canConnect} canManage={query.canManage} isAdmin={query.isAdmin} onDetails={setSelected} onDeletePrompt={handlePromptDelete} onEvent={addEvent} onSessionExpired={handleExpiredAction} onSessionStarted={handleSessionStart} />
                       )}
                     </>
                   )}
@@ -1106,6 +1133,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
 
         {selected && <DeviceTools device={query.rows.find((row) => row.id === selected.id) ?? selected} service={service}
           canConnect={query.canConnect(selected.organizationId)} canManage={query.canManage(selected.organizationId)}
+          isAdmin={query.isAdmin(selected.organizationId)} technicianName={query.profile?.displayName || 'Administrador / Técnico'}
           events={connectionEvents[selected.id] ?? []} onEvent={(event) => addEvent(selected.id, event)} onClose={() => setSelected(undefined)} onSaved={() => query.refresh()} onSessionExpired={handleExpiredAction} />}
 
         {/* Modal de Gestão Inteligente por CNPJ */}

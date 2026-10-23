@@ -71,8 +71,11 @@ import {
   toggleFavoriteDeviceId,
   getUserViewPreferences,
   saveUserViewPreferences,
+  recordDeviceAuditLog,
+  getDeviceAuditLogs,
   type DeviceGroup,
   type DeviceCustomMetadata,
+  type DeviceAuditLogRecord,
 } from './teamviewer-storage';
 import {
   resolveCoherentDevicePresentation,
@@ -237,7 +240,13 @@ const MemoizedDeviceRowContent = memo(function DeviceRowContent({
             <button
               type="button"
               className="tv-inline-edit-btn"
-              title="Editar nome e dados deste computador"
+              disabled={adminOnlyBlocked}
+              style={adminOnlyBlocked ? { opacity: 0.35, cursor: 'not-allowed' } : undefined}
+              title={
+                adminOnlyBlocked
+                  ? 'Bloqueado: Somente Administradores podem editar esta máquina'
+                  : 'Editar nome e dados deste computador'
+              }
               onClick={() => void actionsRef.current.handleOpenEditDevice(dev)}
             >
               <Pencil size={12} />
@@ -251,7 +260,7 @@ const MemoizedDeviceRowContent = memo(function DeviceRowContent({
                   color: '#fda4af',
                   borderColor: 'rgba(244, 63, 94, 0.38)',
                 }}
-                title="Esta máquina só pode ser acessada por Administradores"
+                title="Esta máquina só pode ser acessada, editada ou excluída por Administradores"
               >
                 🛡️ Somente Admin
               </span>
@@ -415,7 +424,13 @@ const MemoizedDeviceRowContent = memo(function DeviceRowContent({
             <button
               type="button"
               className="tv-icon-action-btn"
-              title="Editar nome, pasta e observações"
+              disabled={adminOnlyBlocked}
+              style={adminOnlyBlocked ? { opacity: 0.35, cursor: 'not-allowed' } : undefined}
+              title={
+                adminOnlyBlocked
+                  ? 'Bloqueado: Somente Administradores podem editar esta máquina'
+                  : 'Editar nome, pasta e observações'
+              }
               onClick={() => void actionsRef.current.handleOpenEditDevice(dev)}
             >
               <Pencil size={14} />
@@ -432,8 +447,17 @@ const MemoizedDeviceRowContent = memo(function DeviceRowContent({
               <button
                 type="button"
                 className="tv-icon-action-btn danger"
-                title="Excluir dispositivo"
-                onClick={() => actionsRef.current.onDeletePrompt(dev)}
+                disabled={adminOnlyBlocked}
+                style={adminOnlyBlocked ? { opacity: 0.35, cursor: 'not-allowed' } : undefined}
+                title={
+                  adminOnlyBlocked
+                    ? 'Bloqueado: Somente Administradores podem excluir esta máquina'
+                    : 'Excluir dispositivo'
+                }
+                onClick={() => {
+                  if (adminOnlyBlocked) return;
+                  actionsRef.current.onDeletePrompt(dev);
+                }}
               >
                 <Trash2 size={14} />
               </button>
@@ -502,11 +526,20 @@ const MemoizedDeviceRowContent = memo(function DeviceRowContent({
                     <span>{isFavorite ? 'Desafixar do Topo' : 'Fixar no Topo'}</span>
                   </button>
                   <div className="tv-dropdown-divider" />
-                  <p className="tv-dropdown-title">Mover para pasta:</p>
+                  <p className="tv-dropdown-title">
+                    {adminOnlyBlocked ? 'Mover para pasta (Só Admin):' : 'Mover para pasta:'}
+                  </p>
                   {groups.map((tg) => (
                     <button
                       key={tg.id}
                       type="button"
+                      disabled={adminOnlyBlocked}
+                      style={adminOnlyBlocked ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
+                      title={
+                        adminOnlyBlocked
+                          ? 'Bloqueado: Somente Administradores podem mover esta máquina'
+                          : undefined
+                      }
                       className={`tv-dropdown-item ${tg.name === folderName ? 'active' : ''}`}
                       onClick={() => void actionsRef.current.handleAssignGroup(dev, tg.id)}
                     >
@@ -546,6 +579,8 @@ export function TeamViewerDeviceTree({
   onSearchScopeChange,
   onClearSearch,
   isAdmin,
+  technicianName = 'Administrador / Técnico',
+  technicianEmail,
 }: {
   devices: DeviceView[];
   statusState: DeviceStatusState;
@@ -568,7 +603,17 @@ export function TeamViewerDeviceTree({
   onSearchScopeChange?(scope: DeviceSearchScope): void;
   onClearSearch?(): void;
   isAdmin?(organizationId: string): boolean;
+  technicianName?: string;
+  technicianEmail?: string;
 }) {
+  function isUserAdminForDevice(dev: DeviceView): boolean {
+    return isAdmin ? isAdmin(dev.organizationId) : canManage(dev.organizationId);
+  }
+
+  function isDeviceAdminBlocked(dev: DeviceView): boolean {
+    const protection = getDeviceProtectionState(dev, getCustomMetadataMap());
+    return protection.adminOnlyAccess && !isUserAdminForDevice(dev);
+  }
   const initialTreePrefs = useMemo(() => getUserViewPreferences(currentUserId), [currentUserId]);
   const loadedTreeUserRef = useRef<string | null>(currentUserId);
   const [groups, setGroups] = useState<DeviceGroup[]>(() => getDeviceGroups());
@@ -677,6 +722,10 @@ export function TeamViewerDeviceTree({
     e?.stopPropagation();
     if (!canManage(dev.organizationId)) {
       showToast('Apenas operadores com permissão de gestão podem enviar comandos de manutenção.');
+      return;
+    }
+    if (isDeviceAdminBlocked(dev)) {
+      showToast('🔒 Bloqueado: Somente Administradores podem enviar comandos para esta máquina.');
       return;
     }
 
@@ -946,6 +995,12 @@ export function TeamViewerDeviceTree({
 
   // Atribuição rápida de pasta pelo menu ⋮ (salva no localStorage E no banco de dados)
   async function handleAssignGroup(device: DeviceView, targetGroupId: string) {
+    if (isDeviceAdminBlocked(device)) {
+      setMenuOpenForDevice(null);
+      showToast('🔒 Bloqueado: Somente Administradores podem mover ou editar esta máquina.');
+      return;
+    }
+    const previousFolderName = getDeviceFolderName(device, groups);
     const targetGroup = groups.find((g) => g.id === targetGroupId);
     const targetFolderName = targetGroup ? targetGroup.name : 'Clientes';
 
@@ -956,6 +1011,22 @@ export function TeamViewerDeviceTree({
     });
     setGroups(updated);
     setMenuOpenForDevice(null);
+    if (previousFolderName !== targetFolderName) {
+      recordDeviceAuditLog({
+        action: 'MOVE_FOLDER',
+        deviceId: device.id,
+        rustdeskId: device.rustdeskId,
+        hostname: device.hostname,
+        organizationName: device.organizationName,
+        previousDisplayName: device.displayName,
+        newDisplayName: device.displayName,
+        previousFolderName,
+        newFolderName: targetFolderName,
+        adminOnlyAccess: getDeviceProtectionState(device, getCustomMetadataMap()).adminOnlyAccess,
+        technicianName,
+        technicianEmail,
+      });
+    }
     showToast(`Computador movido para "${targetFolderName}"`);
 
     // 2. Persistência permanente no banco de dados via API
@@ -985,6 +1056,10 @@ export function TeamViewerDeviceTree({
 
   // Abrir modal de edição do computador
   async function handleOpenEditDevice(device: DeviceView) {
+    if (isDeviceAdminBlocked(device)) {
+      showToast('🔒 Bloqueado: Somente Administradores podem editar ou excluir esta máquina.');
+      return;
+    }
     setEditingDevice(device);
     setEditDisplayName(device.displayName || '');
     setDeviceSaveError('');
@@ -1049,6 +1124,10 @@ export function TeamViewerDeviceTree({
   async function handleSaveDevice(e: React.FormEvent) {
     e.preventDefault();
     if (!editingDevice) return;
+    if (isDeviceAdminBlocked(editingDevice)) {
+      setDeviceSaveError('Acesso negado: Somente Administradores podem editar esta máquina.');
+      return;
+    }
 
     const trimmedName = editDisplayName.trim();
     if (!trimmedName) {
@@ -1060,6 +1139,8 @@ export function TeamViewerDeviceTree({
     setDeviceSaveError('');
 
     try {
+      const previousDisplayName = editingDevice.displayName;
+      const previousFolderName = getDeviceFolderName(editingDevice, groups);
       const targetGroup = groups.find((g) => g.id === editFolderId);
       const targetFolderName = targetGroup ? targetGroup.name : 'Clientes';
 
@@ -1099,6 +1180,23 @@ export function TeamViewerDeviceTree({
           notes: encoded,
         });
       }
+
+      recordDeviceAuditLog({
+        action: previousDisplayName.trim() !== trimmedName ? 'EDIT_NAME' : 'EDIT_DEVICE',
+        deviceId: editingDevice.id,
+        rustdeskId: editingDevice.rustdeskId,
+        hostname: editingDevice.hostname,
+        organizationName: editingDevice.organizationName,
+        previousDisplayName,
+        newDisplayName: trimmedName,
+        previousFolderName,
+        newFolderName: targetFolderName,
+        previousNotes: parseDeviceNotes(editingDevice.notes).notes,
+        newNotes: editNotes.trim(),
+        adminOnlyAccess: editAdminOnlyAccess,
+        technicianName,
+        technicianEmail,
+      });
 
       setGroups(getDeviceGroups());
       setEditingDevice(null);
@@ -2006,7 +2104,7 @@ export function TeamViewerDeviceTree({
                     </div>
 
                     {/* Central de Comandos Remotos de Manutenção Segura */}
-                    {canManage(dev.organizationId) && (
+                    {canManage(dev.organizationId) && (!protection.adminOnlyAccess || userIsAdmin) && (
                       <div className="tv-drawer-maint-bar" aria-label="Comandos Remotos de Manutenção Segura">
                         <div className="tv-drawer-maint-top">
                           <div className="tv-drawer-maint-title">
@@ -2347,14 +2445,17 @@ export function TeamViewerDeviceTree({
                 <button
                   type="button"
                   className="tv-sheet-action-btn"
+                  disabled={isDeviceAdminBlocked(actionSheetDevice)}
+                  style={isDeviceAdminBlocked(actionSheetDevice) ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
                   onClick={() => {
+                    if (isDeviceAdminBlocked(actionSheetDevice)) return;
                     const target = actionSheetDevice;
                     setActionSheetDevice(null);
                     void handleOpenEditDevice(target);
                   }}
                 >
                   <Pencil size={18} className="text-indigo-400" />
-                  <span>Editar Dados</span>
+                  <span>{isDeviceAdminBlocked(actionSheetDevice) ? 'Editar (Só Admin)' : 'Editar Dados'}</span>
                 </button>
 
                 <button
@@ -2374,29 +2475,40 @@ export function TeamViewerDeviceTree({
                   <button
                     type="button"
                     className="tv-sheet-action-btn danger"
+                    disabled={isDeviceAdminBlocked(actionSheetDevice)}
+                    style={isDeviceAdminBlocked(actionSheetDevice) ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
                     onClick={() => {
+                      if (isDeviceAdminBlocked(actionSheetDevice)) return;
                       const target = actionSheetDevice;
                       setActionSheetDevice(null);
                       onDeletePrompt(target);
                     }}
                   >
                     <Trash2 size={18} className="text-rose-400" />
-                    <span>Excluir</span>
+                    <span>{isDeviceAdminBlocked(actionSheetDevice) ? 'Excluir (Só Admin)' : 'Excluir'}</span>
                   </button>
                 )}
               </div>
 
               <div className="tv-sheet-folders-section">
-                <span className="tv-sheet-section-label">Mover rapidamente para pasta:</span>
+                <span className="tv-sheet-section-label">
+                  {isDeviceAdminBlocked(actionSheetDevice)
+                    ? 'Mover para pasta (Bloqueado — Somente Admin):'
+                    : 'Mover rapidamente para pasta:'}
+                </span>
                 <div className="tv-sheet-folder-pills">
                   {groups.map((tg) => {
                     const currentFolder = getDeviceFolderName(actionSheetDevice, groups);
+                    const blocked = isDeviceAdminBlocked(actionSheetDevice);
                     return (
                       <button
                         key={tg.id}
                         type="button"
+                        disabled={blocked}
+                        style={blocked ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
                         className={`tv-sheet-folder-pill ${tg.name === currentFolder ? 'active' : ''}`}
                         onClick={() => {
+                          if (blocked) return;
                           const target = actionSheetDevice;
                           setActionSheetDevice(null);
                           void handleAssignGroup(target, tg.id);
@@ -2656,18 +2768,80 @@ export function TeamViewerDeviceTree({
                     <input
                       type="checkbox"
                       checked={editAdminOnlyAccess}
+                      disabled={!isUserAdminForDevice(editingDevice)}
                       onChange={(e) => setEditAdminOnlyAccess(e.target.checked)}
                     />
                     <div className="tv-edit-admin-toggle-content">
                       <span className="tv-edit-admin-toggle-title">
-                        🛡️ Acesso restrito somente a Administrador
+                        🛡️ Acesso e Edição restritos somente a Administrador
                       </span>
                       <span className="tv-edit-admin-toggle-desc">
-                        Quando marcado, apenas usuários com perfil de Administrador podem iniciar conexão remota nesta máquina.
+                        Quando marcado, apenas usuários com perfil de Administrador podem conectar, editar ou excluir esta máquina.
                       </span>
                     </div>
                   </label>
                 </div>
+
+                {(() => {
+                  const deviceLogs = getDeviceAuditLogs().filter(
+                    (l) => l.deviceId === editingDevice.id || l.rustdeskId === editingDevice.rustdeskId
+                  );
+                  if (deviceLogs.length === 0) return null;
+                  return (
+                    <div
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '10px',
+                        background: 'rgba(15, 23, 42, 0.55)',
+                        border: '1px solid rgba(148, 163, 184, 0.16)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
+                          color: '#93c5fd',
+                        }}
+                      >
+                        📋 Histórico de Edições desta Máquina ({deviceLogs.length})
+                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '95px', overflowY: 'auto' }}>
+                        {deviceLogs.slice(0, 5).map((log) => (
+                          <div
+                            key={log.id}
+                            style={{
+                              fontSize: '0.73rem',
+                              color: 'var(--text-secondary)',
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              gap: '6px',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                              {new Date(log.timestamp).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                            </span>
+                            <span>•</span>
+                            {log.previousDisplayName && log.previousDisplayName !== log.newDisplayName ? (
+                              <span>
+                                Nome: <s style={{ opacity: 0.7 }}>{log.previousDisplayName}</s> →{' '}
+                                <strong style={{ color: '#34d399' }}>{log.newDisplayName}</strong>
+                              </span>
+                            ) : (
+                              <span>{log.summary}</span>
+                            )}
+                            <span style={{ color: 'var(--text-muted)' }}>({log.technicianName})</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="tv-modal-actions tv-edit-modal-footer">

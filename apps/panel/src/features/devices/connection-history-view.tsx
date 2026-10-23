@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   History,
   Search,
@@ -19,12 +19,16 @@ import {
   Folder,
   Sparkles,
   ShieldCheck,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import {
   getRecentConnections,
+  getDeviceAuditLogs,
   buildAutomatedTechnicalReport,
   RESOLUTION_STATUS_LABELS,
   type RecentConnectionRecord,
+  type DeviceAuditLogRecord,
 } from './teamviewer-storage';
 
 export function ConnectionHistoryView({
@@ -32,10 +36,25 @@ export function ConnectionHistoryView({
 }: {
   onConnectAgain?(record: RecentConnectionRecord): void;
 }) {
-  const [records] = useState<RecentConnectionRecord[]>(() => getRecentConnections());
+  const [records, setRecords] = useState<RecentConnectionRecord[]>(() => getRecentConnections());
+  const [auditLogs, setAuditLogs] = useState<DeviceAuditLogRecord[]>(() => getDeviceAuditLogs());
+  const [viewFilter, setViewFilter] = useState<'all' | 'sessions' | 'audit'>('all');
   const [search, setSearch] = useState('');
   const [selectedRecord, setSelectedRecord] = useState<RecentConnectionRecord | null>(null);
   const [copiedProtocol, setCopiedProtocol] = useState<string | null>(null);
+
+  useEffect(() => {
+    const syncAll = () => {
+      setRecords(getRecentConnections());
+      setAuditLogs(getDeviceAuditLogs());
+    };
+    window.addEventListener('xpoint:recent-connections-updated', syncAll);
+    window.addEventListener('xpoint:device-audit-logs-updated', syncAll);
+    return () => {
+      window.removeEventListener('xpoint:recent-connections-updated', syncAll);
+      window.removeEventListener('xpoint:device-audit-logs-updated', syncAll);
+    };
+  }, []);
 
   const filtered = records.filter((r) => {
     const term = search.toLowerCase();
@@ -52,6 +71,20 @@ export function ConnectionHistoryView({
     );
   });
 
+  const filteredAuditLogs = auditLogs.filter((log) => {
+    const term = search.toLowerCase();
+    return (
+      log.newDisplayName.toLowerCase().includes(term) ||
+      (log.previousDisplayName && log.previousDisplayName.toLowerCase().includes(term)) ||
+      log.hostname.toLowerCase().includes(term) ||
+      log.rustdeskId.includes(term) ||
+      log.technicianName.toLowerCase().includes(term) ||
+      log.protocolNumber.toLowerCase().includes(term) ||
+      log.summary.toLowerCase().includes(term) ||
+      (log.newFolderName && log.newFolderName.toLowerCase().includes(term))
+    );
+  });
+
   const totalSecondsAll = filtered.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
   const uniqueDevicesCount = new Set(filtered.map((r) => r.deviceId || r.rustdeskId)).size;
   const resolvedCount = filtered.filter(
@@ -59,6 +92,26 @@ export function ConnectionHistoryView({
   ).length;
 
   function exportHistoryReportTxt() {
+    const auditSection =
+      filteredAuditLogs.length > 0
+        ? `LOGS DE EDIÇÃO E EXCLUSÃO DE CLIENTES (${filteredAuditLogs.length})\n` +
+          filteredAuditLogs
+            .map(
+              (log, idx) =>
+                `LOG #${idx + 1} [${log.protocolNumber}] - ${new Date(log.timestamp).toLocaleString('pt-BR')}\n` +
+                `• Ação: ${log.action}\n` +
+                (log.previousDisplayName && log.previousDisplayName !== log.newDisplayName
+                  ? `• Alteração de Nome: "${log.previousDisplayName}" -> "${log.newDisplayName}"\n`
+                  : `• Cliente / Máquina: ${log.newDisplayName}\n`) +
+                `• Hostname / ID: ${log.hostname} | ID RustDesk: ${log.rustdeskId}\n` +
+                `• Responsável: ${log.technicianName}${log.technicianEmail ? ` (${log.technicianEmail})` : ''}\n` +
+                `• Resumo: ${log.summary}\n` +
+                `----------------------------------------`
+            )
+            .join('\n') +
+          `\n\n========================================\n\n`
+        : '';
+
     const text = filtered
       .map((r, i) => {
         const report = r.autoReportText || buildAutomatedTechnicalReport(r);
@@ -70,7 +123,7 @@ export function ConnectionHistoryView({
       [
         `RELATÓRIO DE AUDITORIA E LAUDOS AUTOMATIZADOS - XPOINT REMOTE\nGerado em: ${new Date().toLocaleString(
           'pt-BR'
-        )}\nTotal de sessões auditadas: ${filtered.length}\n\n========================================\n\n${text}`,
+        )}\nTotal de sessões auditadas: ${filtered.length}\nTotal de logs de edição/exclusão: ${filteredAuditLogs.length}\n\n========================================\n\n${auditSection}${text}`,
       ],
       { type: 'text/plain;charset=utf-8' }
     );
@@ -86,8 +139,10 @@ export function ConnectionHistoryView({
     const payload = {
       exportedAt: new Date().toISOString(),
       totalSessions: filtered.length,
+      totalAuditLogs: filteredAuditLogs.length,
       totalSupportDurationSeconds: totalSecondsAll,
       uniqueDevicesCount,
+      deviceAuditLogs: filteredAuditLogs,
       sessions: filtered.map((r) => ({
         ...r,
         autoReportText: r.autoReportText || buildAutomatedTechnicalReport(r),
@@ -154,7 +209,7 @@ export function ConnectionHistoryView({
             type="button"
             className="command-button"
             onClick={exportHistoryReportJson}
-            disabled={filtered.length === 0}
+            disabled={filtered.length === 0 && filteredAuditLogs.length === 0}
           >
             <Download size={16} />
             Exportar JSON
@@ -163,7 +218,7 @@ export function ConnectionHistoryView({
             type="button"
             className="command-button"
             onClick={exportHistoryReportTxt}
-            disabled={filtered.length === 0}
+            disabled={filtered.length === 0 && filteredAuditLogs.length === 0}
           >
             <FileText size={16} />
             Exportar Laudos TXT
@@ -172,11 +227,15 @@ export function ConnectionHistoryView({
       </div>
 
       {/* KPIs de Telemetria de Suporte */}
-      {records.length > 0 && (
+      {(records.length > 0 || auditLogs.length > 0) && (
         <div className="history-kpi-strip">
           <div className="history-kpi-card">
             <span className="history-kpi-label">Sessões Auditadas</span>
             <strong className="history-kpi-value">{filtered.length}</strong>
+          </div>
+          <div className="history-kpi-card">
+            <span className="history-kpi-label">Logs de Edição & Exclusão</span>
+            <strong className="history-kpi-value text-amber-400">{filteredAuditLogs.length}</strong>
           </div>
           <div className="history-kpi-card">
             <span className="history-kpi-label">Estações Atendidas</span>
@@ -195,28 +254,217 @@ export function ConnectionHistoryView({
         </div>
       )}
 
+      {/* Abas de Filtro: Todos / Logs de Edição & Exclusão / Sessões Remotas */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+        <button
+          type="button"
+          className={`command-button ${viewFilter === 'all' ? 'active' : ''}`}
+          style={
+            viewFilter === 'all'
+              ? { background: 'rgba(16, 185, 129, 0.16)', borderColor: 'rgba(16, 185, 129, 0.45)', color: '#34d399' }
+              : undefined
+          }
+          onClick={() => setViewFilter('all')}
+        >
+          Todos os Registros ({filtered.length + filteredAuditLogs.length})
+        </button>
+        <button
+          type="button"
+          className={`command-button ${viewFilter === 'audit' ? 'active' : ''}`}
+          style={
+            viewFilter === 'audit'
+              ? { background: 'rgba(245, 158, 11, 0.16)', borderColor: 'rgba(245, 158, 11, 0.45)', color: '#fbbf24' }
+              : undefined
+          }
+          onClick={() => setViewFilter('audit')}
+        >
+          <Pencil size={14} />
+          Logs de Edição & Exclusão ({filteredAuditLogs.length})
+        </button>
+        <button
+          type="button"
+          className={`command-button ${viewFilter === 'sessions' ? 'active' : ''}`}
+          style={
+            viewFilter === 'sessions'
+              ? { background: 'rgba(59, 130, 246, 0.16)', borderColor: 'rgba(59, 130, 246, 0.45)', color: '#60a5fa' }
+              : undefined
+          }
+          onClick={() => setViewFilter('sessions')}
+        >
+          <Laptop size={14} />
+          Laudos de Conexão ({filtered.length})
+        </button>
+      </div>
+
       <div className="history-search-bar">
         <Search size={18} className="search-icon" />
         <input
           type="search"
-          placeholder="Buscar por protocolo (XP-...), computador, ID, técnico, pasta, SO ou ação executada..."
+          placeholder="Buscar por protocolo (XP-... / LOG-...), nome anterior ou novo, hostname, ID, técnico..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
         <span className="history-count-badge">
-          {filtered.length} {filtered.length === 1 ? 'laudo' : 'laudos'}
+          {viewFilter === 'audit'
+            ? `${filteredAuditLogs.length} logs`
+            : viewFilter === 'sessions'
+              ? `${filtered.length} laudos`
+              : `${filtered.length + filteredAuditLogs.length} registros`}
         </span>
       </div>
 
-      {filtered.length === 0 ? (
+      {/* SEÇÃO: LOGS DE AUDITORIA DE EXCLUSÃO E EDIÇÃO DE NOME DE CLIENTES EXISTENTES */}
+      {(viewFilter === 'all' || viewFilter === 'audit') && filteredAuditLogs.length > 0 && (
+        <div className="history-list" style={{ marginBottom: '18px' }}>
+          {filteredAuditLogs.map((log) => {
+            const dateStr = new Intl.DateTimeFormat('pt-BR', {
+              dateStyle: 'short',
+              timeStyle: 'medium',
+            }).format(new Date(log.timestamp));
+            const isDelete = log.action === 'DELETE_DEVICE';
+            const isRename =
+              log.action === 'EDIT_NAME' ||
+              Boolean(log.previousDisplayName && log.previousDisplayName !== log.newDisplayName);
+
+            return (
+              <div
+                key={log.id}
+                className="history-card"
+                style={{
+                  borderColor: isDelete
+                    ? 'rgba(244, 63, 94, 0.35)'
+                    : isRename
+                      ? 'rgba(245, 158, 11, 0.35)'
+                      : 'rgba(99, 102, 241, 0.3)',
+                }}
+              >
+                <div className="history-card-main">
+                  <div
+                    className="history-device-icon"
+                    style={{
+                      background: isDelete
+                        ? 'rgba(244, 63, 94, 0.14)'
+                        : isRename
+                          ? 'rgba(245, 158, 11, 0.14)'
+                          : 'rgba(99, 102, 241, 0.14)',
+                      color: isDelete ? '#fb7185' : isRename ? '#fbbf24' : '#818cf8',
+                    }}
+                  >
+                    {isDelete ? <Trash2 size={19} /> : <Pencil size={19} />}
+                  </div>
+                  <div className="history-details">
+                    <div className="history-title-row">
+                      <span className="session-protocol-pill">{log.protocolNumber}</span>
+                      <span
+                        className="history-os-badge"
+                        style={{
+                          background: isDelete
+                            ? 'rgba(244, 63, 94, 0.18)'
+                            : isRename
+                              ? 'rgba(245, 158, 11, 0.18)'
+                              : 'rgba(99, 102, 241, 0.18)',
+                          color: isDelete ? '#fda4af' : isRename ? '#fde68a' : '#c7d2fe',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {isDelete
+                          ? '🗑️ EXCLUSÃO DE CLIENTE'
+                          : isRename
+                            ? '✏️ EDIÇÃO DE NOME DE CLIENTE'
+                            : log.action === 'MOVE_FOLDER'
+                              ? '📁 MOVIMENTAÇÃO DE PASTA'
+                              : '⚙️ EDIÇÃO CADASTRAL'}
+                      </span>
+                      {isRename ? (
+                        <span className="device-name" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ textDecoration: 'line-through', opacity: 0.65 }}>
+                            {log.previousDisplayName}
+                          </span>
+                          <span>→</span>
+                          <strong style={{ color: '#34d399' }}>{log.newDisplayName}</strong>
+                        </span>
+                      ) : (
+                        <strong className="device-name">{log.newDisplayName}</strong>
+                      )}
+                      <span className="device-host">({log.hostname})</span>
+                      <span className="rustdesk-id-badge">ID: {log.rustdeskId}</span>
+                      {log.adminOnlyAccess && (
+                        <span
+                          className="history-os-badge"
+                          style={{ background: 'rgba(244, 63, 94, 0.16)', color: '#fda4af' }}
+                        >
+                          🛡️ Somente Admin
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="history-meta-row">
+                      <span className="meta-item">
+                        <Clock size={13} /> {dateStr}
+                      </span>
+                      <span className="meta-item">
+                        <User size={13} /> {log.technicianName}
+                        {log.technicianEmail ? ` (${log.technicianEmail})` : ''}
+                      </span>
+                      {(log.newFolderName || log.previousFolderName) && (
+                        <span className="meta-item">
+                          <Folder size={13} />{' '}
+                          {log.previousFolderName &&
+                          log.newFolderName &&
+                          log.previousFolderName !== log.newFolderName
+                            ? `${log.previousFolderName} → ${log.newFolderName}`
+                            : log.newFolderName || log.previousFolderName}
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="history-notes-preview">
+                      <FileText size={13} className="inline mr-1" />
+                      <strong>Registro de Auditoria:</strong> {log.summary}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="history-card-actions">
+                  <button
+                    type="button"
+                    className="autodoc-mini-btn"
+                    onClick={() => {
+                      const text = `[${log.protocolNumber}] ${dateStr}\n${log.summary}\nHostname: ${log.hostname} | ID RustDesk: ${log.rustdeskId}\nResponsável: ${log.technicianName}`;
+                      void navigator.clipboard.writeText(text).then(() => {
+                        setCopiedProtocol(log.protocolNumber);
+                        setTimeout(() => setCopiedProtocol(null), 2500);
+                      });
+                    }}
+                    title="Copiar log de auditoria"
+                  >
+                    {copiedProtocol === log.protocolNumber ? <Check size={14} /> : <Copy size={14} />}
+                    <span>{copiedProtocol === log.protocolNumber ? 'Copiado!' : 'Copiar Log'}</span>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {viewFilter === 'audit' && filteredAuditLogs.length === 0 ? (
         <div className="history-empty-state">
           <History size={48} className="empty-icon" />
-          <p className="empty-title">Nenhum laudo encontrado</p>
+          <p className="empty-title">Nenhum log de edição ou exclusão registrado</p>
           <p className="empty-desc">
-            Ao iniciar qualquer acesso remoto, o sistema coleta automaticamente 12+ indicadores da máquina e gera o protocolo de atendimento.
+            Sempre que o nome de um cliente existente for editado ou uma máquina for excluída, o log detalhado com antes/depois e o operador responsável aparecerá aqui automaticamente.
           </p>
         </div>
-      ) : (
+      ) : viewFilter !== 'audit' && filtered.length === 0 && filteredAuditLogs.length === 0 ? (
+        <div className="history-empty-state">
+          <History size={48} className="empty-icon" />
+          <p className="empty-title">Nenhum registro encontrado</p>
+          <p className="empty-desc">
+            Ao iniciar qualquer acesso remoto, editar nomes de clientes ou excluir registros, o sistema gera automaticamente a trilha de auditoria.
+          </p>
+        </div>
+      ) : viewFilter !== 'audit' ? (
         <div className="history-list">
           {filtered.map((item) => {
             const dateStr = new Intl.DateTimeFormat('pt-BR', {
@@ -328,7 +576,7 @@ export function ConnectionHistoryView({
             );
           })}
         </div>
-      )}
+      ) : null}
 
       {selectedRecord && (
         <div
