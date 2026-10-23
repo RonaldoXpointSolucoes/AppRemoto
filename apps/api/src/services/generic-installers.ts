@@ -134,7 +134,10 @@ export function createGenericInstallerService(deps: Dependencies): GenericInstal
         if (token) {
           if (token.generic_installer_id !== profile.id || token.bootstrap_request_hash !== requestHash || token.token_hash !== hashToken(enrollmentToken)) throw conflict();
           if (token.revoked_at !== null || token.active !== true) throw denied();
-          if (typeof token.expires_at !== 'string' || Date.parse(token.expires_at) <= now().getTime()) throw new GenericInstallerError('GENERIC_INSTALLER_EXPIRED', 409);
+          if (typeof token.expires_at !== 'string' || Date.parse(token.expires_at) <= now().getTime() ||
+              (typeof token.use_count === 'number' && typeof token.max_uses === 'number' && token.use_count >= token.max_uses)) {
+            throw new GenericInstallerError('GENERIC_INSTALLER_EXPIRED', 409);
+          }
           const existing = typeof token.organization_id === 'string' ? await repo.organization(token.organization_id) : null;
           if (!existing || !existing.active) throw denied(); organization = existing;
         } else {

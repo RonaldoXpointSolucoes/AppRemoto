@@ -170,7 +170,20 @@ func runAgent(ctx context.Context) (err error) {
 	}
 	operation = "HEARTBEAT_RUSTDESK_ID"
 	r.Record(step, operation, "START", nil)
-	info, e := rd.Discover(ctx)
+	var info rustdesk.Info
+	for attempt := 0; attempt < 4; attempt++ {
+		info, e = rd.Discover(ctx)
+		if e == nil {
+			break
+		}
+		if attempt < 3 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(1500 * time.Millisecond):
+			}
+		}
+	}
 	if e != nil {
 		return e
 	}
@@ -277,10 +290,24 @@ type reportedAPI struct {
 
 func (a reportedAPI) Enroll(ctx context.Context, request api.EnrollRequest) (api.EnrollResponse, error) {
 	a.report.Record(5, "ENROLLMENT_REQUEST", "START", nil)
-	res, e := a.client.Enroll(ctx, request)
-	if e != nil {
-		a.report.Record(5, "ENROLLMENT_REQUEST", "ERROR", e)
+	var res api.EnrollResponse
+	var e error
+	for attempt := 0; attempt < 4; attempt++ {
+		res, e = a.client.Enroll(ctx, request)
+		if e == nil {
+			return res, nil
+		}
+		if attempt < 3 {
+			a.report.Record(5, "ENROLLMENT_RETRY", "WAIT", e)
+			select {
+			case <-ctx.Done():
+				a.report.Record(5, "ENROLLMENT_REQUEST", "ERROR", ctx.Err())
+				return res, ctx.Err()
+			case <-time.After(2 * time.Second):
+			}
+		}
 	}
+	a.report.Record(5, "ENROLLMENT_REQUEST", "ERROR", e)
 	return res, e
 }
 
@@ -302,18 +329,45 @@ type reportedRustDesk struct {
 
 func (r reportedRustDesk) Discover(ctx context.Context) (rustdesk.Info, error) {
 	r.report.Record(5, "RUSTDESK_ID_AND_VERSION", "START", nil)
-	info, e := r.client.Discover(ctx)
-	if e != nil {
-		r.report.Record(5, "RUSTDESK_ID_AND_VERSION", "ERROR", e)
+	var info rustdesk.Info
+	var e error
+	for attempt := 0; attempt < 4; attempt++ {
+		info, e = r.client.Discover(ctx)
+		if e == nil {
+			return info, nil
+		}
+		if attempt < 3 {
+			r.report.Record(5, "RUSTDESK_ID_AND_VERSION", "WAIT", e)
+			select {
+			case <-ctx.Done():
+				r.report.Record(5, "RUSTDESK_ID_AND_VERSION", "ERROR", ctx.Err())
+				return info, ctx.Err()
+			case <-time.After(1500 * time.Millisecond):
+			}
+		}
 	}
+	r.report.Record(5, "RUSTDESK_ID_AND_VERSION", "ERROR", e)
 	return info, e
 }
 func (r reportedRustDesk) SetUnattendedPassword(ctx context.Context, password string) error {
 	r.report.Record(5, "PERMANENT_PASSWORD_SET", "START", nil)
-	e := r.client.SetUnattendedPassword(ctx, password)
-	if e != nil {
-		r.report.Record(5, "PERMANENT_PASSWORD_SET", "ERROR", e)
+	var e error
+	for attempt := 0; attempt < 3; attempt++ {
+		e = r.client.SetUnattendedPassword(ctx, password)
+		if e == nil {
+			return nil
+		}
+		if attempt < 2 {
+			r.report.Record(5, "PERMANENT_PASSWORD_SET", "WAIT", e)
+			select {
+			case <-ctx.Done():
+				r.report.Record(5, "PERMANENT_PASSWORD_SET", "ERROR", ctx.Err())
+				return ctx.Err()
+			case <-time.After(time.Second):
+			}
+		}
 	}
+	r.report.Record(5, "PERMANENT_PASSWORD_SET", "ERROR", e)
 	return e
 }
 

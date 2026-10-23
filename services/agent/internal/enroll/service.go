@@ -163,6 +163,20 @@ func (service *Service) Run(ctx context.Context, enrollmentToken []byte, metadat
 	var pending, configured marker
 	var credentials protectedCredentials
 	var pendingExists, credentialsExist, configuredExists bool
+	if service.allowReenrollFallback && len(enrollmentToken) > 0 && service.stateDirectory != "" {
+		if _, _, e := service.loadMarker(pendingArtifact); e != nil {
+			_ = os.Remove(filepath.Join(service.stateDirectory, pendingArtifact))
+		}
+		if _, _, e := service.loadCredentials(); e != nil {
+			_ = os.Remove(filepath.Join(service.stateDirectory, credentialsArtifact))
+		}
+		if _, _, e := service.loadMarker(configuredArtifact); e != nil {
+			_ = os.Remove(filepath.Join(service.stateDirectory, configuredArtifact))
+		}
+		if _, _, e := service.loadGenericPassword(identity.DeviceUUID); e != nil {
+			_ = os.Remove(filepath.Join(service.stateDirectory, genericPasswordArtifact))
+		}
+	}
 	if err := service.stage("PENDING_STATE_READ", func() error {
 		var err error
 		pending, pendingExists, err = service.loadMarker(pendingArtifact)
@@ -192,6 +206,19 @@ func (service *Service) Run(ctx context.Context, enrollmentToken []byte, metadat
 		return nil
 	}); err != nil {
 		return Result{}, err
+	}
+	if credentialsExist && service.allowReenrollFallback && len(enrollmentToken) > 0 {
+		if !pendingExists || pending.DeviceUUID != identity.DeviceUUID || (configuredExists && configured.Version != 1) {
+			if service.stateDirectory != "" {
+				_ = os.Remove(filepath.Join(service.stateDirectory, credentialsArtifact))
+				_ = os.Remove(filepath.Join(service.stateDirectory, configuredArtifact))
+				_ = os.Remove(filepath.Join(service.stateDirectory, pendingArtifact))
+				_ = os.Remove(filepath.Join(service.stateDirectory, genericPasswordArtifact))
+			}
+			credentialsExist = false
+			configuredExists = false
+			pendingExists = false
+		}
 	}
 	if credentialsExist {
 		if !pendingExists || pending.DeviceUUID != identity.DeviceUUID {
@@ -299,6 +326,12 @@ func (service *Service) Run(ctx context.Context, enrollmentToken []byte, metadat
 	clear(pendingData)
 	response, err := service.api.Enroll(ctx, request)
 	request.EnrollmentToken = ""
+	if err != nil && service.allowReenrollFallback {
+		if service.stateDirectory != "" {
+			_ = os.Remove(filepath.Join(service.stateDirectory, pendingArtifact))
+		}
+		return Result{}, err
+	}
 	if err != nil {
 		return Result{}, ErrManualReconciliation
 	}

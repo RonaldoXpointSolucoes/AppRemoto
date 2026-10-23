@@ -80,34 +80,37 @@ func prepareGeneric(ctx context.Context, p GenericProvisioning, input Installati
 		_ = os.Remove(filepath.Join(ps.Agent, "enrollment-pending.json"))
 		_ = os.Remove(filepath.Join(ps.Agent, "enrollment-credentials.json"))
 		_ = os.Remove(filepath.Join(ps.Agent, "rustdesk-configured.json"))
+		_ = os.Remove(filepath.Join(ps.Agent, "generic-password.json"))
 		pending = false
 		credentials = false
 	}
 	var existingOrganization string
 	if data, e := readPrivate(filepath.Join(ps.Data, "installation.json"), 4096); e == nil {
 		var reg receipt
-		if json.Unmarshal(data, &reg) != nil || !idPattern.MatchString(reg.OrganizationID) {
-			return Provisioning{}, errStage
+		if json.Unmarshal(data, &reg) == nil && idPattern.MatchString(reg.OrganizationID) {
+			existingOrganization = reg.OrganizationID
+		} else {
+			_ = os.Remove(filepath.Join(ps.Data, "installation.json"))
 		}
-		existingOrganization = reg.OrganizationID
 	} else if !errors.Is(e, windows.ERROR_FILE_NOT_FOUND) {
-		return Provisioning{}, e
+		_ = os.Remove(filepath.Join(ps.Data, "installation.json"))
 	}
 	statePath := filepath.Join(ps.Data, "generic-request.dpapi")
 	var saved preparationState
 	if encrypted, e := readPrivate(statePath, MaxOverlay+4096); e == nil {
 		plain, e := secret.Unprotect(encrypted)
 		clear(encrypted)
-		if e != nil {
-			return Provisioning{}, e
-		}
-		e = json.Unmarshal(plain, &saved)
-		clear(plain)
-		if e != nil {
-			return Provisioning{}, errStage
+		if e == nil {
+			if json.Unmarshal(plain, &saved) != nil {
+				saved = preparationState{}
+				_ = os.Remove(statePath)
+			}
+			clear(plain)
+		} else {
+			_ = os.Remove(statePath)
 		}
 	} else if !errors.Is(e, windows.ERROR_FILE_NOT_FOUND) {
-		return Provisioning{}, e
+		_ = os.Remove(statePath)
 	}
 	defer func() {
 		saved.Request.RequestSecret = ""
@@ -115,7 +118,7 @@ func prepareGeneric(ctx context.Context, p GenericProvisioning, input Installati
 			saved.Provisioning.EnrollmentToken = ""
 		}
 	}()
-	reuse := reusePreparation(saved, p, input, existingOrganization, credentials, time.Now())
+	reuse := saved.Provisioning == nil && reusePreparation(saved, p, input, existingOrganization, credentials, time.Now())
 	// Saved credentials permit repair with a fresh single-use package. They never
 	// authorize replaying an ambiguous initial enrollment with missing secrets.
 	if !reuse {
@@ -137,6 +140,21 @@ func prepareGeneric(ctx context.Context, p GenericProvisioning, input Installati
 		report.Record(1, "PREPARATION_EXPIRED_RENEW", "START", nil)
 		return savePreparationState(statePath, next)
 	}, func(req preparationRequest) (Provisioning, error) {
+		for attempt := 0; attempt < 3; attempt++ {
+			prov, pErr := prepareInstallation(requestCtx, preparationHTTPClient(), APIURL, p, req)
+			if pErr == nil {
+				return prov, nil
+			}
+			var pe *preparationError
+			if !errors.As(pErr, &pe) || (pe.Code != "PREPARATION_NETWORK" && pe.Code != "PREPARATION_UNAVAILABLE" && pe.Code != "GENERIC_INSTALLER_UNAVAILABLE") || attempt == 2 {
+				return Provisioning{}, pErr
+			}
+			select {
+			case <-requestCtx.Done():
+				return Provisioning{}, requestCtx.Err()
+			case <-time.After(1500 * time.Millisecond):
+			}
+		}
 		return prepareInstallation(requestCtx, preparationHTTPClient(), APIURL, p, req)
 	})
 	if err != nil {

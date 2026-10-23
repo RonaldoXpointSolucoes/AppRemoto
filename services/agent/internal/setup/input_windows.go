@@ -277,6 +277,7 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 		pendingReserve   *InstallationInput
 		reserveErr       error
 		conflictSuggest  string
+		lastAutoFetchedCnpj string
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -457,7 +458,10 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 		if busy.Swap(true) {
 			return
 		}
+		updatingControls.Store(true)
 		setText(cnpjEdit, FormatCnpj(cnpjDigits))
+		updatingControls.Store(false)
+		lastAutoFetchedCnpj = cnpjDigits
 		user.NewProc("EnableWindow").Call(installBtn, 0)
 		user.NewProc("EnableWindow").Call(queryCnpjBtn, 0)
 		setText(statusLabel, "🔄 Consultando grupo empresarial e computadores do CNPJ "+FormatCnpj(cnpjDigits)+" no servidor XPoint…")
@@ -829,16 +833,10 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 				triggerContextFetch(hwnd)
 				return 0
 			}
-			if AskYesNo(
-				"Não foi possível reservar o nome online no servidor agora ("+errMsg+").\n\nDeseja prosseguir com a instalação usando o nome "+resInput.DesiredHostname+" em modo de contingência (sincronização automática ao conectar)?",
-				"XPoint Remote — Contingência de Rede",
-				true,
-			) {
+			if resInput != nil {
 				resInput.OfflineFallback = true
 				selected = resInput
 				user.NewProc("DestroyWindow").Call(hwnd)
-			} else {
-				setText(statusLabel, "ℹ️ Reserva cancelada pelo operador. Revise a função ou a conexão antes de continuar.")
 			}
 			return 0
 		case 0x111: // WM_COMMAND
@@ -848,6 +846,14 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 				return 0
 			}
 			switch id {
+			case 12: // cnpjEdit
+				if notifyCode == enChange {
+					digits := NormalizeCnpjDigits(cleanInput(readControlText(user, cnpjEdit)))
+					if IsValidCnpj14(digits) && digits != lastAutoFetchedCnpj && !busy.Load() {
+						triggerContextFetch(hwnd)
+					}
+				}
+				return 0
 			case 14: // operationCombo
 				if notifyCode == cbnSelChange {
 					recomputeSuggestion(true)
@@ -956,6 +962,26 @@ func promptInstallation(report *Report, generic GenericProvisioning) (*Installat
 							OperationMode: opChoice.Mode,
 						}); sugErr == nil {
 							nextSuggested = sug.SuggestedName
+							if nextSuggested != "" {
+								if res2, err2 := RequestReserveName(reqCtx, preparationHTTPClient(), APIURL, generic, ReserveNameRequest{
+									Cnpj:                 rawCnpj,
+									NormalizedName:       nextSuggested,
+									Role:                 roleCode,
+									DeviceUUID:           deviceUUID,
+									RustDeskID:           rustdeskID,
+									WindowsHostnameAtual: currentHost,
+									OperationMode:        opChoice.Mode,
+									ReplacesDeviceID:     opChoice.ReplacesDeviceID,
+									RenameWindows:        false,
+									RazaoSocial:          companyText,
+									NomeFantasia:         initialFantasia,
+								}); err2 == nil {
+									candidateInput.DeviceDisplayName = nextSuggested
+									candidateInput.DesiredHostname = nextSuggested
+									res = res2
+									err = nil
+								}
+							}
 						}
 					}
 					mu.Lock()

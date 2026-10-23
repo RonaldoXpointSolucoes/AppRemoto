@@ -6,9 +6,9 @@ const config = { schemaVersion: 2 as const, installerId: 'installer-test', insta
 const base = new Uint8Array([77, 90, 1, 2, 3]);
 const manifest = { version: '1.3.1', path: '/installers/xpoint-complete-1.3.1.exe',
   sha256: createHash('sha256').update(base).digest('hex'), bytes: base.length };
-const manifestX86 = { version: '1.3.8', path: '/installers/xpoint-complete-1.3.8-x86.exe',
+const manifestX86 = { version: '1.3.9', path: '/installers/xpoint-complete-1.3.9-x86.exe',
   sha256: createHash('sha256').update(base).digest('hex'), bytes: base.length };
-const manifestWin7 = { version: '1.3.8', path: '/installers/xpoint-complete-1.3.8-win7.exe',
+const manifestWin7 = { version: '1.3.9', path: '/installers/xpoint-complete-1.3.9-win7.exe',
   sha256: createHash('sha256').update(base).digest('hex'), bytes: base.length };
 
 describe('complete installation package', () => {

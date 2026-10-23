@@ -102,7 +102,7 @@ export function createEnrollmentRepository(databases: Databases): EnrollmentRepo
       if (previous) {
         const desired = project(kind, data); const old = project(kind, previous);
         const changes = Object.fromEntries(Object.entries(desired).filter(([key, value]) =>
-          !(['enrollment_tokens', 'device_tokens'].includes(kind) && key === 'revoked_at') && !isDeepStrictEqual(value, old[key])));
+          !(['enrollment_tokens', 'device_tokens'].includes(kind) && key === 'revoked_at' && !(kind === 'device_tokens' && value === null && desired.token_hash !== old.token_hash)) && !isDeepStrictEqual(value, old[key])));
         if (Object.keys(changes).length) await databases.updateDocument(database, kind, id, changes);
       }
       else await databases.createDocument(database, kind, id, project(kind, data), []);

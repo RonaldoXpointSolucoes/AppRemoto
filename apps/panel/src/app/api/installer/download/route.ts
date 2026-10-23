@@ -62,10 +62,10 @@ export async function GET(request: NextRequest) {
         ? 'complete-manifest-x86.json'
         : 'complete-manifest.json';
     const defaultExePath = isWin7
-      ? '/installers/xpoint-complete-1.3.8-win7.exe'
+      ? '/installers/xpoint-complete-1.3.9-win7.exe'
       : isX86
-        ? '/installers/xpoint-complete-1.3.8-x86.exe'
-        : '/installers/xpoint-complete-1.3.8.exe';
+        ? '/installers/xpoint-complete-1.3.9-x86.exe'
+        : '/installers/xpoint-complete-1.3.9.exe';
     const downloadFilename = isWin7
       ? 'XPoint-Instalar-Completo-Win7.exe'
       : isX86

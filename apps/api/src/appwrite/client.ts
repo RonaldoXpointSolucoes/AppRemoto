@@ -178,14 +178,21 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
     async organizationActive(id) {
       const now = Date.now();
       if (orgsCache && now < orgsCache.expiresAt) {
-        return orgsCache.data.some((o) => o.id === id && o.active);
+        if (orgsCache.data.some((o) => o.id === id && o.active)) {
+          return true;
+        }
       }
       const cached = orgActiveCache.get(id);
       if (cached && now < cached.expiresAt) {
         return cached.active;
       }
       const active = await baseEnrollmentRepository.organizationActive(id);
-      orgActiveCache.set(id, { active, expiresAt: now + AUTH_CACHE_TTL_MS });
+      if (active) {
+        orgActiveCache.set(id, { active: true, expiresAt: now + AUTH_CACHE_TTL_MS });
+        if (orgsCache && !orgsCache.data.some((o) => o.id === id)) {
+          orgsCache = null;
+        }
+      }
       return active;
     },
     async snapshot(kind, id) {
@@ -363,7 +370,15 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
     },
   };
 
-  const genericInstallerRepository = createGenericInstallerRepository(databases);
+  const baseGenericInstallerRepository = createGenericInstallerRepository(databases);
+  const genericInstallerRepository: typeof baseGenericInstallerRepository = {
+    ...baseGenericInstallerRepository,
+    async createOrganization(row) {
+      await baseGenericInstallerRepository.createOrganization(row);
+      orgsCache = null;
+      orgActiveCache.set(row.id, { active: row.active, expiresAt: Date.now() + AUTH_CACHE_TTL_MS });
+    },
+  };
   const genericInstallers = createGenericInstallerService({
     repository: genericInstallerRepository,
     enrollment: enrollmentRepository,

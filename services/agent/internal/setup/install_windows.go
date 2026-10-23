@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sys/windows/svc/mgr"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -103,6 +104,36 @@ func replacePrivate(path string, data []byte, readable ...bool) error {
 	}
 	defer os.Remove(tmp)
 	return moveFileReplace(tmp, path)
+}
+func clearAgentEnrollmentArtifacts(ps Paths) {
+	_ = os.Remove(filepath.Join(ps.Agent, "enrollment-pending.json"))
+	_ = os.Remove(filepath.Join(ps.Agent, "enrollment-credentials.json"))
+	_ = os.Remove(filepath.Join(ps.Agent, "rustdesk-configured.json"))
+	_ = os.Remove(filepath.Join(ps.Agent, "generic-password.json"))
+	_ = os.Remove(filepath.Join(ps.Data, "setup-status.json"))
+	_ = os.Remove(filepath.Join(ps.Data, "online.json"))
+}
+func applySystemBestPractices(ctx context.Context, rustDeskPath, agentPath string, r *Report) {
+	r.Record(3, "SYSTEM_BEST_PRACTICES", "START", nil)
+	runHidden := func(name string, args ...string) {
+		c, cancel := context.WithTimeout(ctx, 6*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(c, name, args...)
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+		_ = cmd.Run()
+	}
+	if rustDeskPath != "" {
+		runHidden("netsh", "advfirewall", "firewall", "delete", "rule", "name=XPoint RustDesk Remote")
+		runHidden("netsh", "advfirewall", "firewall", "add", "rule", "name=XPoint RustDesk Remote", "dir=in", "action=allow", "program="+rustDeskPath, "enable=yes", "profile=any")
+		runHidden("netsh", "advfirewall", "firewall", "add", "rule", "name=XPoint RustDesk Remote", "dir=out", "action=allow", "program="+rustDeskPath, "enable=yes", "profile=any")
+	}
+	if agentPath != "" {
+		runHidden("netsh", "advfirewall", "firewall", "delete", "rule", "name=XPoint Remote Agent")
+		runHidden("netsh", "advfirewall", "firewall", "add", "rule", "name=XPoint Remote Agent", "dir=out", "action=allow", "program="+agentPath, "enable=yes", "profile=any")
+	}
+	runHidden("powercfg", "/change", "standby-timeout-ac", "0")
+	runHidden("powercfg", "/change", "hibernate-timeout-ac", "0")
+	r.Record(3, "SYSTEM_BEST_PRACTICES", "OK", nil)
 }
 func Install(ctx context.Context, r *Report) (code string) {
 	return InstallWithInput(ctx, r, nil)
@@ -198,13 +229,20 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 	if prior, readErr := readPrivate(filepath.Join(ps.Data, "installation.json"), 4096); readErr == nil {
 		var reg receipt
 		if json.Unmarshal(prior, &reg) != nil {
-			return fail("STATE", errStage)
-		}
-		if reg.OrganizationID != p.OrganizationID && pkg.Generic.SchemaVersion != 2 {
+			if pkg.Generic.SchemaVersion == 2 {
+				_ = os.Remove(filepath.Join(ps.Data, "installation.json"))
+			} else {
+				return fail("STATE", errStage)
+			}
+		} else if reg.OrganizationID != p.OrganizationID && pkg.Generic.SchemaVersion != 2 {
 			return fail("EXISTING_INSTALLATION", errStage)
 		}
 	} else if !errors.Is(readErr, windows.ERROR_FILE_NOT_FOUND) {
-		return fail("STATE", readErr)
+		if pkg.Generic.SchemaVersion == 2 {
+			_ = os.Remove(filepath.Join(ps.Data, "installation.json"))
+		} else {
+			return fail("STATE", readErr)
+		}
 	}
 	runtimePath := filepath.Join(ps.Binary, "remote-agent.exe")
 	start(3, "SERVICE_INSPECT")
@@ -221,7 +259,15 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 			return fail("SERVICE", ce)
 		}
 		if !managedServiceConfig(c, runtimePath) {
-			return fail("SERVICE_CONFLICT", errStage)
+			c.BinaryPathName = windows.EscapeArg(runtimePath) + " --service"
+			c.ServiceStartName = "LocalSystem"
+			c.StartType = mgr.StartAutomatic
+			c.DisplayName = "XPoint Remote Agent"
+			c.Description = "XPoint device enrollment and presence"
+			c.Dependencies = []string{"RustDesk"}
+			if ue := s.UpdateConfig(c); ue != nil {
+				return fail("SERVICE_CONFLICT", errStage)
+			}
 		}
 		start(3, "SERVICE_STOP_FOR_REPAIR")
 		if e = stopManagedService(ctx, s); e != nil {
@@ -244,9 +290,7 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 	}
 	if pkg.Generic.SchemaVersion == 2 {
 		r.Record(3, "FORCE_REINSTALL_CLEANUP", "START", nil)
-		_ = os.Remove(filepath.Join(ps.Agent, "enrollment-pending.json"))
-		_ = os.Remove(filepath.Join(ps.Agent, "enrollment-credentials.json"))
-		_ = os.Remove(filepath.Join(ps.Agent, "rustdesk-configured.json"))
+		clearAgentEnrollmentArtifacts(ps)
 		pending = false
 		credentials = false
 	}
@@ -254,9 +298,12 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 	if e == nil {
 		var reg receipt
 		if json.Unmarshal(existing, &reg) != nil || !idPattern.MatchString(reg.EnrollmentID) || !idPattern.MatchString(reg.OrganizationID) {
-			return fail("STATE", errStage)
-		}
-		if pkg.Generic.SchemaVersion == 2 {
+			if pkg.Generic.SchemaVersion == 2 {
+				_ = os.Remove(registration)
+			} else {
+				return fail("STATE", errStage)
+			}
+		} else if pkg.Generic.SchemaVersion == 2 {
 			r.Record(3, "REPLACE_UNUSED_ATTEMPT", "START", nil)
 		} else {
 			decision := recoveryDecision(reg, p, pending, credentials)
@@ -268,9 +315,7 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 			default:
 				if pkg.Generic.SchemaVersion == 2 {
 					r.Record(3, "FORCE_REINSTALL_CLEANUP", "START", nil)
-					_ = os.Remove(filepath.Join(ps.Agent, "enrollment-pending.json"))
-					_ = os.Remove(filepath.Join(ps.Agent, "enrollment-credentials.json"))
-					_ = os.Remove(filepath.Join(ps.Agent, "rustdesk-configured.json"))
+					clearAgentEnrollmentArtifacts(ps)
 				} else {
 					return fail(decision, errStage)
 				}
@@ -280,31 +325,33 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 		return fail("STATE", e)
 	} else if pending || credentials {
 		if pkg.Generic.SchemaVersion == 2 {
-			_ = os.Remove(filepath.Join(ps.Agent, "enrollment-pending.json"))
-			_ = os.Remove(filepath.Join(ps.Agent, "enrollment-credentials.json"))
-			_ = os.Remove(filepath.Join(ps.Agent, "rustdesk-configured.json"))
+			clearAgentEnrollmentArtifacts(ps)
 			r.Record(3, "STALE_ARTIFACTS_CLEARED", "OK", nil)
 		} else {
 			return fail("RECONCILIATION", errStage)
 		}
 	}
-	{
-		start(3, "NEW_PACKAGE_STATE_WRITE")
-		b, _ := json.Marshal(receipt{EnrollmentID: p.EnrollmentID, OrganizationID: p.OrganizationID, DeviceDisplayName: p.DeviceDisplayName, GenericInstallation: pkg.Generic.SchemaVersion == 2})
-		if e = replacePrivate(registration, b); e != nil {
-			return fail("STATE", e)
+	writePackageBootstrap := func(prov Provisioning) (string, error) {
+		b, _ := json.Marshal(receipt{EnrollmentID: prov.EnrollmentID, OrganizationID: prov.OrganizationID, DeviceDisplayName: prov.DeviceDisplayName, GenericInstallation: pkg.Generic.SchemaVersion == 2})
+		if we := replacePrivate(registration, b); we != nil {
+			return "STATE", we
 		}
-		b, _ = json.Marshal(p)
+		b, _ = json.Marshal(prov)
 		encrypted, pe := protectMachine(b)
 		clear(b)
 		if pe != nil {
-			return fail("BOOTSTRAP", pe)
+			return "BOOTSTRAP", pe
 		}
-		e = replacePrivate(filepath.Join(ps.Data, "bootstrap.dpapi"), encrypted)
+		we := replacePrivate(filepath.Join(ps.Data, "bootstrap.dpapi"), encrypted)
 		clear(encrypted)
-		if e != nil {
-			return fail("BOOTSTRAP", e)
+		if we != nil {
+			return "BOOTSTRAP", we
 		}
+		return "", nil
+	}
+	start(3, "NEW_PACKAGE_STATE_WRITE")
+	if errCode, we := writePackageBootstrap(p); we != nil {
+		return fail(errCode, we)
 	}
 	start(3, "RUNTIME_UPDATE")
 	current, e := readPrivate(runtimePath, 64<<20, true)
@@ -323,6 +370,7 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 	if e = writeLegalNotices(ps.Binary); e != nil {
 		return fail("LEGAL_NOTICES", e)
 	}
+	applySystemBestPractices(ctx, ps.RustDesk, runtimePath, r)
 	start(3, "SERVICE_REGISTER")
 	if s == nil {
 		s, e = m.CreateService(ServiceName, runtimePath, mgr.Config{DisplayName: "XPoint Remote Agent", Description: "XPoint device enrollment and presence", StartType: mgr.StartAutomatic, ServiceStartName: "LocalSystem", Dependencies: []string{"RustDesk"}}, "--service")
@@ -344,6 +392,7 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 	}
 	r.Record(3, "SERVICE_STARTED", "OK", nil)
 	lastEvent := time.Time{}
+	selfHealed := false
 	collect := func() string {
 		b, e := readPrivate(filepath.Join(ps.Data, "setup-status.json"), 64<<10)
 		if e != nil {
@@ -360,8 +409,37 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 		}
 		return failure
 	}
+	tryAutonomousSelfHeal := func(failure string) bool {
+		if selfHealed || pkg.Generic.SchemaVersion != 2 || input == nil {
+			return false
+		}
+		selfHealed = true
+		r.Record(5, "AUTONOMOUS_SELF_HEAL", "START", errors.New(failure))
+		_ = stopManagedService(ctx, s)
+		clearAgentEnrollmentArtifacts(ps)
+		_ = os.Remove(filepath.Join(ps.Data, "generic-request.dpapi"))
+		newProv, prepErr := prepareGeneric(ctx, pkg.Generic, *input, ps, r)
+		if prepErr != nil {
+			return false
+		}
+		p.EnrollmentToken = ""
+		p = newProv
+		if _, we := writePackageBootstrap(p); we != nil {
+			return false
+		}
+		started = time.Now().UTC()
+		lastEvent = time.Time{}
+		if se := s.Start(); se != nil {
+			return false
+		}
+		r.Record(5, "AUTONOMOUS_SELF_HEAL", "OK", nil)
+		return true
+	}
 	for {
 		if failure := collect(); failure != "" {
+			if tryAutonomousSelfHeal(failure) {
+				continue
+			}
 			return failure
 		}
 		b, e = readPrivate(filepath.Join(ps.Data, "online.json"), 4096)
@@ -430,7 +508,13 @@ func InstallWithInput(ctx context.Context, r *Report, input *InstallationInput) 
 		}
 		if q.State == svc.Stopped {
 			if failure := collect(); failure != "" {
+				if tryAutonomousSelfHeal(failure) {
+					continue
+				}
 				return failure
+			}
+			if tryAutonomousSelfHeal("SERVICE_STOPPED") {
+				continue
 			}
 			if q.ServiceSpecificExitCode != 0 {
 				r.Record(step, "SERVICE_EXIT_CODE", "ERROR", syscall.Errno(q.ServiceSpecificExitCode))
@@ -459,31 +543,53 @@ func configureWith(ctx context.Context, path string, runner rustdesk.CommandRunn
 func configureReported(ctx context.Context, path string, runner rustdesk.CommandRunner, r *Report) error {
 	for _, v := range configuredOptions {
 		op := v[2]
-		r.Record(4, op+"_WRITE", "START", nil)
-		c, cancel := context.WithTimeout(ctx, 20*time.Second)
-		result, e := runner.Run(c, path, "--option", v[0], v[1])
-		cancel()
-		clear(result.Stdout)
-		clear(result.Stderr)
-		if e != nil || result.ExitCode != 0 {
+		var writeErr, readErr error
+		var ok bool
+		for attempt := 0; attempt < 3; attempt++ {
+			if attempt == 0 {
+				r.Record(4, op+"_WRITE", "START", nil)
+			}
+			c, cancel := context.WithTimeout(ctx, 20*time.Second)
+			result, e := runner.Run(c, path, "--option", v[0], v[1])
+			cancel()
+			clear(result.Stdout)
+			clear(result.Stderr)
+			if e != nil || result.ExitCode != 0 {
+				if e == nil {
+					e = errStage
+				}
+				writeErr = e
+				if attempt < 2 {
+					time.Sleep(400 * time.Millisecond)
+					continue
+				}
+				r.Record(4, op+"_WRITE", "ERROR", writeErr)
+				return configurationError(v[0])
+			}
+			writeErr = nil
+			if attempt == 0 {
+				r.Record(4, op+"_READBACK", "START", nil)
+			}
+			c, cancel = context.WithTimeout(ctx, 20*time.Second)
+			result, e = runner.Run(c, path, "--option", v[0])
+			cancel()
+			ok = strings.TrimSpace(string(result.Stdout)) == v[1]
+			clear(result.Stdout)
+			clear(result.Stderr)
+			if e == nil && result.ExitCode == 0 && ok {
+				readErr = nil
+				break
+			}
 			if e == nil {
 				e = errStage
 			}
-			r.Record(4, op+"_WRITE", "ERROR", e)
-			return configurationError(v[0])
+			readErr = e
+			if attempt < 2 {
+				time.Sleep(400 * time.Millisecond)
+			}
 		}
-		r.Record(4, op+"_READBACK", "START", nil)
-		c, cancel = context.WithTimeout(ctx, 20*time.Second)
-		result, e = runner.Run(c, path, "--option", v[0])
-		cancel()
-		ok := strings.TrimSpace(string(result.Stdout)) == v[1]
-		clear(result.Stdout)
-		clear(result.Stderr)
-		if e != nil || result.ExitCode != 0 || !ok {
-			if e == nil {
-				e = errStage
-			}
-			r.Record(4, op+"_READBACK", "ERROR", e)
+		if readErr != nil || !ok {
+			r.Record(4, op+"_READBACK", "ERROR", readErr)
 			return configurationError(v[0])
 		}
 	}

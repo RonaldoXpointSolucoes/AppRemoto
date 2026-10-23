@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.7.9',
+    date: 'Outubro 2026',
+    title: 'Instalador Autônomo Self-Healing (EXE v1.3.9) & Correção Definitiva de Cadastro (RECONCILIATION)',
+    highlight:
+      'Eliminação definitiva do erro RECONCILIATION / ENROLLMENT_DENIED ao cadastrar novas empresas/CNPJs, ciclo de autorrecuperação (self-healing) automático na Etapa 5, consulta automática ao digitar 14 dígitos de CNPJ e aplicação automática de regras de Firewall e energia AC.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Correção Definitiva do Erro RECONCILIATION na Etapa 5',
+        description:
+          'Invalidação imediata do cache de organizações na API ao criar novo CNPJ/empresa em prepare-installation, renovação automática de tokens já consumidos e limpeza inteligente de artefatos pendentes no agente Windows.',
+        tag: 'Segurança',
+      },
+      {
+        title: 'Instalador Autônomo v1.3.9 (Win 10/11 64-bit, 32-bit e Windows 7)',
+        description:
+          'Auto-consulta do CNPJ ao completar 14 dígitos, resolução automática de conflito de nomes e contingência offline sem travar o técnico, liberação automática no Firewall do Windows, desativação de suspensão AC e cópia automática do ID RustDesk para a área de transferência.',
+        tag: 'Novo',
+      },
+    ],
+  },
+  {
     version: 'v1.7.8',
     date: 'Outubro 2026',
     title: 'Telemetria Compacta em Detalhes & Documentação 100% Automática (Zero Cliques)',
     highlight:
       'Movimentação das pílulas de rede e hardware (IP Local, IP Público, Mesma Rede/Roteador, CPU, RAM e HD) para dentro da gaveta "Ver detalhes" deixando o card principal muito mais limpo, e automação silenciosa completa da documentação de sessão sem exibir popups manuais ao conectar.',
-    isCurrent: true,
     items: [
       {
         title: 'IPs, Rede e Hardware Exclusivos no "Ver detalhes"',

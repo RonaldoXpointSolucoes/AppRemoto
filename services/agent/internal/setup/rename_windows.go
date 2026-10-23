@@ -130,17 +130,74 @@ func EnrichDataDivasWithNamingState(info *api.DataDivasInfo, ps Paths) *api.Data
 	return info
 }
 
+func copyTextToClipboard(text string) bool {
+	if text == "" {
+		return false
+	}
+	utf16, err := windows.UTF16FromString(text)
+	if err != nil || len(utf16) == 0 {
+		return false
+	}
+	user32 := windows.NewLazySystemDLL("user32.dll")
+	kernel32 := windows.NewLazySystemDLL("kernel32.dll")
+	openClip, _, _ := user32.NewProc("OpenClipboard").Call(0)
+	if openClip == 0 {
+		return false
+	}
+	defer user32.NewProc("CloseClipboard").Call()
+	user32.NewProc("EmptyClipboard").Call()
+	sizeBytes := uintptr(len(utf16) * 2)
+	hMem, _, _ := kernel32.NewProc("GlobalAlloc").Call(0x0002, sizeBytes) // GMEM_MOVEABLE
+	if hMem == 0 {
+		return false
+	}
+	ptrMem, _, _ := kernel32.NewProc("GlobalLock").Call(hMem)
+	if ptrMem == 0 {
+		kernel32.NewProc("GlobalFree").Call(hMem)
+		return false
+	}
+	dst := unsafe.Slice((*uint16)(unsafe.Pointer(ptrMem)), len(utf16))
+	copy(dst, utf16)
+	kernel32.NewProc("GlobalUnlock").Call(hMem)
+	setOk, _, _ := user32.NewProc("SetClipboardData").Call(13, hMem) // CF_UNICODETEXT = 13
+	if setOk == 0 {
+		kernel32.NewProc("GlobalFree").Call(hMem)
+		return false
+	}
+	return true
+}
+
 func PromptCompletionAndOptionalReboot(logPath string) {
+	_, rdID, _ := discoverLocalMachineContext()
+	copied := copyTextToClipboard(rdID)
 	ps, err := paths()
 	if err != nil {
-		Message("Configuracao concluida. O computador esta disponivel na lista Dispositivos do painel XPoint.\n\nLog: " + logPath)
+		summary := "Configuracao concluida. O computador esta disponivel na lista Dispositivos do painel XPoint."
+		if rdID != "" {
+			summary += fmt.Sprintf("\n\nID RustDesk: %s", rdID)
+			if copied {
+				summary += " (copiado para a área de transferência)"
+			}
+		}
+		summary += "\n\nLog: " + logPath
+		Message(summary)
 		return
 	}
 	state, err := LoadNamingState(ps)
-	summary := "Configuracao concluida. O computador esta disponivel na lista Dispositivos do painel XPoint."
+	summary := "✅ Configuração concluída com sucesso!\nO computador já está online e disponível na lista Dispositivos do painel XPoint."
 	if err == nil && state.WindowsHostnameDesejado != "" {
-		summary += fmt.Sprintf("\n\nIdentificação configurada no painel: %s (%s)", state.WindowsHostnameDesejado, RoleDefinitionByCode(state.Role).Label)
+		summary += fmt.Sprintf("\n\n• Identificação no Painel: %s (%s)", state.WindowsHostnameDesejado, RoleDefinitionByCode(state.Role).Label)
+		if state.RazaoSocial != "" {
+			summary += fmt.Sprintf("\n• Empresa: %s", state.RazaoSocial)
+		}
 	}
+	if rdID != "" {
+		summary += fmt.Sprintf("\n• ID RustDesk: %s", rdID)
+		if copied {
+			summary += " (copiado automaticamente para Ctrl+V)"
+		}
+	}
+	summary += "\n• Boas Práticas Aplicadas: Firewall Windows liberado e suspensão de energia AC desativada."
 	summary += "\n\nLog: " + logPath
 	Message(summary)
 }

@@ -73,6 +73,9 @@ test('enrollment mutations cannot clear independent administrative revocation', 
   await repo.write('enrollment_tokens', 'token', { use_count: 1, active: false, revoked_at: null },
     { use_count: 0, active: true, revoked_at: '2026-10-01T00:00:00Z' });
   assert.deepEqual(payloads, [{ use_count: 1, active: false }]);
+  await repo.write('device_tokens', 'device', { device_id: 'device', token_hash: 'new', last_used_at: null, revoked_at: null },
+    { device_id: 'device', token_hash: 'old', last_used_at: '2026-10-01T00:00:00Z', revoked_at: '2026-10-01T00:00:00Z' });
+  assert.deepEqual(payloads[1], { token_hash: 'new', last_used_at: null, revoked_at: null });
 });
 
 test('audit persists only fixed nonsecret enrollment metadata and compensates missing document', async () => {

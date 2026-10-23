@@ -267,7 +267,7 @@ func reusePreparation(saved preparationState, p GenericProvisioning, input Insta
 func prepareWithExpiredRenewal(p GenericProvisioning, input InstallationInput, existingOrganization string, saved *preparationState, canRenew bool, save func(preparationState) error, send func(preparationRequest) (Provisioning, error)) (Provisioning, error) {
 	provisioning, err := send(saved.Request)
 	var failure *preparationError
-	if !canRenew || !errors.As(err, &failure) || failure.Code != "GENERIC_INSTALLER_EXPIRED" {
+	if !canRenew || !errors.As(err, &failure) || (failure.Code != "GENERIC_INSTALLER_EXPIRED" && failure.Code != "GENERIC_INSTALLER_REQUEST_CONFLICT" && failure.Code != "PREPARATION_CONFLICT") {
 		return provisioning, err
 	}
 	req, err := newPreparationRequest(p, input)

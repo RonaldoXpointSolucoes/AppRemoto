@@ -148,7 +148,11 @@ test('revocation, issuer disablement, wrong capability and expired one-use packa
   const f = fixture(); const p = await provision(f);
   await assert.rejects(f.generic.prepare(issueToken(), p.request, '127.0.0.1'), { code: 'GENERIC_INSTALLER_DENIED' });
   f.advance(31); await assert.rejects(f.generic.prepare(p.created.package.installerToken, p.request, '127.0.0.1'), { code: 'GENERIC_INSTALLER_EXPIRED' });
-  f.advance(0); await f.generic.revoke(admin, p.created.installer.id);
+  f.advance(0);
+  f.rows.get(`enrollment_tokens/${p.prepared.enrollmentId}`)!.use_count = 1;
+  await assert.rejects(f.generic.prepare(p.created.package.installerToken, p.request, '127.0.0.1'), { code: 'GENERIC_INSTALLER_EXPIRED' });
+  f.rows.get(`enrollment_tokens/${p.prepared.enrollmentId}`)!.use_count = 0;
+  await f.generic.revoke(admin, p.created.installer.id);
   await assert.rejects(f.generic.prepare(p.created.package.installerToken, p.request, '127.0.0.1'), { code: 'GENERIC_INSTALLER_DENIED' });
   await assert.rejects(f.enroll(agentRequest(p.prepared.enrollmentToken), '127.0.0.1'));
   const active = fixture(); const other = await provision(active); active.disableIssuer();
