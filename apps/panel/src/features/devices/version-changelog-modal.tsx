@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.8.1',
+    date: 'Outubro 2026',
+    title: 'Ícone & Destaque Esmeralda para Máquinas Online + Limpeza Automática do Filtro ao Reabrir',
+    highlight:
+      'Refinamento visual dos computadores Online na lista (ícone de monitor com tela ativa e pulso de sinal, avatar esmeralda, faixa lateral e badge de alto contraste em modo Claro/Escuro) e limpeza automática do campo de filtro sempre que o sistema é fechado e reaberto.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Novo Ícone de Monitor Ativo e Destaque Visual para Máquinas Online',
+        description:
+          'Substituição do ícone cinza neutro nas máquinas Online por um monitor esmeralda com tela acesa e onda de atividade, acompanhado de gradiente sutil na linha e badge Online de alto contraste.',
+        tag: 'UI/UX',
+      },
+      {
+        title: 'Limpeza Automática do Filtro ao Fechar e Reabrir o Sistema',
+        description:
+          'O campo de busca rápida no topo é sempre limpo ao fechar e reabrir o sistema (incluindo restauração de aba/bfcache), evitando que pesquisas antigas ocultem computadores no próximo acesso.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.8.0',
     date: 'Outubro 2026',
     title: 'Filtro Instantâneo Zero-Lag (< 1ms), Memoização de Linhas & Redução de Memória/CPU no Chrome',
     highlight:
       'Otimização profunda do motor de busca em tempo real e da árvore de dispositivos: estabilização referencial do cache local, pré-compilação O(1) da consulta, memoização por linha (React.memo), content-visibility nativo e eliminação da renderização tripla oculta em produção.',
-    isCurrent: true,
     items: [
       {
         title: 'Filtro de Busca Instantâneo (< 1ms por tecla)',
@@ -60,7 +81,7 @@ export const PLATFORM_RELEASES: ReleaseVersion[] = [
     ],
   },
   {
-    version: 'v1.8.0',
+    version: 'v1.8.0 (EXE v1.4.0)',
     date: 'Outubro 2026',
     title: 'Instalador v1.4.0 (Win 7 / 32-bit / 64-bit) — TLS Puro sem Travamento CryptoAPI & Resolução Direta .sslip.io',
     highlight:

@@ -136,7 +136,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   const [filters, setFilters] = useState<DeviceFiltersValue>(() => ({
     organizationId: initialChatbotCtx ? '' : initialUserPrefs.organizationId,
     status: initialChatbotCtx ? '' : initialUserPrefs.status,
-    search: initialChatbotCtx ? initialChatbotCtx.cnpj : initialUserPrefs.search,
+    search: initialChatbotCtx ? initialChatbotCtx.cnpj : '',
   }));
   const [searchScope, setSearchScope] = useState<DeviceSearchScope>('all');
   const [serverSearchCommitted, setServerSearchCommitted] = useState<boolean>(false);
@@ -186,8 +186,8 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   const resolvedUserId = query.profile?.id || null;
   const activeUserId = resolvedUserId || initialUserId;
 
-  // Quando o perfil do usuário autenticado é carregado (ou trocado), restaura os filtros que esse usuário deixou
-  // (mas preserva o filtro do CNPJ caso tenha vindo do Chatbot/Iframe)
+  // Quando o perfil do usuário autenticado é carregado (ou trocado), restaura as preferências de visualização
+  // mantendo o filtro de busca sempre limpo ao abrir/reabrir o sistema (salvo se vier do Chatbot/Iframe)
   useEffect(() => {
     if (!resolvedUserId) return;
     setLastActiveUserId(resolvedUserId);
@@ -196,43 +196,50 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       const userPrefs = getUserViewPreferences(resolvedUserId);
       const activeBotCtx = chatbotContextRef.current;
       setServerSearchCommitted(false);
+      setSearchScope('all');
       setFilters({
         organizationId: activeBotCtx ? '' : userPrefs.organizationId,
         status: activeBotCtx ? '' : userPrefs.status,
-        search: activeBotCtx ? activeBotCtx.cnpj : userPrefs.search,
+        search: activeBotCtx ? activeBotCtx.cnpj : '',
       });
       setViewMode(userPrefs.viewMode);
       setSidebarCollapsed(isEmbedMode ? true : userPrefs.sidebarCollapsed);
     }
   }, [resolvedUserId, isEmbedMode]);
 
-  // Salva automaticamente os filtros e preferências de visualização do usuário sempre que alterados
-  // (exceto quando o filtro temporário veio do Chatbot para não sobrescrever a preferência padrão do técnico).
-  // Debounce leve quando apenas `search` muda para evitar escrita síncrona no localStorage a cada tecla.
-  const prevNonSearchPrefsRef = useRef('');
+  // Limpa o filtro de busca sempre que o usuário fechar ou reabrir a aba/janela do sistema (inclusive bfcache)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const clearSearchOnCloseOrReopen = () => {
+      if (chatbotContextRef.current) return;
+      setServerSearchCommitted(false);
+      setSearchScope('all');
+      setFilters((prev) => (prev.search ? { ...prev, search: '' } : prev));
+    };
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) clearSearchOnCloseOrReopen();
+    };
+    window.addEventListener('beforeunload', clearSearchOnCloseOrReopen);
+    window.addEventListener('pagehide', clearSearchOnCloseOrReopen);
+    window.addEventListener('pageshow', handlePageShow);
+    return () => {
+      window.removeEventListener('beforeunload', clearSearchOnCloseOrReopen);
+      window.removeEventListener('pagehide', clearSearchOnCloseOrReopen);
+      window.removeEventListener('pageshow', handlePageShow);
+    };
+  }, []);
+
+  // Salva automaticamente as preferências de visualização do usuário (sem persistir texto de busca)
   useEffect(() => {
     if (!activeUserId || loadedUserRef.current !== activeUserId || chatbotContext) return;
-    const payload = {
+    saveUserViewPreferences(activeUserId, {
       organizationId: filters.organizationId,
       status: filters.status,
-      search: filters.search,
+      search: '',
       viewMode,
       sidebarCollapsed,
-    };
-    const nonSearchKey = `${activeUserId}::${filters.organizationId}::${filters.status}::${viewMode}::${sidebarCollapsed}`;
-    if (prevNonSearchPrefsRef.current !== nonSearchKey) {
-      prevNonSearchPrefsRef.current = nonSearchKey;
-      saveUserViewPreferences(activeUserId, payload);
-      return;
-    }
-    const timer = setTimeout(() => {
-      saveUserViewPreferences(activeUserId, payload);
-    }, 300);
-    return () => {
-      clearTimeout(timer);
-      saveUserViewPreferences(activeUserId, payload);
-    };
-  }, [activeUserId, chatbotContext, filters.organizationId, filters.status, filters.search, viewMode, sidebarCollapsed]);
+    });
+  }, [activeUserId, chatbotContext, filters.organizationId, filters.status, viewMode, sidebarCollapsed]);
 
   const displayedDevices = useMemo(() => {
     return isLocalCategory ? filterDevicesByCategory(query.rows, filters.organizationId) : query.rows;
@@ -282,7 +289,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
   useEffect(() => {
     emitToChatbotHost({
       type: 'XPOINT_REMOTE_READY',
-      version: 'v1.8.0',
+      version: 'v1.8.1',
       embedded: isEmbedMode,
       authenticated: true,
       activeCnpj: chatbotContextRef.current?.cnpj ?? null,
@@ -296,7 +303,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
       if (action.action === 'PING') {
         emitToChatbotHost({
           type: 'XPOINT_REMOTE_PONG',
-          version: 'v1.8.0',
+          version: 'v1.8.1',
           authenticated: true,
           activeCnpj: chatbotContextRef.current?.cnpj ?? null,
           timestamp: new Date().toISOString(),
@@ -693,10 +700,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
                 type="button"
                 className="version-badge version-badge-btn"
                 onClick={handleOpenChangelog}
-                title="Clique para ver todas as novidades da versão v1.8.0"
-                aria-label="Ver novidades da versão v1.8.0 (mobile)"
+                title="Clique para ver todas as novidades da versão v1.8.1"
+                aria-label="Ver novidades da versão v1.8.1 (mobile)"
               >
-                v1.8.0
+                v1.8.1
               </button>
             </div>
           </div>
@@ -764,10 +771,10 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               type="button"
               className="version-badge version-badge-btn"
               onClick={handleOpenChangelog}
-              title="Clique para ver todas as novidades da versão v1.8.0"
-              aria-label="Ver novidades da versão v1.8.0"
+              title="Clique para ver todas as novidades da versão v1.8.1"
+              aria-label="Ver novidades da versão v1.8.1"
             >
-              v1.8.0
+              v1.8.1
             </button>
           </div>
 
@@ -777,6 +784,7 @@ export function DeviceDirectory({ service, onSessionExpired }: { service: Device
               <input
                 ref={searchInputRef}
                 type="search"
+                autoComplete="off"
                 placeholder="Filtrar por nome, IP, razão social, fantasia, CNPJ ou ID (separe por espaço ou vírgula)..."
                 value={filters.search}
                 onChange={(e) => {

@@ -342,7 +342,7 @@ describe('DeviceDirectory', () => {
   it('opens the release notes modal when clicking the version number button', async () => {
     renderDirectory(service());
     await screen.findAllByText('Recepcao 01');
-    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.8.0' });
+    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.8.1' });
     expect(versionButtons.length).toBeGreaterThan(0);
     await userEvent.click(versionButtons[0]);
     const dialog = await screen.findByRole('dialog', { name: /Novidades da Plataforma/i });
@@ -415,6 +415,10 @@ describe('DeviceDirectory', () => {
       await screen.findAllByText('Recepcao 01');
       await waitFor(() => expect(ronaldoService.getMe).toHaveBeenCalled());
 
+      // Ronaldo digita um termo no filtro de busca e seleciona organização/status antes de fechar o sistema
+      const quickInput = screen.getByLabelText('Pesquisar e conectar dispositivo');
+      fireEvent.change(quickInput, { target: { value: 'burguer' } });
+      expect(quickInput).toHaveValue('burguer');
       await userEvent.selectOptions(screen.getByLabelText('Organizacao'), 'org-b');
       await userEvent.selectOptions(screen.getByLabelText('Status'), 'ONLINE');
       expect(screen.getByLabelText('Organizacao')).toHaveValue('org-b');
@@ -434,14 +438,16 @@ describe('DeviceDirectory', () => {
       await screen.findAllByText('Recepcao 01');
       await waitFor(() => expect(screen.getByLabelText('Organizacao')).toHaveValue(''));
       expect(screen.getByLabelText('Status')).toHaveValue('');
+      expect(screen.getByLabelText('Pesquisar e conectar dispositivo')).toHaveValue('');
       await userEvent.selectOptions(screen.getByLabelText('Organizacao'), 'org-a');
       secondSession.unmount();
 
-      // Ronaldo volta para a aplicação e encontra exatamente os filtros que havia deixado
+      // Ronaldo volta para a aplicação: o filtro de busca vem 100% limpo ao reabrir o sistema
       const returnSession = renderDirectory(ronaldoService);
       await screen.findAllByText('Recepcao 01');
       await waitFor(() => expect(screen.getByLabelText('Organizacao')).toHaveValue('org-b'));
       expect(screen.getByLabelText('Status')).toHaveValue('ONLINE');
+      expect(screen.getByLabelText('Pesquisar e conectar dispositivo')).toHaveValue('');
       returnSession.unmount();
     } finally {
       localStorage.clear();

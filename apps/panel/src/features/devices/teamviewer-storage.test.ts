@@ -205,7 +205,7 @@ describe('teamviewer-storage', () => {
     const prefsRonaldo = getUserViewPreferences('user-ronaldo');
     expect(prefsRonaldo.organizationId).toBe('group_xpoint');
     expect(prefsRonaldo.status).toBe('ONLINE');
-    expect(prefsRonaldo.search).toBe('Servidor');
+    expect(prefsRonaldo.search).toBe('');
     expect(prefsRonaldo.onlyOnlineQuickFilter).toBe(true);
     expect(prefsRonaldo.sortBy).toBe('name');
     expect(prefsRonaldo.compactMode).toBe(true);
@@ -215,7 +215,7 @@ describe('teamviewer-storage', () => {
     const prefsArthur = getUserViewPreferences('user-arthur');
     expect(prefsArthur.organizationId).toBe('group_clients');
     expect(prefsArthur.status).toBe('');
-    expect(prefsArthur.search).toBe('Totem');
+    expect(prefsArthur.search).toBe('');
     expect(prefsArthur.viewMode).toBe('table');
     expect(prefsArthur.onlyFavoritesQuickFilter).toBe(true);
     expect(prefsArthur.compactMode).toBe(false);

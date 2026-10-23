@@ -168,8 +168,44 @@ const MemoizedDeviceRowContent = memo(function DeviceRowContent({
   return (
     <>
       <div className="tv-col-name">
-        <div className={`tv-avatar-circle ${isOnline ? 'avatar-online' : ''}`} title={isOnline ? 'Online' : 'Offline'}>
-          <Monitor size={18} className="tv-monitor-icon" />
+        <div
+          className={`tv-avatar-circle ${isOnline ? 'avatar-online' : 'avatar-offline'}`}
+          title={isOnline ? 'Computador Online — Pronto para conectar' : 'Computador Offline'}
+        >
+          {isOnline ? (
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="tv-monitor-icon tv-monitor-icon-online"
+              aria-hidden="true"
+            >
+              <rect
+                x="2"
+                y="3"
+                width="20"
+                height="14"
+                rx="2.5"
+                fill="currentColor"
+                fillOpacity="0.18"
+                stroke="currentColor"
+                strokeWidth="2.15"
+              />
+              <path
+                d="M6.5 10h2.3l1.35-2.7 2.1 5.4 1.35-2.7h3.9"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path d="M8 21h8" stroke="currentColor" strokeWidth="2.15" strokeLinecap="round" />
+              <path d="M12 17v4" stroke="currentColor" strokeWidth="2.15" strokeLinecap="round" />
+            </svg>
+          ) : (
+            <Monitor size={18} className="tv-monitor-icon" />
+          )}
           <span className={`tv-status-dot ${isOnline ? 'online' : 'offline'}`} />
         </div>
         <div className="tv-name-info">

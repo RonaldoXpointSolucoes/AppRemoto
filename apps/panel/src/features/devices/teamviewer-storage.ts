@@ -780,7 +780,8 @@ export function getUserViewPreferences(userId?: string | null): UserViewPreferen
         parsed.status === 'ONLINE' || parsed.status === 'OFFLINE' || parsed.status === ''
           ? parsed.status
           : '',
-      search: typeof parsed.search === 'string' ? parsed.search : '',
+      // O filtro de busca deve sempre iniciar limpo ao fechar e reabrir o sistema
+      search: '',
       viewMode: parsed.viewMode === 'table' ? 'table' : 'teamviewer',
       sidebarCollapsed: Boolean(parsed.sidebarCollapsed),
       onlyOnlineQuickFilter:
@@ -803,20 +804,22 @@ export function saveUserViewPreferences(
   partial: Partial<UserViewPreferences>
 ): UserViewPreferences {
   if (typeof window === 'undefined' || !userId) {
-    return { ...DEFAULT_USER_VIEW_PREFERENCES, ...partial };
+    return { ...DEFAULT_USER_VIEW_PREFERENCES, ...partial, search: '' };
   }
   try {
     const current = getUserViewPreferences(userId);
     const updated: UserViewPreferences = {
       ...current,
       ...partial,
+      // Nunca persiste texto de busca no localStorage para que ao fechar/reabrir o sistema o filtro venha limpo
+      search: '',
       updatedAt: new Date().toISOString(),
     };
     localStorage.setItem(`${USER_PREFS_PREFIX}${userId}`, JSON.stringify(updated));
     setLastActiveUserId(userId);
     return updated;
   } catch {
-    return { ...DEFAULT_USER_VIEW_PREFERENCES, ...partial };
+    return { ...DEFAULT_USER_VIEW_PREFERENCES, ...partial, search: '' };
   }
 }
 

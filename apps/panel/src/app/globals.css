@@ -2119,12 +2119,12 @@ button, a, input, select { outline-offset: 3px; }
   height: 42px;
   border-radius: 50%;
   background: var(--surface-muted);
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   flex-shrink: 0;
-  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.tv-row:hover .tv-avatar-circle,
+.tv-row:hover .tv-avatar-circle:not(.avatar-online),
 .tv-row:hover .tv-device-icon-wrap {
   background: rgba(0, 103, 192, 0.08);
   border-color: rgba(0, 103, 192, 0.3);
@@ -2132,19 +2132,19 @@ button, a, input, select { outline-offset: 3px; }
 
 .tv-monitor-icon {
   color: var(--text-muted);
-  transition: color 0.15s ease;
+  transition: color 0.15s ease, transform 0.15s ease;
 }
 
-.tv-row:hover .tv-monitor-icon {
+.tv-row:hover .tv-avatar-circle:not(.avatar-online) .tv-monitor-icon {
   color: #0067c0;
 }
 
 .tv-status-dot {
   position: absolute;
-  bottom: 0px;
-  right: 0px;
-  width: 11px;
-  height: 11px;
+  bottom: -1px;
+  right: -1px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   border: 2px solid var(--surface);
   box-sizing: border-box;
@@ -2152,11 +2152,11 @@ button, a, input, select { outline-offset: 3px; }
 
 .tv-status-dot.online {
   background: #10b981;
-  box-shadow: 0 0 6px rgba(16, 185, 129, 0.8);
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3), 0 0 8px rgba(16, 185, 129, 0.9);
 }
 
 .tv-status-dot.offline {
-  background: transparent;
+  background: var(--surface);
   border: 2px solid #94a3b8;
 }
 
@@ -7467,14 +7467,88 @@ button, a, input, select { outline-offset: 3px; }
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
+.tv-row.is-online {
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.09) 0%, rgba(16, 185, 129, 0.025) 45%, transparent 100%);
+  border-left: 3px solid #10b981;
+}
+
+[data-theme="light"] .tv-row.is-online {
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.11) 0%, rgba(16, 185, 129, 0.03) 45%, rgba(255, 255, 255, 0) 100%);
+  border-left: 3px solid #059669;
+}
+
+.tv-row.is-online:hover {
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.045) 55%, rgba(16, 185, 129, 0.01) 100%);
+}
+
+[data-theme="light"] .tv-row.is-online:hover {
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.16) 0%, rgba(16, 185, 129, 0.055) 55%, rgba(16, 185, 129, 0.015) 100%);
+}
+
 .tv-row.is-favorite {
-  background: linear-gradient(90deg, rgba(245, 158, 11, 0.04) 0%, transparent 40%);
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.06) 0%, transparent 40%);
   border-left: 3px solid #f59e0b;
 }
 
+.tv-row.is-favorite.is-online {
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.11) 0%, rgba(245, 158, 11, 0.03) 45%, transparent 100%);
+  border-left: 3px solid #10b981;
+}
+
 .tv-avatar-circle.avatar-online {
-  border-color: rgba(16, 185, 129, 0.35);
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.12);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.24) 0%, rgba(5, 150, 105, 0.14) 100%);
+  border-color: rgba(16, 185, 129, 0.65);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="light"] .tv-avatar-circle.avatar-online {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  border-color: #10b981;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.tv-avatar-circle.avatar-online .tv-monitor-icon {
+  color: #34d399;
+  filter: drop-shadow(0 1px 2px rgba(16, 185, 129, 0.28));
+}
+
+[data-theme="light"] .tv-avatar-circle.avatar-online .tv-monitor-icon {
+  color: #047857;
+  filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.6));
+}
+
+.tv-row.is-online:hover .tv-avatar-circle.avatar-online {
+  transform: scale(1.04);
+  border-color: #10b981;
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+[data-theme="light"] .tv-row.is-online:hover .tv-avatar-circle.avatar-online {
+  background: linear-gradient(135deg, #a7f3d0 0%, #6ee7b7 100%);
+  border-color: #059669;
+}
+
+.tv-avatar-circle.avatar-offline {
+  opacity: 0.78;
+}
+
+.tv-pill-status.status-online {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.22) 0%, rgba(5, 150, 105, 0.14) 100%);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.14);
+}
+
+[data-theme="light"] .tv-pill-status.status-online {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  color: #065f46;
+  border: 1px solid #34d399;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.18);
+}
+
+[data-theme="light"] .tv-pill-status.status-online .tv-pill-dot {
+  background: #059669;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.85);
 }
 
 /* Status Inline Visível no Mobile */
