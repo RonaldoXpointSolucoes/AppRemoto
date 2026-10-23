@@ -3812,8 +3812,12 @@ button, a, input, select { outline-offset: 3px; }
   }
 
   .tv-quick-search-box {
+    flex: 0 0 auto;
     width: 100%;
-    min-height: 46px;
+    max-width: 100%;
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
   }
 
   .tv-kbd-shortcut {
@@ -9834,25 +9838,33 @@ button, a, input, select { outline-offset: 3px; }
   }
 
   .tv-top-toolbar {
+    flex-direction: column;
+    align-items: stretch;
     margin-bottom: 10px;
     gap: 8px;
   }
 
   .tv-quick-search-box {
-    min-height: 42px;
+    flex: 0 0 auto !important;
+    width: 100%;
+    max-width: 100%;
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
     border-radius: 12px;
     padding: 0 12px;
   }
 
   .tv-quick-search-box input {
     font-size: 0.82rem;
+    height: 100%;
   }
 
   .tv-tree-header-bar {
     flex-direction: column;
     align-items: stretch;
-    padding: 12px 12px 10px;
-    gap: 10px;
+    padding: 10px 12px;
+    gap: 8px;
   }
 
   .tv-tree-header-title {
@@ -9862,58 +9874,53 @@ button, a, input, select { outline-offset: 3px; }
 
   .tv-tree-header-actions {
     width: 100%;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .tv-filter-pills {
     display: flex;
     align-items: center;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-    gap: 5px;
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: 4px;
     padding: 4px;
     width: 100%;
     border-radius: 11px;
   }
 
-  .tv-filter-pills::-webkit-scrollbar {
-    display: none;
-  }
-
   .tv-filter-pill {
-    flex-shrink: 0;
+    flex: 1 1 auto;
+    justify-content: center;
     white-space: nowrap;
-    height: 30px;
-    padding: 0 10px;
-    font-size: 0.74rem;
-    border-radius: 8px;
+    height: 28px;
+    padding: 0 8px;
+    font-size: 0.71rem;
+    border-radius: 7px;
+    gap: 4px;
   }
 
-  /* Barra de Mobilidade em Linha Única sem quebra vertical de pílulas */
+  /* Barra de Mobilidade Organizada em Camadas Compactas sem Corte Lateral */
   .tv-mobility-strip {
     display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: nowrap;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
     gap: 6px;
     padding: 8px 10px;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .tv-mobility-chips {
     display: flex;
     align-items: center;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 5px;
-    flex-shrink: 0;
+    width: 100%;
   }
 
   .tv-mobility-chip {
-    height: 30px;
-    padding: 0 9px;
+    height: 29px;
+    padding: 0 10px;
     font-size: 0.71rem;
     white-space: nowrap;
     flex-shrink: 0;
@@ -9922,7 +9929,7 @@ button, a, input, select { outline-offset: 3px; }
   }
 
   .tv-mobility-controls {
-    flex: 1 1 0%;
+    width: 100%;
     min-width: 0;
     margin-left: 0;
     display: flex;
@@ -9933,15 +9940,15 @@ button, a, input, select { outline-offset: 3px; }
     width: 100%;
     min-width: 0;
     height: 30px;
-    padding: 0 8px;
-    border-radius: 999px;
-    gap: 4px;
+    padding: 0 10px;
+    border-radius: 9px;
+    gap: 6px;
   }
 
   .tv-sort-select {
     width: 100%;
     min-width: 0;
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -10048,24 +10055,26 @@ button, a, input, select { outline-offset: 3px; }
     margin-left: -46px;
     width: calc(100% + 46px);
     margin-top: 3px;
-    padding-top: 8px;
+    padding-top: 7px;
     border-top: 1px dashed rgba(148, 163, 184, 0.22);
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 5px;
+    gap: 4px;
   }
 
   .tv-inline-ip-badge,
   .tv-inline-net-topology-badge,
   .tv-inline-hw-pill {
-    font-size: 0.67rem;
-    padding: 2px 7px;
-    border-radius: 6px;
+    font-size: 0.63rem;
+    padding: 2px 6px;
+    gap: 3px;
+    border-radius: 5px;
     white-space: nowrap;
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
+    letter-spacing: -0.01em;
   }
 
   .tv-inline-hw-group {
@@ -10084,17 +10093,6 @@ button, a, input, select { outline-offset: 3px; }
   /* Oculta FAB redundante que sobrepunha os botões de ação dos cards no mobile (a barra inferior já possui o CTA central Conectar) */
   .tv-mobile-fab {
     display: none !important;
-  }
-
-  .tv-scope-filter-group {
-    width: 100%;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    scrollbar-width: none;
-  }
-
-  .tv-scope-filter-group::-webkit-scrollbar {
-    display: none;
   }
 }
 
@@ -10173,4 +10171,38 @@ button, a, input, select { outline-offset: 3px; }
 .tv-search-match-clear:hover {
   background: rgba(16, 185, 129, 0.4);
   color: #ffffff;
+}
+
+@media (max-width: 768px) {
+  .tv-scope-filter-group {
+    order: 3;
+    flex: 1 1 100%;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 3px;
+    padding: 3px 4px;
+    border-radius: 9px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .tv-scope-filter-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tv-scope-chip {
+    flex: 1 1 auto;
+    justify-content: center;
+    padding: 5px 5px;
+    font-size: 0.68rem;
+    border-radius: 6px;
+  }
+
+  .tv-search-match-pill {
+    margin-left: auto;
+    height: 26px;
+    font-size: 0.69rem;
+  }
 }

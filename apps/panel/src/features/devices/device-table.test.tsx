@@ -336,7 +336,7 @@ describe('DeviceDirectory', () => {
   it('opens the release notes modal when clicking the version number button', async () => {
     renderDirectory(service());
     await screen.findAllByText('Recepcao 01');
-    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.7.6' });
+    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.7.7' });
     expect(versionButtons.length).toBeGreaterThan(0);
     await userEvent.click(versionButtons[0]);
     const dialog = await screen.findByRole('dialog', { name: /Novidades da Plataforma/i });
@@ -594,20 +594,20 @@ describe('DeviceDirectory', () => {
 
       // Digita observação na Máquina 3 (Totem Balcão)
       const notesInput = within(dialog).getByLabelText(/Observação Específica para/i);
-      await userEvent.type(notesInput, 'Totem destravado com sucesso');
+      fireEvent.change(notesInput, { target: { value: 'Totem destravado com sucesso' } });
       await userEvent.click(within(dialog).getByRole('button', { name: /Salvar e Ir p\/ Próxima \(2\)/i }));
 
       // Agora restam 2 máquinas na fila e o modal alternou automaticamente para a próxima
       expect(await screen.findByText('2 máquinas ativas')).toBeInTheDocument();
       const notesInput2 = within(dialog).getByLabelText(/Observação Específica para/i);
       expect(notesInput2).toHaveValue('');
-      await userEvent.type(notesInput2, 'Caixa 01 impressora ajustada');
+      fireEvent.change(notesInput2, { target: { value: 'Caixa 01 impressora ajustada' } });
       await userEvent.click(within(dialog).getByRole('button', { name: /Salvar e Ir p\/ Próxima \(1\)/i }));
 
       // Resta apenas a última máquina (Servidor)
       expect(screen.queryByText(/máquinas ativas/i)).not.toBeInTheDocument();
       const notesInput3 = within(dialog).getByLabelText(/Observação Específica para/i);
-      await userEvent.type(notesInput3, 'Servidor banco sincronizado');
+      fireEvent.change(notesInput3, { target: { value: 'Servidor banco sincronizado' } });
 
       // Fecha a última sessão pelo botão de fechar do HUD
       await userEvent.click(within(dialog).getByRole('button', { name: 'Fechar janela de documentação' }));

@@ -18,7 +18,7 @@ import {
 export interface ReleaseNoteItem {
   title: string;
   description: string;
-  tag: 'Mobilidade' | 'UI/UX' | 'TeamViewer' | 'Infra & Cockpit' | 'Novo';
+  tag: 'Mobilidade' | 'UI/UX' | 'TeamViewer' | 'Infra & Cockpit' | 'Novo' | 'Segurança' | 'Performance';
 }
 
 export interface ReleaseVersion {
@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.7.7',
+    date: 'Outubro 2026',
+    title: 'Correção de Responsividade Mobile: Busca Compacta (44px), Escopos sem Corte e Pílulas Adaptativas',
+    highlight:
+      'Eliminação do estiramento vertical de 380px na barra de busca no celular (causado por flex-basis em coluna), organização em camadas dos seletores de escopo (Tudo, Nome, IP, Razão Social, ID/CNPJ) sem corte lateral e ajuste das pílulas de categoria e telemetria.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Barra de Pesquisa Mobile Compacta (44px) sem Estiramento Vertical',
+        description:
+          'Correção do flex-basis (flex: 0 0 auto) quando a barra superior passa para flex-direction: column em telas <= 768px, eliminando o bloco branco de 380px que ocupava metade da tela do celular.',
+        tag: 'Mobilidade',
+      },
+      {
+        title: 'Seletores de Escopo, Categorias e Ordenação 100% Visíveis no Celular',
+        description:
+          'Distribuição responsiva em camadas para os chips Prontos/Fixados, seletores de escopo (Tudo, Nome, IP, Razão Social, ID/CNPJ), seletor de ordenação e abas de categorias sem corte lateral.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.7.6',
     date: 'Outubro 2026',
     title: 'Motor de Autenticação Same-Origin Instantâneo (<50ms) & Acelerador In-Memory de Heartbeat',
     highlight:
       'Resolução definitiva da falha de login (Google e E-mail/Senha) e da saturação dos workers do Appwrite: eliminação de 98% da carga de banco dos heartbeats em produção e emissão de JWT HMAC-SHA256 same-origin direto pela API (<50ms).',
-    isCurrent: true,
     items: [
       {
         title: 'JWT de Sessão Same-Origin HMAC-SHA256 (<50ms) para Google e E-mail/Senha',
