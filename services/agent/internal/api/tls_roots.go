@@ -1,10 +1,14 @@
 package api
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"net"
 	"net/http"
+	"strings"
 	"sync"
+	"time"
 )
 
 // isrgRootsPEM embeds the Let's Encrypt / ISRG Root X1 and Root YR certificates
@@ -82,24 +86,54 @@ var (
 	defaultTransport     http.RoundTripper
 )
 
+func extractSslipIPv4(host string) string {
+	lower := strings.ToLower(strings.TrimSuffix(host, "."))
+	if !strings.HasSuffix(lower, ".sslip.io") {
+		return ""
+	}
+	prefix := strings.TrimSuffix(lower, ".sslip.io")
+	parts := strings.Split(prefix, ".")
+	if len(parts) >= 4 {
+		candidate := strings.Join(parts[len(parts)-4:], ".")
+		if ip := net.ParseIP(candidate); ip != nil && ip.To4() != nil {
+			return ip.String()
+		}
+	}
+	return ""
+}
+
 // DefaultHTTPTransport returns a clone of http.DefaultTransport whose TLS RootCAs
-// include both the OS system certificate pool and the embedded ISRG Root X1 / Root YR
-// certificates for Windows 7 compatibility.
+// verify Let's Encrypt / ISRG Root X1 in pure Go first (avoiding Windows 7 CryptoAPI
+// CertGetCertificateChain 15-30s network hangs on ctldl.windowsupdate.com) and whose
+// DialContext resolves *.sslip.io directly from the embedded IPv4 address when present.
 func DefaultHTTPTransport() http.RoundTripper {
 	defaultTransportOnce.Do(func() {
-		pool, err := x509.SystemCertPool()
-		if err != nil || pool == nil {
-			pool = x509.NewCertPool()
-		}
-		pool.AppendCertsFromPEM([]byte(isrgRootsPEM))
+		pureGoPool := x509.NewCertPool()
+		pureGoPool.AppendCertsFromPEM([]byte(isrgRootsPEM))
 		if base, ok := http.DefaultTransport.(*http.Transport); ok {
 			cloned := base.Clone()
+			dialer := &net.Dialer{
+				Timeout:   10 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}
+			cloned.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+				host, port, err := net.SplitHostPort(addr)
+				if err == nil {
+					if embeddedIP := extractSslipIPv4(host); embeddedIP != "" {
+						if conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(embeddedIP, port)); dialErr == nil {
+							return conn, nil
+						}
+					}
+				}
+				return dialer.DialContext(ctx, network, addr)
+			}
+			cloned.TLSHandshakeTimeout = 12 * time.Second
 			if cloned.TLSClientConfig == nil {
 				cloned.TLSClientConfig = &tls.Config{}
 			} else {
 				cloned.TLSClientConfig = cloned.TLSClientConfig.Clone()
 			}
-			cloned.TLSClientConfig.RootCAs = pool
+			cloned.TLSClientConfig.RootCAs = pureGoPool
 			defaultTransport = cloned
 			return
 		}

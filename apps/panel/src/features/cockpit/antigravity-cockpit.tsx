@@ -355,7 +355,7 @@ export function AntigravityCockpit({
             <span className="metric-label">travas órfãs ativas</span>
           </div>
           <div className="card-footer-info">
-            <span>Banco: remote_management · v1.7.9</span>
+            <span>Banco: remote_management · v1.8.0</span>
           </div>
         </div>
 

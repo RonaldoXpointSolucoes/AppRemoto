@@ -238,7 +238,17 @@ func prepareInstallation(ctx context.Context, client *http.Client, endpoint stri
 		return Provisioning{}, &preparationError{"PREPARATION_RESPONSE"}
 	}
 	defer clear(plain)
-	v, err := Decode(plain, time.Now())
+	refNow := time.Now()
+	if dateHeader := response.Header.Get("Date"); dateHeader != "" {
+		if serverTime, parseErr := http.ParseTime(dateHeader); parseErr == nil {
+			refNow = serverTime
+		}
+	}
+	v, err := Decode(plain, refNow)
+	if err != nil {
+		// Tolerate Windows 7 Horário de Verão / CMOS clock skew (+1h..+24h) on fresh server response
+		v, err = Decode(plain, refNow.Add(-24*time.Hour))
+	}
 	if err != nil || v.DeviceDisplayName != req.DeviceDisplayName {
 		return Provisioning{}, &preparationError{"PREPARATION_RESPONSE"}
 	}
@@ -247,7 +257,7 @@ func prepareInstallation(ctx context.Context, client *http.Client, endpoint stri
 
 func preparationHTTPClient() *http.Client {
 	return &http.Client{
-		Timeout:       30 * time.Second,
+		Timeout:       15 * time.Second,
 		Transport:     api.DefaultHTTPTransport(),
 		CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirect refused") },
 	}

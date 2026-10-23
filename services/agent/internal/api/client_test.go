@@ -322,3 +322,17 @@ func TestReconfigureUsesBothCredentialsInBodyAndAcceptsOnlyAcknowledgement(t *te
 		}
 	}
 }
+
+func TestExtractSslipIPv4AndDefaultHTTPTransport(t *testing.T) {
+	if got := extractSslipIPv4("qyrjepou8xchzlfirsbrhwr9.179.199.142.157.sslip.io"); got != "179.199.142.157" {
+		t.Fatalf("extractSslipIPv4 = %q, want 179.199.142.157", got)
+	}
+	if got := extractSslipIPv4("example.com"); got != "" {
+		t.Fatalf("extractSslipIPv4(example.com) = %q, want empty", got)
+	}
+	rt := DefaultHTTPTransport()
+	tr, ok := rt.(*http.Transport)
+	if !ok || tr.TLSClientConfig == nil || tr.TLSClientConfig.RootCAs == nil || tr.DialContext == nil {
+		t.Fatal("DefaultHTTPTransport did not configure pure-Go RootCAs and DialContext")
+	}
+}

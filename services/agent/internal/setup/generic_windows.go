@@ -134,28 +134,35 @@ func prepareGeneric(ctx context.Context, p GenericProvisioning, input Installati
 	}
 	report.Record(1, "PREPARATION_STATE", "OK", nil)
 	report.Record(1, "PREPARATION_REQUEST", "START", nil)
-	requestCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	requestCtx, cancel := context.WithTimeout(ctx, 65*time.Second)
 	defer cancel()
 	provisioning, err := prepareWithExpiredRenewal(p, input, existingOrganization, &saved, pending == credentials, func(next preparationState) error {
 		report.Record(1, "PREPARATION_EXPIRED_RENEW", "START", nil)
 		return savePreparationState(statePath, next)
 	}, func(req preparationRequest) (Provisioning, error) {
-		for attempt := 0; attempt < 3; attempt++ {
-			prov, pErr := prepareInstallation(requestCtx, preparationHTTPClient(), APIURL, p, req)
+		var lastErr error
+		for attempt := 0; attempt < 4; attempt++ {
+			attemptCtx, cancelAttempt := context.WithTimeout(requestCtx, 14*time.Second)
+			prov, pErr := prepareInstallation(attemptCtx, preparationHTTPClient(), APIURL, p, req)
+			cancelAttempt()
 			if pErr == nil {
 				return prov, nil
 			}
+			lastErr = pErr
 			var pe *preparationError
-			if !errors.As(pErr, &pe) || (pe.Code != "PREPARATION_NETWORK" && pe.Code != "PREPARATION_UNAVAILABLE" && pe.Code != "GENERIC_INSTALLER_UNAVAILABLE") || attempt == 2 {
+			retryable := errors.Is(pErr, context.DeadlineExceeded) ||
+				(errors.As(pErr, &pe) && (pe.Code == "PREPARATION_NETWORK" || pe.Code == "PREPARATION_UNAVAILABLE" || pe.Code == "GENERIC_INSTALLER_UNAVAILABLE"))
+			if !retryable || attempt == 3 || requestCtx.Err() != nil {
 				return Provisioning{}, pErr
 			}
+			report.Record(1, "PREPARATION_REQUEST", "WAIT", nil)
 			select {
 			case <-requestCtx.Done():
 				return Provisioning{}, requestCtx.Err()
 			case <-time.After(1500 * time.Millisecond):
 			}
 		}
-		return prepareInstallation(requestCtx, preparationHTTPClient(), APIURL, p, req)
+		return Provisioning{}, lastErr
 	})
 	if err != nil {
 		return Provisioning{}, err

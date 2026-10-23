@@ -60,6 +60,27 @@ export const PLATFORM_RELEASES: ReleaseVersion[] = [
     ],
   },
   {
+    version: 'v1.8.0',
+    date: 'Outubro 2026',
+    title: 'Instalador v1.4.0 (Win 7 / 32-bit / 64-bit) — TLS Puro sem Travamento CryptoAPI & Resolução Direta .sslip.io',
+    highlight:
+      'Correção definitiva do erro PREPARATION_TIMEOUT / PREPARATION_NETWORK no Windows 7 (eliminando o travamento de 15-30s do CertGetCertificateChain/cryptnet.dll no Windows Update legado), resolução direta de IP para domínios .sslip.io e tolerância a fuso/Horário de Verão no Windows 7.',
+    items: [
+      {
+        title: 'Validação TLS Pure-Go Instantânea no Windows 7 (<1ms)',
+        description:
+          'Substituição do verificador intermediário Windows CryptoAPI (que travava de 15 a 30s tentando baixar listas CTL do Windows Update desativado no Windows 7) pelo verificador X.509 Pure-Go com raízes ISRG Root X1/YR embutidas.',
+        tag: 'Segurança',
+      },
+      {
+        title: 'Dialer Direto para .sslip.io e Tolerância a Horário de Verão (EXE v1.4.0)',
+        description:
+          'Extração automática do IPv4 embutido no domínio .sslip.io (evitando falhas ou bloqueios de DNS da operadora/roteador) e sincronização pelo cabeçalho Date do servidor para suportar relógios Windows 7 com defasagem de Horário de Verão.',
+        tag: 'Novo',
+      },
+    ],
+  },
+  {
     version: 'v1.7.9',
     date: 'Outubro 2026',
     title: 'Instalador Autônomo Self-Healing (EXE v1.3.9) & Correção Definitiva de Cadastro (RECONCILIATION)',
