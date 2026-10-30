@@ -32,12 +32,39 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.8.3',
+    date: 'Outubro 2026',
+    title: 'Filtro Automático via URL para Chamados / Iframe (Prioridade Estrita CNPJ > Nome & Rota /maquinas)',
+    highlight:
+      'Integração nativa por parâmetros de URL (?nome=...&cnpj=...) nas rotas /maquinas, /devices e /embed para abertura direta em iframe do sistema de gerenciamento de chamados, aplicando prioridade máxima ao CNPJ sobre o Nome e exibindo aviso explícito caso o CNPJ não seja localizado.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Prioridade Estrita de Filtros (CNPJ > Nome) via Parâmetros de URL',
+        description:
+          'Quando CNPJ e Nome são enviados simultaneamente na URL (ex.: /maquinas?nome=ClienteXYZ&cnpj=12345678000190), o CNPJ prevalece como identificador único sem que divergências no nome impeçam a localização das máquinas. Se apenas o nome for informado, o filtro busca pelo nome.',
+        tag: 'Novo',
+      },
+      {
+        title: 'Bloqueio de Fallback Automático por Nome quando CNPJ não é Encontrado',
+        description:
+          'Caso um CNPJ informado na URL não possua máquinas cadastradas, o sistema exibe uma mensagem clara informando que nenhum cliente foi localizado para o CNPJ informado, sem buscar automaticamente pelo nome para evitar confusão entre clientes homônimos.',
+        tag: 'Segurança',
+      },
+      {
+        title: 'Nova Rota /maquinas e Controle Manual Pós-Carregamento',
+        description:
+          'Suporte direto à rota /maquinas com preservação dos parâmetros de URL após autenticação e liberdade total para alterar ou limpar os filtros manualmente após o carregamento inicial.',
+        tag: 'UI/UX',
+      },
+    ],
+  },
+  {
     version: 'v1.8.2',
     date: 'Outubro 2026',
     title: 'Logs de Auditoria de Edição/Exclusão de Clientes + Bloqueio Estrito em Máquinas "Somente Admin"',
     highlight:
       'Criação da trilha completa de logs de auditoria para exclusão e edição de nome de clientes existentes (com histórico antes/depois, operador, horário e protocolo) e bloqueio completo de edição/exclusão em máquinas marcadas como "Somente Admin" para técnicos que não são administradores.',
-    isCurrent: true,
     items: [
       {
         title: 'Logs de Auditoria para Edição de Nome e Exclusão de Clientes',

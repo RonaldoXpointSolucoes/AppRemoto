@@ -342,7 +342,7 @@ describe('DeviceDirectory', () => {
   it('opens the release notes modal when clicking the version number button', async () => {
     renderDirectory(service());
     await screen.findAllByText('Recepcao 01');
-    const versionButtons = screen.getAllByRole('button', { name: 'Ver novidades da versão v1.8.1' });
+    const versionButtons = screen.getAllByRole('button', { name: /Ver novidades da versão v1\.8\./i });
     expect(versionButtons.length).toBeGreaterThan(0);
     await userEvent.click(versionButtons[0]);
     const dialog = await screen.findByRole('dialog', { name: /Novidades da Plataforma/i });
@@ -823,6 +823,89 @@ describe('DeviceDirectory', () => {
       el.textContent?.trim()
     );
     expect(renderedTitles).toEqual(['MARCENARIA - SERVIDOR']);
+  });
+
+  it('filters automatically by CNPJ (priority 1) over divergent nome in URL, blocks fallback to nome when CNPJ is not found, and supports nome-only URL filter', async () => {
+    const originalUrl = window.location.href;
+    const fleet = [
+      device({
+        id: 'dev-cnpj-real',
+        displayName: 'PADARIA CENTRAL - SERVIDOR',
+        hostname: 'SRV-PADARIA',
+        organizationName: 'Padaria Central LTDA',
+        rustdeskId: '111222333',
+        status: 'ONLINE',
+        datadivas: {
+          cnpj: '12.345.678/0001-90',
+          razaoSocial: 'Padaria Central LTDA',
+          nomeFantasia: 'Padaria Central',
+          funcao: 'SERVIDOR',
+        },
+      }),
+      device({
+        id: 'dev-cliente-xyz',
+        displayName: 'CLIENTE XYZ - CAIXA 01',
+        hostname: 'CAIXA-XYZ',
+        organizationName: 'Cliente XYZ Comercio',
+        rustdeskId: '444555666',
+        status: 'ONLINE',
+        datadivas: {
+          cnpj: '98.765.432/0001-10',
+          razaoSocial: 'Cliente XYZ Comercio LTDA',
+          nomeFantasia: 'Cliente XYZ',
+          funcao: 'CAIXA',
+        },
+      }),
+    ];
+
+    try {
+      // 1. Ambos nome e CNPJ na URL (?nome=ClienteXYZ&cnpj=12345678000190): CNPJ prevalece mesmo com nome divergente
+      window.history.replaceState({}, '', '/maquinas?nome=ClienteXYZ&cnpj=12345678000190');
+      const firstRender = renderDirectory(
+        service({ getDevices: vi.fn().mockResolvedValue({ devices: fleet, nextCursor: null }) })
+      );
+
+      await screen.findAllByText('CENTRAL - SERVIDOR');
+      const titlesWithBoth = Array.from(document.querySelectorAll('.tv-display-name')).map((el) =>
+        el.textContent?.trim()
+      );
+      expect(titlesWithBoth).toEqual(['CENTRAL - SERVIDOR']);
+      firstRender.unmount();
+
+      // 2. CNPJ não encontrado (?nome=ClienteXYZ&cnpj=55555555000155): exibe mensagem de CNPJ não localizado sem buscar pelo nome
+      window.history.replaceState({}, '', '/maquinas?nome=ClienteXYZ&cnpj=55555555000155');
+      const secondRender = renderDirectory(
+        service({ getDevices: vi.fn().mockResolvedValue({ devices: fleet, nextCursor: null }) })
+      );
+
+      const notFoundMessages = await screen.findAllByText(
+        /Nenhum cliente foi localizado para o CNPJ informado \(55\.555\.555\/0001-55\)\./i
+      );
+      expect(notFoundMessages.length).toBeGreaterThan(0);
+      expect(document.querySelectorAll('.tv-display-name')).toHaveLength(0);
+
+      // Permite limpar o filtro manualmente após o carregamento
+      await userEvent.click(screen.getByRole('button', { name: 'Ver Todos os Clientes' }));
+      await waitFor(() =>
+        expect(document.querySelectorAll('.tv-display-name')).toHaveLength(2)
+      );
+      secondRender.unmount();
+
+      // 3. Apenas nome na URL (?nome=ClienteXYZ): utiliza o nome como prioridade secundária
+      window.history.replaceState({}, '', '/maquinas?nome=ClienteXYZ');
+      const thirdRender = renderDirectory(
+        service({ getDevices: vi.fn().mockResolvedValue({ devices: fleet, nextCursor: null }) })
+      );
+
+      await screen.findAllByText('CLIENTE XYZ - CAIXA 01');
+      const titlesWithNameOnly = Array.from(document.querySelectorAll('.tv-display-name')).map(
+        (el) => el.textContent?.trim()
+      );
+      expect(titlesWithNameOnly).toEqual(['CLIENTE XYZ - CAIXA 01']);
+      thirdRender.unmount();
+    } finally {
+      window.history.replaceState({}, '', originalUrl);
+    }
   });
 });
 

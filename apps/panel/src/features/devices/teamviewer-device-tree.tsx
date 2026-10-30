@@ -42,6 +42,11 @@ import type { ConnectionLogEvent } from './connection-log';
 import type { DeviceDirectoryService } from './use-devices';
 import { type DeviceStatusState, formatLastSeen } from './device-record';
 import {
+  formatDocumentDisplay,
+  normalizeDocumentDigits,
+  type ChatbotCustomerContext,
+} from '../embed/chatbot-bridge';
+import {
   parseSystemInfo,
   resolveDeviceNetworkIps,
   resolveDeviceHardwareTelemetry,
@@ -581,6 +586,7 @@ export function TeamViewerDeviceTree({
   isAdmin,
   technicianName = 'Administrador / Técnico',
   technicianEmail,
+  urlFilterContext = null,
 }: {
   devices: DeviceView[];
   statusState: DeviceStatusState;
@@ -605,6 +611,7 @@ export function TeamViewerDeviceTree({
   isAdmin?(organizationId: string): boolean;
   technicianName?: string;
   technicianEmail?: string;
+  urlFilterContext?: ChatbotCustomerContext | null;
 }) {
   function isUserAdminForDevice(dev: DeviceView): boolean {
     return isAdmin ? isAdmin(dev.organizationId) : canManage(dev.organizationId);
@@ -1767,9 +1774,49 @@ export function TeamViewerDeviceTree({
       {/* Exibição Contínua de Todos os Dispositivos */}
       <div className="tv-rows-group">
         {processedDevices.length === 0 ? (
-          <div className="tv-folder-empty-state">
+          <div className="tv-folder-empty-state" role="status">
             <Monitor size={22} className="tv-empty-icon" />
-            <span>Nenhum computador encontrado para este filtro.</span>
+            {hasActiveSearch &&
+            (urlFilterContext?.filterMode === 'cnpj' ||
+              normalizeDocumentDigits(searchQuery).length === 14) ? (
+              <>
+                <span style={{ fontWeight: 600 }}>
+                  Nenhum cliente foi localizado para o CNPJ informado (
+                  {urlFilterContext?.formattedCnpj || formatDocumentDisplay(searchQuery)}).
+                </span>
+                <span
+                  style={{
+                    fontSize: '0.8rem',
+                    color: 'var(--text-muted)',
+                    maxWidth: 520,
+                    textAlign: 'center',
+                  }}
+                >
+                  O filtro priorizou exclusivamente o CNPJ informado, sem buscar automaticamente
+                  pelo nome. Você pode alterar ou limpar o filtro manualmente acima.
+                </span>
+              </>
+            ) : hasActiveSearch && urlFilterContext?.filterMode === 'name' ? (
+              <>
+                <span style={{ fontWeight: 600 }}>
+                  Nenhum cliente foi localizado para o nome informado (
+                  {urlFilterContext.contactName || searchQuery.trim()}).
+                </span>
+                <span
+                  style={{
+                    fontSize: '0.8rem',
+                    color: 'var(--text-muted)',
+                    maxWidth: 520,
+                    textAlign: 'center',
+                  }}
+                >
+                  Você pode alterar ou limpar o filtro manualmente acima para buscar outros
+                  computadores.
+                </span>
+              </>
+            ) : (
+              <span>Nenhum computador encontrado para este filtro.</span>
+            )}
             {(activeCategory || onlyOnlineQuickFilter || onlyFavoritesQuickFilter || hasActiveSearch) && (
               <button
                 type="button"

@@ -3,6 +3,8 @@
 import type { DeviceView } from '@appremoto/contracts';
 
 export interface ChatbotCustomerContext {
+  filterMode?: 'cnpj' | 'name';
+  activeQuery?: string;
   cnpj: string;
   formattedCnpj: string;
   contactName?: string;
@@ -15,6 +17,17 @@ export interface ChatbotCustomerContext {
   openCnpjModal?: boolean;
   source: 'url' | 'postMessage' | 'simulator';
   updatedAt: string;
+}
+
+export function getEffectiveContextQuery(ctx: ChatbotCustomerContext | null | undefined): string {
+  if (!ctx) return '';
+  if (typeof ctx.activeQuery === 'string' && ctx.activeQuery.trim().length > 0) {
+    return ctx.activeQuery.trim();
+  }
+  if (ctx.cnpj && ctx.cnpj.trim().length > 0) {
+    return ctx.cnpj.trim();
+  }
+  return ctx.contactName?.trim() || '';
 }
 
 export interface ChatbotDeviceSummary {
@@ -129,9 +142,15 @@ const SAFE_FORWARD_PARAMS = [
   'cnpj',
   'cpfCnpj',
   'document',
+  'doc',
+  'nome',
+  'name',
+  'cliente',
   'contactName',
   'customerName',
   'empresa',
+  'razaoSocial',
+  'nomeFantasia',
   'contactPhone',
   'phone',
   'whatsapp',
@@ -143,6 +162,28 @@ const SAFE_FORWARD_PARAMS = [
   'openCnpjModal',
   'compact',
 ] as const;
+
+function getSearchParamCaseInsensitive(
+  params: URLSearchParams,
+  ...keys: string[]
+): string | undefined {
+  for (const key of keys) {
+    const exact = params.get(key);
+    if (exact && exact.trim().length > 0) {
+      return exact.trim();
+    }
+  }
+  const entries = Array.from(params.entries());
+  for (const key of keys) {
+    const lowerKey = key.toLowerCase();
+    for (const [k, v] of entries) {
+      if (k.toLowerCase() === lowerKey && v && v.trim().length > 0) {
+        return v.trim();
+      }
+    }
+  }
+  return undefined;
+}
 
 export function normalizeDocumentDigits(raw?: string | null): string {
   if (!raw || typeof raw !== 'string') return '';
@@ -173,16 +214,19 @@ export function isRunningInIframe(): boolean {
   }
 }
 
-export function buildPreservedRoute(basePath: '/login' | '/devices', search?: string): string {
+export function buildPreservedRoute(
+  basePath: '/login' | '/devices' | '/maquinas',
+  search?: string
+): string {
   const rawSearch = search ?? (typeof window !== 'undefined' ? window.location.search : '');
   if (!rawSearch) return basePath;
   try {
     const incoming = new URLSearchParams(rawSearch);
     const outgoing = new URLSearchParams();
     for (const key of SAFE_FORWARD_PARAMS) {
-      const val = incoming.get(key);
-      if (val && val.trim().length > 0 && val.trim().length <= 160) {
-        outgoing.set(key, val.trim());
+      const val = getSearchParamCaseInsensitive(incoming, key);
+      if (val && val.length > 0 && val.length <= 160) {
+        outgoing.set(key, val);
       }
     }
     if (typeof window !== 'undefined' && window.location.pathname.startsWith('/embed') && !outgoing.has('embed')) {
@@ -201,45 +245,52 @@ export function parseInitialChatbotContext(search?: string): ChatbotCustomerCont
   try {
     const params = new URLSearchParams(rawSearch);
     const rawDoc =
-      params.get('cnpj') ||
-      params.get('cpfCnpj') ||
-      params.get('document') ||
-      params.get('doc') ||
-      '';
+      getSearchParamCaseInsensitive(params, 'cnpj', 'cpfCnpj', 'document', 'doc') || '';
     const digits = normalizeDocumentDigits(rawDoc);
-    const cleanText = rawDoc.trim();
-    if (!digits && !cleanText) return null;
+    const cleanDoc = rawDoc.trim();
 
-    const cnpjValue = digits.length >= 8 ? digits : cleanText;
-    const contactName =
-      params.get('contactName') ||
-      params.get('customerName') ||
-      params.get('empresa') ||
-      params.get('name') ||
-      undefined;
-    const contactPhone =
-      params.get('contactPhone') ||
-      params.get('phone') ||
-      params.get('whatsapp') ||
-      undefined;
-    const contactId = params.get('contactId') || params.get('externalId') || undefined;
-    const conversationId =
-      params.get('conversationId') ||
-      params.get('ticketId') ||
-      params.get('protocol') ||
-      undefined;
-    const preferredDeviceId = params.get('deviceId') || undefined;
-    const preferredRustDeskId = params.get('rustdeskId') || undefined;
-    const preferredRole = params.get('role') || undefined;
-    const openModalParam = params.get('openCnpjModal') || params.get('view');
+    const contactName = getSearchParamCaseInsensitive(
+      params,
+      'nome',
+      'name',
+      'cliente',
+      'contactName',
+      'customerName',
+      'empresa',
+      'razaoSocial',
+      'nomeFantasia'
+    );
+
+    const hasCnpj = digits.length > 0 || cleanDoc.length > 0;
+    const hasName = Boolean(contactName && contactName.trim().length > 0);
+    if (!hasCnpj && !hasName) return null;
+
+    const cnpjValue = hasCnpj ? (digits.length >= 6 ? digits : cleanDoc) : '';
+    const filterMode: 'cnpj' | 'name' = hasCnpj ? 'cnpj' : 'name';
+    const activeQuery = hasCnpj ? cnpjValue : contactName!.trim().slice(0, 128);
+
+    const contactPhone = getSearchParamCaseInsensitive(params, 'contactPhone', 'phone', 'whatsapp');
+    const contactId = getSearchParamCaseInsensitive(params, 'contactId', 'externalId');
+    const conversationId = getSearchParamCaseInsensitive(
+      params,
+      'conversationId',
+      'ticketId',
+      'protocol'
+    );
+    const preferredDeviceId = getSearchParamCaseInsensitive(params, 'deviceId');
+    const preferredRustDeskId = getSearchParamCaseInsensitive(params, 'rustdeskId');
+    const preferredRole = getSearchParamCaseInsensitive(params, 'role');
+    const openModalParam = getSearchParamCaseInsensitive(params, 'openCnpjModal', 'view');
     const openCnpjModal =
       openModalParam === '1' ||
       openModalParam === 'true' ||
       openModalParam === 'cnpj_modal';
 
     return {
+      filterMode,
+      activeQuery,
       cnpj: cnpjValue,
-      formattedCnpj: formatDocumentDisplay(cnpjValue),
+      formattedCnpj: hasCnpj ? formatDocumentDisplay(cnpjValue) : '',
       ...(contactName ? { contactName: contactName.trim().slice(0, 128) } : {}),
       ...(contactPhone ? { contactPhone: contactPhone.trim().slice(0, 40) } : {}),
       ...(contactId ? { contactId: contactId.trim().slice(0, 64) } : {}),
@@ -316,7 +367,7 @@ export function parseChatbotInboundMessage(
     if (!digits && !rawCnpj) return null;
     return {
       action: 'OPEN_CNPJ_MODAL',
-      cnpj: digits.length >= 8 ? digits : rawCnpj,
+      cnpj: digits.length >= 6 ? digits : rawCnpj,
     };
   }
 
@@ -349,11 +400,27 @@ export function parseChatbotInboundMessage(
   ) {
     const rawCnpj = pickString(body, 'cnpj', 'cpfCnpj', 'document', 'doc', 'query') || '';
     const digits = normalizeDocumentDigits(rawCnpj);
-    const cleanText = rawCnpj.trim();
-    if (!digits && !cleanText) return null;
+    const cleanDoc = rawCnpj.trim();
+    const contactName = pickString(
+      body,
+      'nome',
+      'contactName',
+      'customerName',
+      'empresa',
+      'cliente',
+      'name',
+      'razaoSocial',
+      'nomeFantasia'
+    );
 
-    const cnpjValue = digits.length >= 8 ? digits : cleanText;
-    const contactName = pickString(body, 'contactName', 'customerName', 'empresa', 'name', 'razaoSocial', 'nomeFantasia');
+    const hasCnpj = digits.length > 0 || cleanDoc.length > 0;
+    const hasName = Boolean(contactName && contactName.trim().length > 0);
+    if (!hasCnpj && !hasName) return null;
+
+    const cnpjValue = hasCnpj ? (digits.length >= 6 ? digits : cleanDoc) : '';
+    const filterMode: 'cnpj' | 'name' = hasCnpj ? 'cnpj' : 'name';
+    const activeQuery = hasCnpj ? cnpjValue : contactName!.trim().slice(0, 128);
+
     const contactPhone = pickString(body, 'contactPhone', 'phone', 'whatsapp', 'telefone');
     const contactId = pickString(body, 'contactId', 'externalId', 'customerId');
     const conversationId = pickString(body, 'conversationId', 'ticketId', 'protocol', 'chatId');
@@ -365,8 +432,10 @@ export function parseChatbotInboundMessage(
     return {
       action: 'SET_CONTEXT',
       context: {
+        filterMode,
+        activeQuery,
         cnpj: cnpjValue,
-        formattedCnpj: formatDocumentDisplay(cnpjValue),
+        formattedCnpj: hasCnpj ? formatDocumentDisplay(cnpjValue) : '',
         ...(contactName ? { contactName: contactName.slice(0, 128) } : {}),
         ...(contactPhone ? { contactPhone: contactPhone.slice(0, 40) } : {}),
         ...(contactId ? { contactId: contactId.slice(0, 64) } : {}),

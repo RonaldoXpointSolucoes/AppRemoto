@@ -392,6 +392,8 @@ export interface DeviceSearchIndex {
   ipHaystack: string;
   razaoHaystack: string;
   idHaystack: string;
+  compactIdentityHaystack: string;
+  cnpjDigits: string[];
   digitValues: string[];
 }
 
@@ -401,6 +403,24 @@ export function normalizeSearchText(value: string): string {
 
 function splitSearchWords(normalizedText: string): string[] {
   return normalizedText.split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+const DOC_DIGIT_CANDIDATE_REGEX = /\b\d{2,3}\.?\d{3}\.?\d{3}[/.]?\d{3,4}-?\d{2}\b|\b\d{11,14}\b/g;
+
+function extractDocumentDigitCandidates(sources: Array<string | null | undefined>): string[] {
+  const candidates = new Set<string>();
+  for (const src of sources) {
+    if (!src) continue;
+    const matches = src.match(DOC_DIGIT_CANDIDATE_REGEX);
+    if (!matches) continue;
+    for (const m of matches) {
+      const digits = m.replace(/\D+/g, '');
+      if (digits.length >= 11 && digits.length <= 14) {
+        candidates.add(digits);
+      }
+    }
+  }
+  return Array.from(candidates);
 }
 
 export function buildDeviceSearchIndex(
@@ -465,9 +485,26 @@ export function buildDeviceSearchIndex(
     dd?.endereco,
   ].filter(Boolean) as string[];
 
+  const extractedDocDigits = extractDocumentDigitCandidates([
+    dd?.cnpj,
+    dev.organizationName,
+    dev.displayName,
+    dd?.razaoSocial,
+    dd?.nomeFantasia,
+    dev.notes,
+    options?.customNotes,
+  ]);
+  const rawCnpjDigits = dd?.cnpj ? dd.cnpj.replace(/\D+/g, '') : '';
+  const cnpjDigitsSet = new Set<string>(extractedDocDigits);
+  if (rawCnpjDigits.length >= 6) {
+    cnpjDigitsSet.add(rawCnpjDigits);
+  }
+  const cnpjDigits = Array.from(cnpjDigitsSet);
+
   const idParts = [
     dev.rustdeskId,
     dd?.cnpj,
+    ...cnpjDigits,
     dd?.serial,
     dd?.ie,
   ].filter(Boolean) as string[];
@@ -482,6 +519,18 @@ export function buildDeviceSearchIndex(
     options?.customNotes,
   ].filter(Boolean) as string[];
 
+  const compactIdentityHaystack = [...nameParts, ...razaoParts]
+    .map((p) => normalizeSearchText(p).replace(/[^a-z0-9]+/g, ''))
+    .filter(Boolean)
+    .join(' ');
+
+  const digitValuesSet = new Set<string>(
+    idParts.map((v) => v.replace(/\D+/g, '')).filter(Boolean)
+  );
+  for (const c of cnpjDigits) {
+    digitValuesSet.add(c);
+  }
+
   return {
     mainTitleNorm,
     displayNameNorm,
@@ -495,7 +544,9 @@ export function buildDeviceSearchIndex(
     ipHaystack: normalizeSearchText(ipParts.join(' ')),
     razaoHaystack: normalizeSearchText(razaoParts.join(' ')),
     idHaystack: normalizeSearchText(idParts.join(' ')),
-    digitValues: idParts.map((v) => v.replace(/\D+/g, '')).filter(Boolean),
+    compactIdentityHaystack,
+    cnpjDigits,
+    digitValues: Array.from(digitValuesSet),
   };
 }
 
@@ -592,6 +643,14 @@ function scorePreparedClauseMatch(
     subtitleWords,
   } = index;
 
+  // 0. Prioridade máxima: Match exato ou de documento (CNPJ/CPF)
+  if (
+    clauseDigits.length >= 8 &&
+    index.cnpjDigits.some((c) => c === clauseDigits || c.includes(clauseDigits))
+  ) {
+    return 1000;
+  }
+
   // 1. Nome principal (mainTitle / displayName) idêntico ao filtro
   if (mainTitleNorm === cleanClause || displayNameNorm === cleanClause) {
     return 1000;
@@ -624,6 +683,14 @@ function scorePreparedClauseMatch(
   }
   if (cleanTokens.every((tok) => mainTitleNorm.includes(tok) || displayNameNorm.includes(tok))) {
     return 700;
+  }
+
+  // 4b. Nome colado (CamelCase / sem espaços, ex: "ClienteXYZ" batendo em "Cliente XYZ")
+  const compactClause = cleanClause.replace(/[^a-z0-9]+/g, '');
+  if (compactClause.length >= 4 && index.compactIdentityHaystack.includes(compactClause)) {
+    const compactTitle = mainTitleNorm.replace(/[^a-z0-9]+/g, '');
+    if (compactTitle.startsWith(compactClause)) return 880;
+    if (compactTitle.includes(compactClause)) return 690;
   }
 
   // 5. Busca combinada (ex: Nome + Função/IP) onde ao menos o primeiro termo está no Nome Principal
@@ -661,6 +728,9 @@ function scorePreparedClauseMatch(
     cleanTokens.every((tok) => index.razaoHaystack.includes(tok))
   ) {
     return 200;
+  }
+  if (compactClause.length >= 4 && index.compactIdentityHaystack.includes(compactClause)) {
+    return 220;
   }
 
   // 9. Match residual em observações / sistema operacional
@@ -706,10 +776,31 @@ export function matchesDeviceSearchIndex(
     const clause = clauses[i];
     if (scopedHaystack.includes(clause.raw)) return true;
 
+    // Match prioritário por CNPJ/CPF (com ou sem pontuação)
+    if (
+      clause.clauseDigits.length >= 11 &&
+      (index.cnpjDigits.some((c) => c.includes(clause.clauseDigits)) ||
+        index.digitValues.some((d) => d.includes(clause.clauseDigits)))
+    ) {
+      return true;
+    }
+
     if (scope === 'all' || scope === 'id') {
       if (
         (clause.clauseDigits.length >= 6 || clause.isNumericLike) &&
         index.digitValues.some((d) => d.includes(clause.clauseDigits))
+      ) {
+        return true;
+      }
+    }
+
+    // Match por nome sem espaços / CamelCase (ex.: "ClienteXYZ" -> "Cliente XYZ")
+    if (scope === 'all' || scope === 'name' || scope === 'razao') {
+      const compactClause = clause.cleanClause.replace(/[^a-z0-9]+/g, '');
+      if (
+        compactClause.length >= 4 &&
+        !/^\d+$/.test(compactClause) &&
+        index.compactIdentityHaystack.includes(compactClause)
       ) {
         return true;
       }

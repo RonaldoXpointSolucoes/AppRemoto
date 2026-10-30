@@ -47,6 +47,8 @@ describe('chatbot-bridge', () => {
     );
 
     expect(parsed).not.toBeNull();
+    expect(parsed?.filterMode).toBe('cnpj');
+    expect(parsed?.activeQuery).toBe('12345678000190');
     expect(parsed?.cnpj).toBe('12345678000190');
     expect(parsed?.formattedCnpj).toBe('12.345.678/0001-90');
     expect(parsed?.contactName).toBe('Joao Financeiro');
@@ -55,14 +57,39 @@ describe('chatbot-bridge', () => {
     expect(parsed?.preferredRole).toBe('CAIXA-01');
   });
 
+  it('prioritizes CNPJ over nome when both are provided in URL (?nome=ClienteXYZ&cnpj=12345678000190)', () => {
+    const parsed = parseInitialChatbotContext('?nome=ClienteXYZ&cnpj=12345678000190');
+    expect(parsed).not.toBeNull();
+    expect(parsed?.filterMode).toBe('cnpj');
+    expect(parsed?.activeQuery).toBe('12345678000190');
+    expect(parsed?.cnpj).toBe('12345678000190');
+    expect(parsed?.formattedCnpj).toBe('12.345.678/0001-90');
+    expect(parsed?.contactName).toBe('ClienteXYZ');
+  });
+
+  it('uses nome as secondary filter when CNPJ is not provided in URL (?nome=ClienteXYZ)', () => {
+    const parsed = parseInitialChatbotContext('?nome=ClienteXYZ');
+    expect(parsed).not.toBeNull();
+    expect(parsed?.filterMode).toBe('name');
+    expect(parsed?.activeQuery).toBe('ClienteXYZ');
+    expect(parsed?.cnpj).toBe('');
+    expect(parsed?.formattedCnpj).toBe('');
+    expect(parsed?.contactName).toBe('ClienteXYZ');
+  });
+
+  it('returns null when no filter parameters are provided in URL', () => {
+    expect(parseInitialChatbotContext('')).toBeNull();
+    expect(parseInitialChatbotContext('?foo=bar')).toBeNull();
+  });
+
   it('preserves safe Chatbot query parameters across /login and /devices navigation', () => {
     expect(buildPreservedRoute('/devices', '')).toBe('/devices');
     expect(
       buildPreservedRoute(
         '/login',
-        '?embed=1&cnpj=12345678000190&contactName=Cliente&unsafeToken=secret'
+        '?embed=1&nome=ClienteXYZ&cnpj=12345678000190&contactName=Cliente&unsafeToken=secret'
       )
-    ).toBe('/login?embed=1&cnpj=12345678000190&contactName=Cliente');
+    ).toBe('/login?embed=1&cnpj=12345678000190&nome=ClienteXYZ&contactName=Cliente');
   });
 
   it('parses inbound postMessage events from the Chatbot host', () => {
