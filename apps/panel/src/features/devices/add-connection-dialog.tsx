@@ -1,21 +1,25 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { Plus, X, FolderPlus, Monitor, Download, Zap, Check, ClipboardPaste } from 'lucide-react';
+import { Plus, X, FolderPlus, Monitor, Download, Zap, Check, ClipboardPaste, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
+import type { DeviceView } from '@appremoto/contracts';
 import { createDeviceGroup, saveRecentConnection } from './teamviewer-storage';
 import { launchRustDesk, manualRustDeskUri } from './rustdesk-launch';
+import { normalizeRustDeskIdKey } from './device-presentation';
 
 export function AddConnectionDialog({
   isOpen,
   onClose,
   onGroupCreated,
   technicianName,
+  existingDevices = [],
 }: {
   isOpen: boolean;
   onClose(): void;
   onGroupCreated?(): void;
   technicianName: string;
+  existingDevices?: DeviceView[];
 }) {
   const [tab, setTab] = useState<'quick_connect' | 'new_group' | 'installer'>('quick_connect');
   const [rustdeskId, setRustdeskId] = useState('');
@@ -26,6 +30,12 @@ export function AddConnectionDialog({
   const [connectError, setConnectError] = useState('');
 
   if (!isOpen) return null;
+
+  const cleanInputKey = normalizeRustDeskIdKey(rustdeskId);
+  const matchedExistingDevice =
+    cleanInputKey.length >= 6
+      ? existingDevices.find((d) => normalizeRustDeskIdKey(d.rustdeskId) === cleanInputKey)
+      : undefined;
 
   async function handlePasteClipboard() {
     try {
@@ -55,17 +65,23 @@ export function AddConnectionDialog({
     try {
       const serverHost = '179.199.142.157:21116';
       const publicKey = '6qc86QUPst9+H4QjXyQvSLPbGU6ef25iO+ESoi3figk=';
-      const peerAlias = displayName.trim() || undefined;
+      const effectiveAlias =
+        displayName.trim() || matchedExistingDevice?.displayName || undefined;
       const baseUri = `rustdesk://connect/${cleanId}@${serverHost}?key=${encodeURIComponent(publicKey)}`;
-      const targetUri = password ? manualRustDeskUri(baseUri, password, peerAlias) : baseUri;
-      launchRustDesk(targetUri, peerAlias);
+      const targetUri = password ? manualRustDeskUri(baseUri, password, effectiveAlias) : baseUri;
+      launchRustDesk(targetUri, effectiveAlias);
 
-      // Salva no histórico de recentes
+      // Reutiliza o cadastro existente caso o ID já esteja registrado, evitando duplicidade
       saveRecentConnection({
-        deviceId: `manual_${cleanId}`,
-        displayName: displayName.trim() || `ID ${cleanId}`,
-        hostname: displayName.trim() || cleanId,
-        organizationName: 'Conexão Manual',
+        deviceId: matchedExistingDevice?.id ?? `manual_${cleanId}`,
+        displayName:
+          displayName.trim() || matchedExistingDevice?.displayName || `ID ${cleanId}`,
+        hostname:
+          displayName.trim() || matchedExistingDevice?.hostname || cleanId,
+        organizationName: matchedExistingDevice?.organizationName || 'Conexão Manual',
+        ...(matchedExistingDevice?.organizationId
+          ? { organizationId: matchedExistingDevice.organizationId }
+          : {}),
         rustdeskId: cleanId,
         technicianName: technicianName || 'Técnico',
         mode: password ? 'automatic' : 'manual',
@@ -161,6 +177,21 @@ export function AddConnectionDialog({
                   autoFocus
                   required
                 />
+                {matchedExistingDevice && (
+                  <p
+                    className="session-save-success"
+                    role="status"
+                    style={{ marginTop: '0.5rem', fontSize: '0.8125rem' }}
+                  >
+                    <ShieldCheck size={15} />
+                    <span>
+                      Este ID já está cadastrado como{' '}
+                      <strong>{matchedExistingDevice.displayName}</strong> (
+                      {matchedExistingDevice.organizationName}). O cadastro existente será
+                      reutilizado sem duplicar o registro.
+                    </span>
+                  </p>
+                )}
               </div>
 
               <div className="field">

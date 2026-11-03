@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { mergeDataDivasIntoNotes } from '@appremoto/contracts';
 import type { Databases } from 'node-appwrite';
 
 import { buildApp } from '../app.ts';
@@ -389,4 +390,53 @@ test('search matches across displayName, local IP in osVersion, publicIp, razaoS
   // Multi-value comma-separated OR ("192.168.7.130, joao marcos")
   const byMultiOr = await get('/v1/devices?search=192.168.7.130%2C%20joao%20marcos', services(records, []));
   assert.deepEqual(byMultiOr.json().devices.map((r: { id: string }) => r.id), ['1', '3']);
+});
+
+test('deduplicates multiple registrations sharing the same RustDesk ID (e.g. 372313956) into one consolidated view', async () => {
+  const records = [
+    device('dup-1', 'a', {
+      createdAt: '2026-09-25T10:00:00.000Z',
+      displayName: 'MARCOS - PC',
+      hostname: 'PC-MarcosCalixto',
+      rustdeskId: '372313956',
+      osVersion: '10.0.19045',
+      notes: '[pasta:X-Point Soluções]',
+    }),
+    device('dup-2', 'a', {
+      createdAt: '2026-09-27T10:00:00.000Z',
+      displayName: 'Marcos X-Point',
+      hostname: 'PC-MARCOS',
+      rustdeskId: '372 313 956',
+      osVersion: '10.0.19045 · IP 192.168.0.125',
+      notes: mergeDataDivasIntoNotes(null, {
+        razaoSocial: 'Joao Marcos',
+        funcao: 'CAIXA',
+        ipMaq: '192.168.0.125',
+      }),
+    }),
+    device('dup-3', 'a', {
+      createdAt: '2026-09-29T10:00:00.000Z',
+      displayName: 'MARCOS-X-POINT',
+      hostname: 'MARCOS-X-POINT',
+      rustdeskId: '372313956',
+      osVersion: '10.0.19045',
+      notes: mergeDataDivasIntoNotes('[pasta:X-Point Soluções]', {
+        razaoSocial: 'Joao Marcos',
+        funcao: 'CAIXA',
+      }),
+    }),
+  ];
+
+  const response = await get('/v1/devices?search=372313956', services(records, []));
+  assert.equal(response.statusCode, 200);
+  const body = response.json();
+  assert.equal(body.devices.length, 1);
+  assert.equal(body.devices[0].id, 'dup-3');
+  assert.equal(body.devices[0].displayName, 'MARCOS-X-POINT');
+  assert.equal(body.devices[0].hostname, 'PC-MARCOS');
+  assert.equal(body.devices[0].osVersion, '10.0.19045 · IP 192.168.0.125');
+  assert.equal(body.devices[0].datadivas?.razaoSocial, 'Joao Marcos');
+  assert.equal(body.devices[0].datadivas?.funcao, 'CAIXA');
+  assert.equal(body.devices[0].datadivas?.ipMaq, '192.168.0.125');
+  assert.equal(body.devices[0].notes, '[pasta:X-Point Soluções]');
 });

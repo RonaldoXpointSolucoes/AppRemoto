@@ -1,7 +1,12 @@
-import { Account, AppwriteException, Client, Databases, Users } from 'node-appwrite';
+import { Account, AppwriteException, Client, Databases, Query, Users } from 'node-appwrite';
 import { hkdfSync } from 'node:crypto';
 import net from 'node:net';
 import { isDeepStrictEqual } from 'node:util';
+import {
+  extractDataDivasFromNotes,
+  extractDeviceAccessPolicy,
+  mergeDataDivasIntoNotes,
+} from '@appremoto/contracts';
 
 import type { ApiConfig } from '../config.ts';
 import type { TechnicianServices } from '../plugins/technician-auth.ts';
@@ -528,6 +533,46 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
           now - lastDbWriteAt >= DEVICE_DB_WRITE_THROTTLE_MS;
 
         if (!previous) {
+          const rdId =
+            typeof normalizedData.rustdesk_id === 'string' ? normalizedData.rustdesk_id.trim() : '';
+          if (/^[0-9]{6,16}$/.test(rdId)) {
+            try {
+              const siblings = await databases.listDocuments('remote_management', 'devices', [
+                Query.equal('rustdesk_id', rdId),
+                Query.limit(10),
+                Query.select(['$id', 'display_name', 'notes']),
+              ]);
+              for (const sib of siblings.documents) {
+                if (sib.$id === id) continue;
+                const sibNotes = typeof sib.notes === 'string' ? sib.notes : null;
+                const sibDisplay = typeof sib.display_name === 'string' ? sib.display_name : '';
+                if (sibNotes) {
+                  const { datadivas: sibDd, cleanNotes: sibClean } = extractDataDivasFromNotes(sibNotes);
+                  const sibPolicy = extractDeviceAccessPolicy(sibClean);
+                  if (sibPolicy.customDisplayName && sibDisplay) {
+                    normalizedData.display_name = sibDisplay;
+                  }
+                  const currNotes = typeof normalizedData.notes === 'string' ? normalizedData.notes : '';
+                  const { datadivas: currDd, cleanNotes: currClean } = extractDataDivasFromNotes(currNotes);
+                  let nextClean = currClean ?? '';
+                  const folderTag = sibClean ? /\[pasta:[^\]]+\]/i.exec(sibClean) : null;
+                  if (folderTag && !/\[pasta:[^\]]+\]/i.test(nextClean)) {
+                    nextClean = `${folderTag[0]} ${nextClean}`.trim();
+                  }
+                  const accessTag = sibClean ? /\[acesso:\{[^\]]*\}\]/i.exec(sibClean) : null;
+                  if (accessTag && !/\[acesso:\{[^\]]*\}\]/i.test(nextClean)) {
+                    nextClean = `${accessTag[0]} ${nextClean}`.trim();
+                  }
+                  const mergedDd = sibDd || currDd ? { ...(sibDd ?? {}), ...(currDd ?? {}) } : null;
+                  normalizedData.notes = mergedDd
+                    ? mergeDataDivasIntoNotes(nextClean || null, mergedDd)
+                    : nextClean || null;
+                }
+              }
+            } catch {
+              // Best-effort metadata inheritance from previous registrations of the same RustDesk ID
+            }
+          }
           await baseEnrollmentRepository.write(kind, id, normalizedData, previous);
           deviceSnapshotCache.set(id, {
             data: { ...normalizedData },
@@ -703,6 +748,10 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
         await baseReceiptsRepository.updateDeviceFields(deviceId, fields);
       }
       const cached = deviceSnapshotCache.get(deviceId);
+      const rdId =
+        cached && typeof cached.data.rustdesk_id === 'string'
+          ? cached.data.rustdesk_id.trim()
+          : '';
       if (cached) {
         cached.data = {
           ...cached.data,
@@ -711,13 +760,79 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
         };
         cached.cachedAt = Date.now();
       }
+      if (/^[0-9]{6,16}$/.test(rdId)) {
+        for (const [otherId, entry] of deviceSnapshotCache) {
+          if (otherId !== deviceId && entry.data.rustdesk_id === rdId) {
+            entry.data = {
+              ...entry.data,
+              display_name: fields.displayName,
+              notes: fields.notes,
+            };
+            entry.cachedAt = Date.now();
+          }
+        }
+        void databases
+          .listDocuments('remote_management', 'devices', [
+            Query.equal('rustdesk_id', rdId),
+            Query.limit(10),
+            Query.select(['$id']),
+          ])
+          .then(async (page) => {
+            for (const doc of page.documents) {
+              if (doc.$id !== deviceId) {
+                try {
+                  await databases.updateDocument('remote_management', 'devices', doc.$id, {
+                    display_name: fields.displayName,
+                    notes: fields.notes,
+                  });
+                } catch {}
+              }
+            }
+          })
+          .catch(() => {});
+      }
     },
     async deleteDevice(deviceId) {
+      const cached = deviceSnapshotCache.get(deviceId);
+      let rdId =
+        cached && typeof cached.data.rustdesk_id === 'string'
+          ? cached.data.rustdesk_id.trim()
+          : '';
+      if (!rdId) {
+        try {
+          const doc = await databases.getDocument('remote_management', 'devices', deviceId, [
+            Query.select(['rustdesk_id']),
+          ]);
+          if (typeof doc.rustdesk_id === 'string') {
+            rdId = doc.rustdesk_id.trim();
+          }
+        } catch {}
+      }
       deviceSnapshotCache.delete(deviceId);
       tokenSnapshotCache.delete(deviceId);
       heartbeatGuards.delete(deviceId);
       if (baseReceiptsRepository.deleteDevice) {
         await baseReceiptsRepository.deleteDevice(deviceId);
+      }
+      if (/^[0-9]{6,16}$/.test(rdId)) {
+        try {
+          const siblings = await databases.listDocuments('remote_management', 'devices', [
+            Query.equal('rustdesk_id', rdId),
+            Query.limit(15),
+            Query.select(['$id']),
+          ]);
+          for (const sib of siblings.documents) {
+            if (sib.$id === deviceId) continue;
+            deviceSnapshotCache.delete(sib.$id);
+            tokenSnapshotCache.delete(sib.$id);
+            heartbeatGuards.delete(sib.$id);
+            if (baseReceiptsRepository.deleteDevice) {
+              try {
+                await baseReceiptsRepository.deleteDevice(sib.$id);
+              } catch {}
+            }
+          }
+        } catch {}
       }
     },
   };
@@ -748,7 +863,7 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
         docs.map((d) => d.rustdeskId),
         now,
       );
-      return docs.map((doc) => {
+      const hydrated = docs.map((doc) => {
         const cached = deviceSnapshotCache.get(doc.id);
         const memSeenStr =
           cached && typeof cached.data.last_seen_at === 'string' ? cached.data.last_seen_at : null;
@@ -773,6 +888,52 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
           lastSeenAt,
         };
       });
+      const byRustdesk = new Map<string, (typeof hydrated)[number]>();
+      const out: typeof hydrated = [];
+      for (const item of hydrated) {
+        const rdDigits = (item.rustdeskId ?? '').replace(/\D+/g, '');
+        if (rdDigits.length < 6) {
+          out.push(item);
+          continue;
+        }
+        const prev = byRustdesk.get(rdDigits);
+        if (!prev) {
+          byRustdesk.set(rdDigits, item);
+          out.push(item);
+          continue;
+        }
+        const prevDd = extractDataDivasFromNotes(prev.notes).datadivas;
+        const itemDd = extractDataDivasFromNotes(item.notes).datadivas;
+        const prevScore =
+          (prevDd?.cnpj ? 40 : 0) +
+          (prevDd?.funcao ? 25 : 0) +
+          (prev.notes?.includes('[pasta:') ? 15 : 0);
+        const itemScore =
+          (itemDd?.cnpj ? 40 : 0) +
+          (itemDd?.funcao ? 25 : 0) +
+          (item.notes?.includes('[pasta:') ? 15 : 0);
+        const winner =
+          itemScore > prevScore ||
+          (itemScore === prevScore && Date.parse(item.createdAt) > Date.parse(prev.createdAt))
+            ? item
+            : prev;
+        const loser = winner === item ? prev : item;
+        const mergedDd =
+          prevDd || itemDd ? { ...(loser === prev ? prevDd : itemDd), ...(winner === prev ? prevDd : itemDd) } : null;
+        const mergedNotes = mergedDd
+          ? mergeDataDivasIntoNotes(winner.notes ?? loser.notes, mergedDd)
+          : winner.notes ?? loser.notes;
+        const consolidated = {
+          ...winner,
+          notes: mergedNotes,
+        };
+        byRustdesk.set(rdDigits, consolidated);
+        const idx = out.indexOf(prev);
+        if (idx !== -1) {
+          out[idx] = consolidated;
+        }
+      }
+      return out;
     },
     async updateDevice(deviceId, patch) {
       await baseCnpjNamingRepository.updateDevice(deviceId, patch);

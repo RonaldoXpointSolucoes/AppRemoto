@@ -1,4 +1,4 @@
-import { extractDeviceAccessPolicy, type DeviceView } from '@appremoto/contracts';
+import { extractDeviceAccessPolicy, type DataDivasInfo, type DeviceView } from '@appremoto/contracts';
 
 const GENERIC_ROLE_REGEX =
   /^((SERVIDOR|SERVER|CAIXA|PDV|BALANCA|GARCOM|ESCRITORIO|COZINHA|ESTOQUE|RETAGUARDA|TOTEM|TERMINAL|ESTACAO|RECEPCAO|FINANCEIRO|DELIVERY|KDS|MAQUINA|COMPUTADOR|PC|NOTEBOOK|WORKSTATION)(\s*[-_#]?\s*\d+)?|DESKTOP-[A-Z0-9-]+|WIN-[A-Z0-9-]+|LAPTOP-[A-Z0-9-]+)$/i;
@@ -863,4 +863,205 @@ export function matchesDeviceSearchIndex(
 
   return false;
 }
+
+export function normalizeRustDeskIdKey(rawId?: string | null): string {
+  if (!rawId) return '';
+  const trimmed = rawId.trim();
+  if (!trimmed) return '';
+  const digits = trimmed.replace(/\D+/g, '');
+  if (digits.length >= 6 && /^[\d\s.-]+$/.test(trimmed)) {
+    return digits;
+  }
+  return trimmed.toLowerCase();
+}
+
+function isGenericOrAutoDisplayName(name: string, rustdeskId?: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed) return true;
+  const rdDigits = (rustdeskId ?? '').replace(/\D+/g, '');
+  const nameDigits = trimmed.replace(/\D+/g, '');
+  if (rdDigits.length >= 6 && nameDigits === rdDigits) {
+    return true;
+  }
+  if (
+    /^((DESKTOP|WIN|LAPTOP|WORKSTATION|PC|COMPUTADOR|MAQUINA)[-_\s]|[A-Z0-9À-Ú]+\s*-\s*PC$)/i.test(
+      trimmed
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function scoreDeviceForDeduplication(dev: DeviceView): number {
+  let score = 0;
+  const policy = extractDeviceAccessPolicy(dev.notes);
+  if (dev.customDisplayName || policy.customDisplayName) {
+    score += 1000;
+  }
+  if (dev.status === 'ONLINE') {
+    score += 200;
+  }
+  if (dev.enabled !== false) {
+    score += 50;
+  }
+  const dd = dev.datadivas;
+  if (dd?.cnpj?.trim()) score += 80;
+  if (dd?.razaoSocial?.trim() || dd?.nomeFantasia?.trim()) score += 60;
+  if (dd?.funcao?.trim()) score += 50;
+  if (dd?.ipMaq?.trim()) score += 20;
+  if (dev.notes && /\[pasta:[^\]]+\]/i.test(dev.notes)) {
+    score += 40;
+  }
+  if (
+    dev.requiresAccessPassword ||
+    policy.requiresAccessPassword ||
+    dev.adminOnlyAccess ||
+    policy.adminOnlyAccess
+  ) {
+    score += 30;
+  }
+  const display = (dev.displayName || '').trim();
+  if (display && !isGenericOrAutoDisplayName(display, dev.rustdeskId)) {
+    score += 35;
+    if (/^[A-Z0-9À-Ú]+(?:-[A-Z0-9À-Ú]+)+$/.test(display) && display === display.toUpperCase()) {
+      score += 25;
+    }
+  }
+  return score;
+}
+
+function pickNewerIso(a?: string | null, b?: string | null): string | null {
+  const msA = a ? Date.parse(a) : NaN;
+  const msB = b ? Date.parse(b) : NaN;
+  if (Number.isFinite(msA) && Number.isFinite(msB)) {
+    return msA >= msB ? a! : b!;
+  }
+  if (Number.isFinite(msA)) return a!;
+  if (Number.isFinite(msB)) return b!;
+  return a ?? b ?? null;
+}
+
+function mergeCleanNotes(primaryNotes?: string | null, secondaryNotes?: string | null): string | undefined {
+  const p = (primaryNotes ?? '').trim();
+  const s = (secondaryNotes ?? '').trim();
+  if (!p && !s) return undefined;
+  if (!s) return p;
+  if (!p) return s;
+
+  let merged = p;
+  const secFolder = /\[pasta:[^\]]+\]/i.exec(s);
+  if (secFolder && !/\[pasta:[^\]]+\]/i.test(merged)) {
+    merged = `${secFolder[0]} ${merged}`.trim();
+  }
+  const secAccess = /\[acesso:\{[^\]]*\}\]/i.exec(s);
+  if (secAccess && !/\[acesso:\{[^\]]*\}\]/i.test(merged)) {
+    merged = `${secAccess[0]} ${merged}`.trim();
+  }
+  return merged.slice(0, 2000);
+}
+
+export function mergeDuplicateDeviceViews(a: DeviceView, b: DeviceView): DeviceView {
+  const scoreA = scoreDeviceForDeduplication(a);
+  const scoreB = scoreDeviceForDeduplication(b);
+  let primary = a;
+  let secondary = b;
+  if (scoreB > scoreA) {
+    primary = b;
+    secondary = a;
+  } else if (scoreB === scoreA) {
+    const createdA = a.createdAt ? Date.parse(a.createdAt) : NaN;
+    const createdB = b.createdAt ? Date.parse(b.createdAt) : NaN;
+    if (Number.isFinite(createdB) && (!Number.isFinite(createdA) || createdB > createdA)) {
+      primary = b;
+      secondary = a;
+    } else if (!Number.isFinite(createdA) && !Number.isFinite(createdB)) {
+      const seenA = a.lastSeenAt ? Date.parse(a.lastSeenAt) : NaN;
+      const seenB = b.lastSeenAt ? Date.parse(b.lastSeenAt) : NaN;
+      if (Number.isFinite(seenB) && (!Number.isFinite(seenA) || seenB > seenA)) {
+        primary = b;
+        secondary = a;
+      }
+    }
+  }
+
+  const mergedCreatedAt = pickNewerIso(primary.createdAt, secondary.createdAt);
+  const mergedLastSeenAt = pickNewerIso(primary.lastSeenAt, secondary.lastSeenAt);
+  const mergedStatus: DeviceView['status'] =
+    primary.status === 'ONLINE' || secondary.status === 'ONLINE' ? 'ONLINE' : primary.status;
+
+  let mergedHostname = primary.hostname;
+  if (
+    (!mergedHostname || mergedHostname.trim().toUpperCase() === primary.displayName.trim().toUpperCase()) &&
+    secondary.hostname &&
+    secondary.hostname.trim().toUpperCase() !== secondary.displayName.trim().toUpperCase()
+  ) {
+    mergedHostname = secondary.hostname;
+  }
+
+  let mergedOsVersion = primary.osVersion;
+  if (!mergedOsVersion.includes('IP ') && secondary.osVersion.includes('IP ')) {
+    mergedOsVersion = secondary.osVersion;
+  }
+
+  let mergedDataDivas: DataDivasInfo | undefined;
+  if (primary.datadivas || secondary.datadivas) {
+    const combined: Record<string, unknown> = { ...(secondary.datadivas ?? {}) };
+    for (const [key, val] of Object.entries(primary.datadivas ?? {})) {
+      if (val !== undefined && val !== '') {
+        combined[key] = val;
+      }
+    }
+    mergedDataDivas = combined as DataDivasInfo;
+  }
+
+  const mergedNotes = mergeCleanNotes(primary.notes, secondary.notes);
+  const mergedPublicIp = primary.publicIp || secondary.publicIp;
+  const requiresAccessPassword = Boolean(primary.requiresAccessPassword || secondary.requiresAccessPassword);
+  const adminOnlyAccess = Boolean(primary.adminOnlyAccess || secondary.adminOnlyAccess);
+  const customDisplayName = Boolean(primary.customDisplayName || secondary.customDisplayName);
+
+  return {
+    ...primary,
+    ...(mergedCreatedAt ? { createdAt: mergedCreatedAt } : {}),
+    hostname: mergedHostname,
+    osVersion: mergedOsVersion,
+    agentVersion: primary.agentVersion ?? secondary.agentVersion,
+    rustdeskVersion: primary.rustdeskVersion ?? secondary.rustdeskVersion,
+    lastSeenAt: mergedLastSeenAt,
+    ...(mergedPublicIp ? { publicIp: mergedPublicIp } : {}),
+    enabled: Boolean(primary.enabled || secondary.enabled),
+    status: mergedStatus,
+    ...(mergedDataDivas ? { datadivas: mergedDataDivas } : {}),
+    ...(mergedNotes ? { notes: mergedNotes } : {}),
+    ...(requiresAccessPassword ? { requiresAccessPassword: true } : {}),
+    ...(adminOnlyAccess ? { adminOnlyAccess: true } : {}),
+    ...(customDisplayName ? { customDisplayName: true } : {}),
+  };
+}
+
+export function deduplicateDevicesByRustDeskId(devices: DeviceView[]): DeviceView[] {
+  if (devices.length <= 1) return devices;
+  const out: DeviceView[] = [];
+  const indexByKey = new Map<string, number>();
+
+  for (let i = 0; i < devices.length; i++) {
+    const dev = devices[i];
+    const key = normalizeRustDeskIdKey(dev.rustdeskId);
+    if (!key) {
+      out.push(dev);
+      continue;
+    }
+    const existingIdx = indexByKey.get(key);
+    if (existingIdx !== undefined) {
+      out[existingIdx] = mergeDuplicateDeviceViews(out[existingIdx], dev);
+      continue;
+    }
+    indexByKey.set(key, out.length);
+    out.push(dev);
+  }
+
+  return out;
+}
+
 

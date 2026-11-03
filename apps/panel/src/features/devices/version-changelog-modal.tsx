@@ -32,12 +32,39 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.8.4',
+    date: 'Novembro 2026',
+    title: 'Desduplicação Automática de Dispositivos por ID do RustDesk & Prevenção de Cadastros Duplicados',
+    highlight:
+      'Consolidação inteligente de múltiplos registros com o mesmo ID do RustDesk em uma única máquina unificada na listagem, no backend e nos grupos de CNPJ, com herança de metadados ao reinstalar o agente e bloqueio de duplicidade no cadastro manual.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Desduplicação e Mesclagem Inteligente por ID do RustDesk (Backend & Painel)',
+        description:
+          'Quando o mesmo ID do RustDesk possui mais de um registro no banco (ex.: reinstalação do agente ou múltiplos cadastros), o sistema unifica automaticamente as entradas preservando o melhor nome personalizado, pasta ([pasta:...]), hostname, dados DataDivas (CNPJ, função, usuário) e status Online em tempo real.',
+        tag: 'Performance',
+      },
+      {
+        title: 'Prevenção de Duplicidade no Cadastro Manual e no Re-enrollment',
+        description:
+          'O modal "+ Adicionar" detecta em tempo real quando o ID do RustDesk digitado já está cadastrado, exibindo aviso imediato e reutilizando o cadastro existente. Na API, novos enrollments com o mesmo ID herdam automaticamente pasta, nome customizado e políticas de acesso.',
+        tag: 'Segurança',
+      },
+      {
+        title: 'Sincronização de Edição e Exclusão entre Registros Irmãos',
+        description:
+          'Ao renomear, mover de pasta ou excluir uma máquina, a API propaga a alteração ou remoção para todos os documentos associados àquele mesmo ID do RustDesk, impedindo que registros antigos voltem a aparecer.',
+        tag: 'Infra & Cockpit',
+      },
+    ],
+  },
+  {
     version: 'v1.8.3',
     date: 'Outubro 2026',
     title: 'Filtro Automático via URL para Chamados / Iframe (Prioridade Estrita CNPJ > Nome & Rota /maquinas)',
     highlight:
       'Integração nativa por parâmetros de URL (?nome=...&cnpj=...) nas rotas /maquinas, /devices e /embed para abertura direta em iframe do sistema de gerenciamento de chamados, aplicando prioridade máxima ao CNPJ sobre o Nome e exibindo aviso explícito caso o CNPJ não seja localizado.',
-    isCurrent: true,
     items: [
       {
         title: 'Prioridade Estrita de Filtros (CNPJ > Nome) via Parâmetros de URL',

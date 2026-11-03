@@ -23,12 +23,23 @@ const organizations: OrganizationView[] = [
   { id: 'org-b', name: 'Operacao Sul', slug: 'operacao-sul' },
 ];
 
+function deriveRustDeskIdFromDeviceId(id: string): string {
+  if (id === 'device-1') return '123456789';
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  }
+  return String(100000000 + (hash % 899999999));
+}
+
 function device(overrides: Partial<DeviceView> = {}): DeviceView {
+  const effectiveId = overrides.id ?? 'device-1';
   return {
-    id: 'device-1', organizationId: 'org-a', organizationName: 'Operacao Norte',
+    id: effectiveId, organizationId: 'org-a', organizationName: 'Operacao Norte',
     deviceUuid: '00000000-0000-4000-8000-000000000001', displayName: 'Recepcao 01',
     hostname: 'RECEPCAO-01', operatingSystem: 'Windows', osVersion: '11 Pro',
-    rustdeskId: '123456789', agentVersion: '1.0.0', rustdeskVersion: '1.4.0',
+    rustdeskId: overrides.rustdeskId ?? deriveRustDeskIdFromDeviceId(effectiveId),
+    agentVersion: '1.0.0', rustdeskVersion: '1.4.0',
     lastSeenAt: '2026-09-30T18:00:00.000Z', enabled: true, status: 'ONLINE', ...overrides,
   };
 }
@@ -906,6 +917,65 @@ describe('DeviceDirectory', () => {
     } finally {
       window.history.replaceState({}, '', originalUrl);
     }
+  });
+
+  it('deduplicates multiple registrations with the same RustDesk ID (e.g. 372313956) into a single consolidated row', async () => {
+    const duplicateFleet = [
+      device({
+        id: 'dup-marcos-1',
+        displayName: 'MARCOS - PC',
+        hostname: 'PC-MarcosCalixto',
+        rustdeskId: '372313956',
+        operatingSystem: 'Windows 10 Pro',
+        status: 'ONLINE',
+        notes: '[pasta:X-Point Soluções]',
+        lastSeenAt: '2026-10-20T10:00:00.000Z',
+      }),
+      device({
+        id: 'dup-marcos-2',
+        displayName: 'Marcos X-Point',
+        hostname: 'PC-MARCOS',
+        organizationName: 'Joao Marcos',
+        rustdeskId: '372 313 956',
+        operatingSystem: 'Windows 10 Pro',
+        status: 'ONLINE',
+        lastSeenAt: '2026-10-21T10:00:00.000Z',
+        datadivas: {
+          funcao: 'CAIXA',
+          nomeFantasia: 'X-Point Soluções',
+        },
+      }),
+      device({
+        id: 'dup-marcos-3',
+        displayName: 'MARCOS-X-POINT',
+        customDisplayName: true,
+        hostname: 'MARCOS-X-POINT',
+        organizationName: 'Joao Marcos',
+        rustdeskId: '372313956',
+        operatingSystem: 'Windows 10 Pro',
+        status: 'ONLINE',
+        notes: '[pasta:X-Point Soluções]',
+        lastSeenAt: '2026-10-22T10:00:00.000Z',
+        datadivas: {
+          funcao: 'CAIXA',
+        },
+      }),
+    ];
+
+    renderDirectory(
+      service({ getDevices: vi.fn().mockResolvedValue({ devices: duplicateFleet, nextCursor: null }) })
+    );
+
+    const searchInput = await screen.findByLabelText('Pesquisar e conectar dispositivo');
+    fireEvent.change(searchInput, { target: { value: '372313956' } });
+
+    await screen.findAllByText('372 313 956');
+    const renderedTitles = Array.from(document.querySelectorAll('.tv-display-name')).map((el) =>
+      el.textContent?.trim()
+    );
+    expect(renderedTitles).toHaveLength(1);
+    expect(document.querySelectorAll('.tv-id-text')).toHaveLength(1);
+    expect(screen.getAllByText(/Joao Marcos/i).length).toBeGreaterThan(0);
   });
 });
 

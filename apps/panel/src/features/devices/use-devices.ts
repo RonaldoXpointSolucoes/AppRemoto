@@ -16,10 +16,11 @@ import {
   CnpjMigrationResponse,
 } from '@appremoto/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ApiClientError, type DevicePage, type OrganizationView, type TechnicianView } from '../../lib/api';
 import type { ConnectionService } from './connect-device';
+import { deduplicateDevicesByRustDeskId } from './device-presentation';
 import { sessionEpoch } from '../auth/session-cache';
 
 export interface DeviceDirectoryService extends Partial<ConnectionService> {
@@ -170,6 +171,14 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
     ? organizations.error
     : devices.isError && page ? devices.error : null;
 
+  const deduplicatedRows = useMemo(
+    () =>
+      currentSession && page?.devices
+        ? deduplicateDevicesByRustDeskId(page.devices)
+        : EMPTY_DEVICE_ROWS,
+    [currentSession, page?.devices]
+  );
+
   return {
     canConnect: (organizationId: string) => currentSession && Boolean(profile.data) && (profile.data?.globalRole === 'super_admin'
       || Boolean(profile.data?.authorization.some((permission) => permission.organizationId === organizationId && permission.canConnect))),
@@ -184,7 +193,7 @@ export function useDevices(service: DeviceDirectoryService, filters: DeviceFilte
     profile: profile.data,
     organizations,
     devices,
-    rows: currentSession ? page?.devices ?? EMPTY_DEVICE_ROWS : EMPTY_DEVICE_ROWS,
+    rows: deduplicatedRows,
     error: organizationInitialError ? organizations.error : deviceInitialError ? devices.error : null,
     backgroundError,
     isOrganizationLoading: !currentSession || organizations.isPending,
