@@ -32,7 +32,7 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
-    version: 'v1.8.5 (EXE v1.4.1)',
+    version: 'v1.8.6 (EXE v1.4.1)',
     date: 'Novembro 2026',
     title: 'Instalador v1.4.1 para Windows 7 (32 e 64 bits) — Correção Definitiva de Identidade Protegida (win32=6)',
     highlight:

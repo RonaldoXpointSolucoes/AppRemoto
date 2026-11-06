@@ -480,11 +480,254 @@ button, a, input, select { outline-offset: 3px; }
 .setup-footer { display: flex; justify-content: flex-end; margin-top: 20px; }
 .automatic-setup { padding: clamp(18px, 4vw, 36px); border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 .eyebrow { text-transform: uppercase; letter-spacing: .06em; font-size: .75rem !important; font-weight: 700; color: var(--primary) !important; }
-.installer-form { display: grid; gap: 18px; margin-top: 28px; }
+.installer-form { display: grid; gap: 22px; margin-top: 28px; }
 .installer-field { display: grid; gap: 8px; }
 .installer-form label { display: grid; gap: 8px; font-weight: 700; }
 .installer-form input, .installer-form select { min-width: 0; width: 100%; min-height: 48px; padding: 10px 12px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
 .installer-form .primary-button { justify-self: start; }
+
+/* Lista Organizada de Opções de Instaladores e Painel de Release Notes */
+.installer-options-section {
+  display: grid;
+  gap: 14px;
+}
+
+.installer-options-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.installer-options-title {
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.installer-version-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--primary);
+  border: 1px solid rgba(16, 185, 129, 0.28);
+}
+
+.installer-options-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.installer-option-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.03);
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+[data-theme="dark"] .installer-option-card {
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.installer-option-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+
+.installer-option-recommended {
+  border-left: 4px solid #10b981;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.07) 0%, transparent 100%);
+}
+
+.installer-option-win7 {
+  border-left: 4px solid #f59e0b;
+}
+
+.installer-option-x86 {
+  border-left: 4px solid #06b6d4;
+}
+
+.installer-option-info {
+  flex: 1 1 320px;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.installer-option-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.installer-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.installer-badge-emerald {
+  background: rgba(16, 185, 129, 0.14);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.installer-badge-amber {
+  background: rgba(245, 158, 11, 0.14);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.installer-badge-cyan {
+  background: rgba(6, 182, 212, 0.14);
+  color: #06b6d4;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.installer-badge-neutral {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.installer-option-name {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.installer-option-desc {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.installer-option-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.installer-release-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.installer-release-card {
+  padding: 16px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.025);
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+[data-theme="dark"] .installer-release-card {
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.installer-release-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.92rem;
+  color: var(--text);
+}
+
+.installer-meta-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  font-size: 0.84rem;
+}
+
+.installer-meta-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.installer-meta-list li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.installer-meta-list li span {
+  color: var(--text-muted);
+}
+
+.installer-whatsnew-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.installer-whatsnew-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.installer-whatsnew-list li strong {
+  color: var(--text);
+}
+
+.installer-check-icon {
+  flex: 0 0 15px;
+  margin-top: 3px;
+  color: #10b981;
+}
+
+@media (max-width: 640px) {
+  .installer-option-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .installer-option-actions button {
+    width: 100%;
+    justify-content: center;
+  }
+}
 .field-hint, .technician-note p { color: var(--text-muted); font-size: .875rem; line-height: 1.6; }
 .field-hint { margin: 0; }
 .technician-note { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border); }

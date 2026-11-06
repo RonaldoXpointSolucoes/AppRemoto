@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Check, Copy, Download, LoaderCircle } from 'lucide-react';
+import { Check, CheckCircle2, Copy, Cpu, Download, HardDrive, LoaderCircle, Monitor, ShieldCheck, Sparkles } from 'lucide-react';
 import type { GenericInstallerPackage, GenericInstallerView } from '@appremoto/contracts';
 import { ApiClientError, createApiClient, type TechnicianView } from '../../lib/api';
 import { createAppwriteSessionClient } from '../../lib/appwrite';
@@ -215,31 +215,143 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
         <select id="generic-installer-selection" value={selected} disabled={busy} onChange={(event) => setSelected(event.target.value)}>
           {available.map((item) => <option key={item.id} value={item.id}>{item.name} · {new Date(item.createdAt).toLocaleDateString('pt-BR')}</option>)}
         </select></div>}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-        <button type="button" className="primary-button guide-link" disabled={busy || !ready} onClick={() => void download('x64')}>
-          {busy && busyArch === 'x64' ? <LoaderCircle aria-hidden="true" size={18} /> : <Download aria-hidden="true" size={18} />}
-          {busy && busyArch === 'x64' ? 'Preparando…' : 'Baixar instalador completo'}
-        </button>
-        <button type="button" className="command-button guide-link" disabled={busy || !ready} onClick={() => void copyDownloadLink('x64')} title="Copia o link direto de download do instalador completo 64 bits para enviar ao cliente">
-          {copiedArch === 'x64' ? <Check aria-hidden="true" size={18} className="text-emerald-400" /> : <Copy aria-hidden="true" size={18} />}
-          {copiedArch === 'x64' ? 'Link copiado!' : 'Copiar link de download'}
-        </button>
-        <button type="button" className="command-button guide-link" disabled={busy || !ready} onClick={() => void download('x86')} title="Baixa o instalador exclusivo para computadores Windows 32 bits (x86)">
-          {busy && busyArch === 'x86' ? <LoaderCircle aria-hidden="true" size={18} /> : <Download aria-hidden="true" size={18} />}
-          {busy && busyArch === 'x86' ? 'Preparando 32 bits…' : 'Baixar instalador 32 bits'}
-        </button>
-        <button type="button" className="command-button guide-link" disabled={busy || !ready} onClick={() => void copyDownloadLink('x86')} title="Copia o link direto do instalador 32 bits (x86) para enviar ao cliente">
-          {copiedArch === 'x86' ? <Check aria-hidden="true" size={18} className="text-emerald-400" /> : <Copy aria-hidden="true" size={18} />}
-          {copiedArch === 'x86' ? 'Link 32 bits copiado!' : 'Copiar link 32 bits'}
-        </button>
-        <button type="button" className="command-button guide-link" disabled={busy || !ready} onClick={() => void download('win7')} title="Baixa o instalador exclusivo para computadores com Windows 7 (32 e 64 bits)">
-          {busy && busyArch === 'win7' ? <LoaderCircle aria-hidden="true" size={18} /> : <Download aria-hidden="true" size={18} />}
-          {busy && busyArch === 'win7' ? 'Preparando Windows 7…' : 'Baixar instalador Windows 7'}
-        </button>
-        <button type="button" className="command-button guide-link" disabled={busy || !ready} onClick={() => void copyDownloadLink('win7')} title="Copia o link direto do instalador para Windows 7 (32 e 64 bits)">
-          {copiedArch === 'win7' ? <Check aria-hidden="true" size={18} className="text-emerald-400" /> : <Copy aria-hidden="true" size={18} />}
-          {copiedArch === 'win7' ? 'Link Windows 7 copiado!' : 'Copiar link Windows 7'}
-        </button>
+      <div className="installer-options-section">
+        <div className="installer-options-header">
+          <h2 className="installer-options-title">Opções de Download por Sistema Operacional</h2>
+          <span className="installer-version-pill">EXE v1.4.1 · Atualizado em 06/11/2026</span>
+        </div>
+        <ul className="installer-options-list" aria-label="Lista de instaladores disponíveis">
+          <li className="installer-option-card installer-option-recommended">
+            <div className="installer-option-info">
+              <div className="installer-option-badges">
+                <span className="installer-badge installer-badge-emerald">
+                  <Monitor aria-hidden="true" size={13} /> Recomendado · 64 bits (x64)
+                </span>
+                <span className="installer-badge installer-badge-neutral">EXE v1.4.1</span>
+                <span className="installer-badge installer-badge-neutral">30,8 MB</span>
+                <span className="installer-badge installer-badge-neutral">RustDesk 1.4.9</span>
+              </div>
+              <strong className="installer-option-name">1. Windows 10 e Windows 11 (64 bits)</strong>
+              <p className="installer-option-desc">
+                Arquivo: <code>XPoint-Instalar-Completo.exe</code> — Indicado para a maioria dos computadores modernos com Windows 10 ou Windows 11 (64 bits).
+              </p>
+            </div>
+            <div className="installer-option-actions">
+              <button type="button" className="primary-button guide-link" disabled={busy || !ready} onClick={() => void download('x64')}>
+                {busy && busyArch === 'x64' ? <LoaderCircle aria-hidden="true" size={18} /> : <Download aria-hidden="true" size={18} />}
+                {busy && busyArch === 'x64' ? 'Preparando…' : 'Baixar instalador completo'}
+              </button>
+              <button type="button" className="command-button guide-link" disabled={busy || !ready} onClick={() => void copyDownloadLink('x64')} title="Copia o link direto de download do instalador completo 64 bits para enviar ao cliente">
+                {copiedArch === 'x64' ? <Check aria-hidden="true" size={18} className="text-emerald-400" /> : <Copy aria-hidden="true" size={18} />}
+                {copiedArch === 'x64' ? 'Link copiado!' : 'Copiar link de download'}
+              </button>
+            </div>
+          </li>
+
+          <li className="installer-option-card installer-option-win7">
+            <div className="installer-option-info">
+              <div className="installer-option-badges">
+                <span className="installer-badge installer-badge-amber">
+                  <ShieldCheck aria-hidden="true" size={13} /> Windows 7 (32 e 64 bits)
+                </span>
+                <span className="installer-badge installer-badge-neutral">EXE v1.4.1</span>
+                <span className="installer-badge installer-badge-neutral">18,6 MB</span>
+                <span className="installer-badge installer-badge-neutral">RustDesk 1.4.9 Sciter</span>
+              </div>
+              <strong className="installer-option-name">2. Windows 7 SP1 (32 bits e 64 bits)</strong>
+              <p className="installer-option-desc">
+                Arquivo: <code>XPoint-Instalar-Completo-Win7.exe</code> — Exclusivo para computadores com <strong>Windows 7 (tanto 32 bits quanto 64 bits)</strong>. Inclui TLS Pure-Go e compatibilidade nativa com o kernel NT 6.1 (<code>win32=6</code> corrigido).
+              </p>
+            </div>
+            <div className="installer-option-actions">
+              <button type="button" className="command-button installer-btn-win7 guide-link" disabled={busy || !ready} onClick={() => void download('win7')} title="Baixa o instalador exclusivo para computadores com Windows 7 (32 e 64 bits)">
+                {busy && busyArch === 'win7' ? <LoaderCircle aria-hidden="true" size={18} /> : <Download aria-hidden="true" size={18} />}
+                {busy && busyArch === 'win7' ? 'Preparando Windows 7…' : 'Baixar instalador Windows 7'}
+              </button>
+              <button type="button" className="command-button guide-link" disabled={busy || !ready} onClick={() => void copyDownloadLink('win7')} title="Copia o link direto do instalador para Windows 7 (32 e 64 bits)">
+                {copiedArch === 'win7' ? <Check aria-hidden="true" size={18} className="text-emerald-400" /> : <Copy aria-hidden="true" size={18} />}
+                {copiedArch === 'win7' ? 'Link Windows 7 copiado!' : 'Copiar link Windows 7'}
+              </button>
+            </div>
+          </li>
+
+          <li className="installer-option-card installer-option-x86">
+            <div className="installer-option-info">
+              <div className="installer-option-badges">
+                <span className="installer-badge installer-badge-cyan">
+                  <Cpu aria-hidden="true" size={13} /> Sistemas 32 bits (x86)
+                </span>
+                <span className="installer-badge installer-badge-neutral">EXE v1.4.1</span>
+                <span className="installer-badge installer-badge-neutral">18,6 MB</span>
+                <span className="installer-badge installer-badge-neutral">RustDesk 1.4.9 x86</span>
+              </div>
+              <strong className="installer-option-name">3. Windows 8 / 8.1 / 10 (32 bits · x86)</strong>
+              <p className="installer-option-desc">
+                Arquivo: <code>XPoint-Instalar-Completo-32bits.exe</code> — Indicado para terminais PDV e computadores com sistema operacional de 32 bits (arquitetura <code>x86</code>).
+              </p>
+            </div>
+            <div className="installer-option-actions">
+              <button type="button" className="command-button installer-btn-x86 guide-link" disabled={busy || !ready} onClick={() => void download('x86')} title="Baixa o instalador exclusivo para computadores Windows 32 bits (x86)">
+                {busy && busyArch === 'x86' ? <LoaderCircle aria-hidden="true" size={18} /> : <Download aria-hidden="true" size={18} />}
+                {busy && busyArch === 'x86' ? 'Preparando 32 bits…' : 'Baixar instalador 32 bits'}
+              </button>
+              <button type="button" className="command-button guide-link" disabled={busy || !ready} onClick={() => void copyDownloadLink('x86')} title="Copia o link direto do instalador 32 bits (x86) para enviar ao cliente">
+                {copiedArch === 'x86' ? <Check aria-hidden="true" size={18} className="text-emerald-400" /> : <Copy aria-hidden="true" size={18} />}
+                {copiedArch === 'x86' ? 'Link 32 bits copiado!' : 'Copiar link 32 bits'}
+              </button>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <div className="installer-release-grid">
+        <div className="installer-release-card">
+          <div className="installer-release-card-header">
+            <HardDrive aria-hidden="true" size={16} className="text-emerald-400" />
+            <strong>Dados do Último Update</strong>
+          </div>
+          <ul className="installer-meta-list">
+            <li><span>Versão do Instalador (EXE):</span> <strong>v1.4.1 (Build Produção)</strong></li>
+            <li><span>Versão da Plataforma:</span> <strong>v1.8.6</strong></li>
+            <li><span>Data da Última Atualização:</span> <strong>06/11/2026</strong></li>
+            <li><span>Motor RustDesk Embutido:</span> <strong>v1.4.9 (Servidor XPoint Pré-configurado)</strong></li>
+            <li><span>Arquiteturas Homologadas:</span> <strong>Win 10/11 (x64), Win 7 (32/64 bits) e PC 32 bits (x86)</strong></li>
+            <li><span>Integridade Criptográfica:</span> <strong>SHA-256 + TLS 1.2/1.3 Pure-Go Validado</strong></li>
+          </ul>
+        </div>
+
+        <div className="installer-release-card">
+          <div className="installer-release-card-header">
+            <Sparkles aria-hidden="true" size={16} className="text-cyan-400" />
+            <strong>O Que Há de Novo no Instalador v1.4.1</strong>
+          </div>
+          <ul className="installer-whatsnew-list">
+            <li>
+              <CheckCircle2 aria-hidden="true" size={15} className="installer-check-icon" />
+              <div>
+                <strong>Correção Definitiva no Windows 7 (32 e 64 bits — <code>win32=6</code>):</strong> Substituição do pseudo-handle do Windows 8+ por <code>OpenProcessToken</code> nativo do kernel Windows 7 (NT 6.1) na Etapa 5 (<code>IDENTITY_DIRECTORY_PREPARE</code>).
+              </div>
+            </li>
+            <li>
+              <CheckCircle2 aria-hidden="true" size={15} className="installer-check-icon" />
+              <div>
+                <strong>TLS Instantâneo no Windows 7 (Sem Timeout):</strong> Validação X.509 Pure-Go com raízes ISRG embutidas e conexão direta <code>.sslip.io</code>, eliminando o travamento de 30s no Windows Update legado.
+              </div>
+            </li>
+            <li>
+              <CheckCircle2 aria-hidden="true" size={15} className="installer-check-icon" />
+              <div>
+                <strong>Autonomia para o Técnico (Self-Healing):</strong> Auto-consulta ao digitar 14 dígitos do CNPJ, autorrecuperação na Etapa 5, regras automáticas de Firewall, bloqueio de suspensão AC e cópia automática do ID RustDesk.
+              </div>
+            </li>
+            <li>
+              <CheckCircle2 aria-hidden="true" size={15} className="installer-check-icon" />
+              <div>
+                <strong>Preservação do Nome do Windows:</strong> O instalador identifica o computador no Painel XPoint sem renomear o hostname do Windows da máquina do cliente.
+              </div>
+            </li>
+          </ul>
+        </div>
       </div>
       <p className="field-hint">Empresa, grupo por CNPJ e função padronizada do computador são sugeridos automaticamente durante a instalação. Não é necessário abrir nem entrar no painel no computador do cliente.</p>
     </div>}
