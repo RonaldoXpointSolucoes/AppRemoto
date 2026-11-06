@@ -41,8 +41,13 @@ func Message(s string) {
 	windows.NewLazySystemDLL("user32.dll").NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(ptr(s))), uintptr(unsafe.Pointer(ptr("XPoint Remote"))), 0x40)
 }
 func Elevated() bool {
-	if windows.GetCurrentProcessToken().IsElevated() {
-		return true
+	var token windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &token); err == nil {
+		elevated := token.IsElevated()
+		_ = token.Close()
+		if elevated {
+			return true
+		}
 	}
 	if adminSID, err := windows.StringToSid("S-1-5-32-544"); err == nil {
 		if member, err := windows.Token(0).IsMember(adminSID); err == nil && member {

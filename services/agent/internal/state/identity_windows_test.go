@@ -326,7 +326,7 @@ func traversalOnlyAncestorFixture(t *testing.T) string {
 		}
 		runtime.KeepAlive(descriptor)
 	})
-	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	user, err := currentProcessTokenUser()
 	if err != nil {
 		t.Fatal(err)
 	}

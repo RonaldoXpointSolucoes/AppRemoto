@@ -32,12 +32,33 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.8.5 (EXE v1.4.1)',
+    date: 'Novembro 2026',
+    title: 'Instalador v1.4.1 para Windows 7 (32 e 64 bits) — Correção Definitiva de Identidade Protegida (win32=6)',
+    highlight:
+      'Correção definitiva do erro IDENTITY_DIRECTORY_PREPARE (win32=6 / ERROR_INVALID_HANDLE) no Windows 7 de 32 e 64 bits causado pelo pseudo-handle de token do Windows 8+, garantindo abertura real de token de processo no kernel NT 6.1 e propriedade SYSTEM na pasta de identidade.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Compatibilidade Nativa de Token de Processo no Kernel Windows 7 (32 e 64 bits)',
+        description:
+          'Substituição do pseudo-handle GetCurrentProcessToken (-4, exclusivo do Windows 8+) por OpenProcessToken(CurrentProcess(), TOKEN_QUERY) em toda a camada de segurança e identidade do agente, eliminando a falha win32=6 na Etapa 5.',
+        tag: 'Segurança',
+      },
+      {
+        title: 'Blindagem de Propriedade SYSTEM e Registro 64-bit sob WOW64 no Windows 7',
+        description:
+          'Garantia explícita de propriedade NT AUTHORITY\\SYSTEM e DACL protegida ao criar diretórios e artefatos de identidade no Windows 7 e leitura nativa da chave de versão 64-bit (WOW64_64KEY).',
+        tag: 'Infra & Cockpit',
+      },
+    ],
+  },
+  {
     version: 'v1.8.4',
     date: 'Novembro 2026',
     title: 'Desduplicação Automática de Dispositivos por ID do RustDesk & Prevenção de Cadastros Duplicados',
     highlight:
       'Consolidação inteligente de múltiplos registros com o mesmo ID do RustDesk em uma única máquina unificada na listagem, no backend e nos grupos de CNPJ, com herança de metadados ao reinstalar o agente e bloqueio de duplicidade no cadastro manual.',
-    isCurrent: true,
     items: [
       {
         title: 'Desduplicação e Mesclagem Inteligente por ID do RustDesk (Backend & Painel)',

@@ -121,10 +121,13 @@ func prepareIdentityDirectory(path string) error {
 	if err := verifyRelativeDirectoryLeaf(parent.handle(), parent.leaf, handle); err != nil {
 		return err
 	}
-	if !created {
-		if uSID, sSID, sErr := identitySIDs(); sErr == nil && uSID.Equals(sSID) {
-			_ = windows.SetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION, sSID, nil, nil, nil)
+	if uSID, sSID, sErr := identitySIDs(); sErr == nil && uSID.Equals(sSID) {
+		_ = windows.SetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION, sSID, nil, nil, nil)
+		if created {
+			_ = restrictIdentityDirectoryHandle(handle)
 		}
+	}
+	if !created {
 		descriptor, err := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
 		if err != nil {
 			return err
@@ -631,8 +634,17 @@ func allowFullAccess(sid *windows.SID, trusteeType windows.TRUSTEE_TYPE) windows
 	}
 }
 
+func currentProcessTokenUser() (*windows.Tokenuser, error) {
+	var token windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &token); err != nil {
+		return nil, err
+	}
+	defer token.Close()
+	return token.GetTokenUser()
+}
+
 func identitySIDs() (*windows.SID, *windows.SID, error) {
-	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	user, err := currentProcessTokenUser()
 	if err != nil {
 		return nil, nil, fmt.Errorf("get current user SID: %w", err)
 	}
@@ -789,8 +801,12 @@ func createRestrictedIdentityTemp(dir string) (*os.File, string, error) {
 		if err != nil {
 			return nil, "", err
 		}
+		access := uint32(windows.GENERIC_READ | windows.GENERIC_WRITE | windows.READ_CONTROL | windows.WRITE_DAC)
+		if userSID.Equals(systemSID) {
+			access |= uint32(windows.WRITE_OWNER)
+		}
 		handle, err := windows.CreateFile(pointer,
-			windows.GENERIC_READ|windows.GENERIC_WRITE|windows.READ_CONTROL|windows.WRITE_DAC,
+			access,
 			windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, attributes, windows.CREATE_NEW,
 			windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_WRITE_THROUGH|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
 		runtime.KeepAlive(descriptor)
@@ -799,6 +815,10 @@ func createRestrictedIdentityTemp(dir string) (*os.File, string, error) {
 		}
 		if err != nil {
 			return nil, "", err
+		}
+		if userSID.Equals(systemSID) {
+			_ = windows.SetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION, systemSID, nil, nil, nil)
+			_ = restrictIdentityWindowsHandle(handle)
 		}
 		file := os.NewFile(uintptr(handle), path)
 		if err := validateRestrictedIdentityWindowsHandle(handle); err != nil {

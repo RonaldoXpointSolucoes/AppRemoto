@@ -37,7 +37,7 @@ func CollectSystemInfo() (operatingSystem string, osVersion string) {
 	var ubr uint32
 
 	// Lê chaves do registro oficial do Windows
-	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows NT\CurrentVersion`, registry.QUERY_VALUE)
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows NT\CurrentVersion`, registry.QUERY_VALUE|registry.WOW64_64KEY); if err != nil { k, err = registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows NT\CurrentVersion`, registry.QUERY_VALUE) }
 	if err == nil {
 		defer k.Close()
 

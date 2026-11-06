@@ -123,7 +123,12 @@ func assertPreparedDirectorySecurity(t *testing.T, path string) {
 	if err != nil || owner == nil {
 		t.Fatalf("Owner(prepared) = %v, %v", owner, err)
 	}
-	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	var token windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &token); err != nil {
+		t.Fatalf("OpenProcessToken() error = %v", err)
+	}
+	defer token.Close()
+	user, err := token.GetTokenUser()
 	if err != nil {
 		t.Fatalf("GetTokenUser() error = %v", err)
 	}

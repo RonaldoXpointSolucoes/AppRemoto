@@ -21,7 +21,7 @@ func TestInstallerRecoveryMarkersAcrossAccounts(t *testing.T) {
 	if dir == "" {
 		t.Skip("requires isolated two-account verification directory")
 	}
-	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	var tok windows.Token; _ = windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &tok); defer tok.Close(); user, err := tok.GetTokenUser()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func (systemFixtureRustDesk) SetUnattendedPassword(context.Context, string) erro
 // Run this binary as SYSTEM to exercise the actual installer folder policy.
 // Only temporary files, synthetic API/RustDesk responses and local DPAPI are used.
 func TestInstallerStateRoundTripInProtectedDirectory(t *testing.T) {
-	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	var tok windows.Token; _ = windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &tok); defer tok.Close(); user, err := tok.GetTokenUser()
 	if err != nil {
 		t.Fatal(err)
 	}
