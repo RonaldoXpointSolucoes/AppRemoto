@@ -61,6 +61,99 @@ const DevicePageSchema = z.object({
   nextCursor: z.string().min(1).max(1024).nullable(),
 }).strip();
 
+const DiagnosticsTelemetryResponseSchema = z.object({
+  timestamp: z.string(),
+  version: z.string(),
+  selfHealing: z.object({
+    status: z.enum(['active', 'degraded']),
+    autoHealedEventsCount: z.number(),
+    orphanGuardsPurged: z.number(),
+    cacheEvictionsCount: z.number(),
+    dbFallbackActivations: z.number(),
+    devicesHealedCount: z.number(),
+    lastSelfHealAt: z.string().nullable(),
+  }).strip(),
+  api: z.object({
+    status: z.enum(['online', 'degraded', 'offline']),
+    uptimeSeconds: z.number(),
+    heapUsedMb: z.number(),
+    heapTotalMb: z.number(),
+    rssMb: z.number(),
+    heartbeatRatePerMinute: z.number(),
+    recentHeartbeatsSuccess: z.number(),
+    recentHeartbeatsFailed: z.number(),
+    avgHeartbeatLatencyMs: z.number(),
+    cacheStats: z.object({
+      deviceSnapshots: z.number(),
+      tokenSnapshots: z.number(),
+      jwtEntries: z.number(),
+      hbbsPeers: z.number(),
+      activeGuards: z.number(),
+    }).strip(),
+  }).strip(),
+  rustdesk: z.object({
+    status: z.enum(['online', 'degraded', 'offline']),
+    host: z.string(),
+    hbbsPort: z.number(),
+    hbbrPort: z.number(),
+    natPort: z.number(),
+    latencyMs: z.number(),
+    ports: z.array(z.object({
+      port: z.number(),
+      name: z.string(),
+      reachable: z.boolean(),
+      latencyMs: z.number(),
+    }).strip()),
+    registeredPeersCount: z.number(),
+    onlinePeersCount: z.number(),
+  }).strip(),
+  appwrite: z.object({
+    status: z.enum(['online', 'degraded', 'offline']),
+    latencyMs: z.number(),
+    database: z.string(),
+    activeGuardsCount: z.number(),
+    totalDevicesCount: z.number(),
+    onlineDevicesCount: z.number(),
+  }).strip(),
+  host: z.object({
+    cpuCores: z.number(),
+    loadAvg1m: z.number(),
+    memoryTotalMb: z.number(),
+    memoryFreeMb: z.number(),
+    memoryUsagePercent: z.number(),
+    uptimeHours: z.number(),
+  }).strip(),
+  events: z.array(z.object({
+    id: z.string(),
+    timestamp: z.string(),
+    level: z.enum(['info', 'warn', 'error', 'success']),
+    component: z.enum(['SERVIDOR NODE.JS', 'RUSTDESK SERVER', 'APPWRITE DB', 'HOST VPS', 'AGENTE WINDOWS', 'TRAEFIK PROXY']),
+    operation: z.string(),
+    message: z.string(),
+    rootCause: z.string().optional(),
+    autoRemediation: z.string().optional(),
+    details: z.record(z.string(), z.unknown()),
+  }).strip()),
+}).strip();
+
+export type DiagnosticsTelemetryResponse = z.infer<typeof DiagnosticsTelemetryResponseSchema>;
+
+const SelfHealExecutionResponseSchema = z.object({
+  executedAt: z.string(),
+  durationMs: z.number(),
+  overallStatus: z.enum(['healthy', 'remediated', 'attention']),
+  actions: z.array(z.object({
+    action: z.string(),
+    component: z.enum(['SERVIDOR NODE.JS', 'RUSTDESK SERVER', 'APPWRITE DB', 'HOST VPS', 'AGENTE WINDOWS', 'TRAEFIK PROXY']),
+    status: z.enum(['healed', 'verified', 'warning']),
+    summary: z.string(),
+    metrics: z.record(z.string(), z.union([z.number(), z.string(), z.boolean()])).optional(),
+  }).strip()),
+  telemetry: DiagnosticsTelemetryResponseSchema,
+}).strip();
+
+export type SelfHealExecutionResponse = z.infer<typeof SelfHealExecutionResponseSchema>;
+
 interface ApiClientOptions {
   baseUrl: string;
   getJwt: (() => Promise<string>) & { refresh?: (rejectedJwt: string) => Promise<string> };
@@ -191,6 +284,20 @@ export function createApiClient(options: ApiClientOptions) {
         ) {
           try {
             response = await execFetch(fallbackUrl, 6_000);
+            if (typeof window !== 'undefined' && response.ok) {
+              window.dispatchEvent(
+                new CustomEvent('xpoint:client-diagnostic', {
+                  detail: {
+                    level: 'warn',
+                    component: 'TRAEFIK PROXY',
+                    operation: 'GATEWAY_FAILOVER_RECOVERED',
+                    message: `[GatewayFailover] Oscilação 50x no endpoint primário superada automaticamente via rota alternativa para ${path}.`,
+                    rootCause: 'Gateway primário retornou HTTP 502/503/504.',
+                    autoRemediation: 'Failover automático para endpoint alternativo concluído com HTTP 200 OK.',
+                  },
+                })
+              );
+            }
           } catch {
             // Keep original gateway response if fallback also fails
           }
@@ -199,6 +306,20 @@ export function createApiClient(options: ApiClientOptions) {
         if (fallbackUrl) {
           try {
             response = await execFetch(fallbackUrl, 6_000);
+            if (typeof window !== 'undefined' && response.ok) {
+              window.dispatchEvent(
+                new CustomEvent('xpoint:client-diagnostic', {
+                  detail: {
+                    level: 'warn',
+                    component: 'TRAEFIK PROXY',
+                    operation: 'NETWORK_FAILOVER_RECOVERED',
+                    message: `[NetworkFailover] Timeout no endpoint primário recuperado automaticamente pela rota secundária em ${path}.`,
+                    rootCause: 'Interrupção ou timeout de socket no endpoint primário.',
+                    autoRemediation: 'Rota secundária acionada automaticamente sem impacto na operação.',
+                  },
+                })
+              );
+            }
           } catch {
             throw new ApiClientError({
               code: 'NETWORK_ERROR',
@@ -278,5 +399,7 @@ export function createApiClient(options: ApiClientOptions) {
     suggestCnpjName: (input: SuggestNameRequest) => request('/v1/cnpj-groups/suggest-name', SuggestNameResponseSchema, input),
     executeCnpjGroupAction: (input: AdminCnpjNamingActionRequest) => request('/v1/cnpj-groups/action', CnpjCompanyGroupViewSchema, input),
     migrateCnpjGroups: (input: CnpjMigrationRequest) => request('/v1/cnpj-groups/migrate', CnpjMigrationResponseSchema, input),
+    getDiagnosticsTelemetry: () => request('/v1/diagnostics/telemetry', DiagnosticsTelemetryResponseSchema),
+    executeDiagnosticsSelfHeal: () => request('/v1/diagnostics/self-heal', SelfHealExecutionResponseSchema, {}),
   };
 }

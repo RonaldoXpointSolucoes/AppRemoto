@@ -9,6 +9,7 @@ import type { OperatorSetupService } from '../services/operator-setup.ts';
 import type { GenericInstallerService } from '../services/generic-installers.ts';
 import type { CnpjNamingService } from '../services/cnpj-naming.ts';
 import type { TechnicianManagementService } from '../services/technician-management.ts';
+import type { SystemDiagnosticsService } from '../services/system-diagnostics.ts';
 
 export interface JwtVerifier {
   verify(jwt: string): Promise<{ userId: string } | null>;
@@ -28,6 +29,7 @@ export interface TechnicianServices {
   genericInstallers?: GenericInstallerService;
   cnpjNaming?: CnpjNamingService;
   technicianManagement?: TechnicianManagementService;
+  systemDiagnostics?: SystemDiagnosticsService;
 }
 
 export interface OrganizationAuthorization {

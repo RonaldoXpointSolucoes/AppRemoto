@@ -15,6 +15,8 @@ export interface CockpitLogEntry {
   level: LogLevel;
   component: LogComponent;
   message: string;
+  rootCause?: string;
+  autoRemediation?: string;
   details: Record<string, unknown>;
 }
 
@@ -29,7 +31,17 @@ export interface ServiceHealthStatus {
 export interface DiskBreakdownItem {
   id: string;
   label: string;
-  category: 'appwrite_uploads' | 'whatsmeow' | 'buildkit' | 'images' | 'volumes' | 'logs' | 'system' | 'mariadb' | 'free' | string;
+  category:
+    | 'appwrite_uploads'
+    | 'whatsmeow'
+    | 'buildkit'
+    | 'images'
+    | 'volumes'
+    | 'logs'
+    | 'system'
+    | 'mariadb'
+    | 'free'
+    | string;
   path: string;
   usedGb: number;
   percent: number;
@@ -65,7 +77,32 @@ export interface DiskDiagnostics {
   safeActions: DiskSafeAction[];
 }
 
+export interface SelfHealActionItem {
+  action: string;
+  component: LogComponent;
+  status: 'healed' | 'verified' | 'warning';
+  summary: string;
+  metrics?: Record<string, number | string | boolean>;
+}
+
+export interface SelfHealExecutionReport {
+  executedAt: string;
+  durationMs: number;
+  overallStatus: 'healthy' | 'remediated' | 'attention';
+  actions: SelfHealActionItem[];
+}
+
 export interface SystemTelemetry {
+  selfHealing?: {
+    status: 'active' | 'degraded';
+    autoHealedEventsCount: number;
+    orphanGuardsPurged: number;
+    cacheEvictionsCount: number;
+    dbFallbackActivations: number;
+    devicesHealedCount: number;
+    clientAutoRecoveriesCount: number;
+    lastSelfHealAt: string | null;
+  };
   vps: {
     status: 'online' | 'warning' | 'critical';
     diskUsagePercent: number;
@@ -84,6 +121,7 @@ export interface SystemTelemetry {
     relayServer: string;
     hbbsPort: number;
     hbbrPort: number;
+    latencyMs?: number;
     registeredPeersCount: number;
     onlinePeersCount: number;
   };
@@ -92,6 +130,7 @@ export interface SystemTelemetry {
     endpoint: string;
     projectId: string;
     database: string;
+    latencyMs?: number;
     activeGuardsCount: number;
     totalDevicesCount: number;
     onlineDevicesCount: number;
@@ -100,9 +139,12 @@ export interface SystemTelemetry {
     status: 'online' | 'degraded' | 'offline';
     endpoint: string;
     version: string;
+    uptimeSeconds?: number;
+    heapUsedMb?: number;
+    rssMb?: number;
+    avgHeartbeatLatencyMs?: number;
     heartbeatRatePerMinute: number;
     recentHeartbeatsSuccess: number;
     recentHeartbeatsFailed: number;
   };
 }
-

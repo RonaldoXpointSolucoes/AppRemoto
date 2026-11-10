@@ -10,6 +10,7 @@ import { registerSetupRoutes } from './routes/setup.ts';
 import { registerGenericInstallerRoutes } from './routes/generic-installers.ts';
 import { registerCnpjNamingRoutes } from './routes/cnpj-naming.ts';
 import { registerTechnicianManagementRoutes } from './routes/technician-management.ts';
+import { registerDiagnosticsRoutes } from './routes/diagnostics.ts';
 
 export function buildApp(options: FastifyServerOptions = {}, services?: TechnicianServices,
   allowedOrigins?: string[]): FastifyInstance {
@@ -27,6 +28,17 @@ export function buildApp(options: FastifyServerOptions = {}, services?: Technici
     request.log.warn({ code: 'REQUEST_FAILED' }, 'Request failed');
     const status = error instanceof Error && 'statusCode' in error && typeof error.statusCode === 'number' &&
       error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500;
+    if (status >= 500 && services?.systemDiagnostics) {
+      services.systemDiagnostics.recordEvent({
+        level: 'error',
+        component: 'SERVIDOR NODE.JS',
+        operation: 'UNHANDLED_ROUTE_ERROR',
+        message: `[ErrorBoundary] Falha interna capturada e isolada em ${request.method} ${request.routeOptions?.url ?? request.url} (HTTP ${status}).`,
+        rootCause: 'Exceção em tempo de execução isolada pelo ErrorHandler global do Fastify.',
+        autoRemediation: 'Resposta segura padronizada emitida sem expor stacktrace ou interromper o processo.',
+        details: { method: request.method, route: request.routeOptions?.url ?? request.url, status },
+      });
+    }
     return reply.code(status).send({ error: { code: 'REQUEST_FAILED', message: 'Request failed' } });
   });
 
@@ -47,6 +59,7 @@ export function buildApp(options: FastifyServerOptions = {}, services?: Technici
     if (services.genericInstallers) registerGenericInstallerRoutes(app, services.genericInstallers, authenticate);
     if (services.cnpjNaming) registerCnpjNamingRoutes(app, services.cnpjNaming, authenticate);
     if (services.technicianManagement) registerTechnicianManagementRoutes(app, services.technicianManagement, authenticate);
+    if (services.systemDiagnostics) registerDiagnosticsRoutes(app, authenticate, services.systemDiagnostics);
     registerMeRoute(app, authenticate);
     registerOrganizationsRoute(app, authenticate);
     if (services.devices && services.cursorSecret) {

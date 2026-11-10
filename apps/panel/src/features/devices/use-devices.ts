@@ -18,7 +18,14 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { ApiClientError, type DevicePage, type OrganizationView, type TechnicianView } from '../../lib/api';
+import {
+  ApiClientError,
+  type DevicePage,
+  type OrganizationView,
+  type TechnicianView,
+  type DiagnosticsTelemetryResponse,
+  type SelfHealExecutionResponse,
+} from '../../lib/api';
 import type { ConnectionService } from './connect-device';
 import { deduplicateDevicesByRustDeskId } from './device-presentation';
 import { sessionEpoch } from '../auth/session-cache';
@@ -35,6 +42,8 @@ export interface DeviceDirectoryService extends Partial<ConnectionService> {
   suggestCnpjName?(input: SuggestNameRequest): Promise<SuggestNameResponse>;
   executeCnpjGroupAction?(input: AdminCnpjNamingActionRequest): Promise<CnpjCompanyGroupView>;
   migrateCnpjGroups?(input: CnpjMigrationRequest): Promise<CnpjMigrationResponse>;
+  getDiagnosticsTelemetry?(): Promise<DiagnosticsTelemetryResponse>;
+  executeDiagnosticsSelfHeal?(): Promise<SelfHealExecutionResponse>;
   expireSession(): Promise<void>;
 }
 

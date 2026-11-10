@@ -312,7 +312,7 @@ export function GenericInstallerDownload({ service, onSessionExpired }: { servic
           </div>
           <ul className="installer-meta-list">
             <li><span>Versão do Instalador (EXE):</span> <strong>v1.4.1 (Build Produção)</strong></li>
-            <li><span>Versão da Plataforma:</span> <strong>v1.8.6</strong></li>
+            <li><span>Versão da Plataforma:</span> <strong>v1.8.7</strong></li>
             <li><span>Data da Última Atualização:</span> <strong>06/11/2026</strong></li>
             <li><span>Motor RustDesk Embutido:</span> <strong>v1.4.9 (Servidor XPoint Pré-configurado)</strong></li>
             <li><span>Arquiteturas Homologadas:</span> <strong>Win 10/11 (x64), Win 7 (32/64 bits) e PC 32 bits (x86)</strong></li>

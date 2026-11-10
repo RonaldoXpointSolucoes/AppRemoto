@@ -37,6 +37,7 @@ import {
   createTechnicianManagementService,
   verifyPanelSessionJwt,
 } from '../services/technician-management.ts';
+import { createSystemDiagnosticsService } from '../services/system-diagnostics.ts';
 
 const DEVICE_DB_WRITE_THROTTLE_MS = 60_000;
 const AGENT_ONLINE_GRACE_MS = 300_000;
@@ -299,6 +300,16 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
   function healDeviceInBackground(id: string, data: EnrollmentData): EnrollmentData {
     if (data.enabled === false) {
       const healed = { ...data, enabled: true };
+      systemDiagnostics.recordAutoHealCounter('deviceHealed', 1);
+      systemDiagnostics.recordEvent({
+        level: 'info',
+        component: 'SERVIDOR NODE.JS',
+        operation: 'DEVICE_ENABLED_AUTO_HEALED',
+        message: `[SelfHealingEngine] Dispositivo ${id} com flag enabled=false reconciliado automaticamente em background.`,
+        rootCause: 'Flag enabled desativada residualmente por operação anterior interrompida.',
+        autoRemediation: 'Reativado em memória e persistido assincronamente no Appwrite.',
+        details: { deviceId: id },
+      });
       void databases
         .updateDocument('remote_management', 'devices', id, { enabled: true })
         .catch(() => {});
@@ -310,12 +321,185 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
   function healTokenInBackground(id: string, data: EnrollmentData): EnrollmentData {
     if (data.revoked_at !== null && data.revoked_at !== undefined) {
       const healed = { ...data, revoked_at: null };
+      systemDiagnostics.recordAutoHealCounter('deviceHealed', 1);
+      systemDiagnostics.recordEvent({
+        level: 'info',
+        component: 'SERVIDOR NODE.JS',
+        operation: 'DEVICE_TOKEN_AUTO_HEALED',
+        message: `[SelfHealingEngine] Token de heartbeat do dispositivo ${id} restaurado automaticamente em background.`,
+        rootCause: 'Estado revoked_at residual de congelamento transitório anterior.',
+        autoRemediation: 'Revogação limpa em memória e sincronizada no Appwrite.',
+        details: { deviceId: id },
+      });
       void databases
         .updateDocument('remote_management', 'device_tokens', id, { revoked_at: null })
         .catch(() => {});
       return healed;
     }
     return data;
+  }
+
+  function pruneExpiredMemoryCaches(now = Date.now()): {
+    orphanGuardsPurged: number;
+    cachesEvicted: number;
+  } {
+    let orphanGuardsPurged = 0;
+    let cachesEvicted = 0;
+
+    for (const [guardId, guard] of heartbeatGuards) {
+      const startedMs = Date.parse(guard.startedAt);
+      if (guard.operationId == null && Number.isFinite(startedMs) && now - startedMs > 180_000) {
+        heartbeatGuards.delete(guardId);
+        orphanGuardsPurged += 1;
+      }
+    }
+
+    for (const [key, entry] of jwtCache) {
+      if (now >= entry.expiresAt) {
+        jwtCache.delete(key);
+        cachesEvicted += 1;
+      }
+    }
+    if (jwtCache.size > 1000) {
+      const dropCount = jwtCache.size - 500;
+      let i = 0;
+      for (const key of jwtCache.keys()) {
+        if (i++ >= dropCount) break;
+        jwtCache.delete(key);
+        cachesEvicted += 1;
+      }
+    }
+
+    for (const [key, entry] of deviceTokenByHashCache) {
+      if (now >= entry.expiresAt) {
+        deviceTokenByHashCache.delete(key);
+        cachesEvicted += 1;
+      }
+    }
+
+    for (const [key, entry] of hbbsPeerStateCache) {
+      if (now - entry.checkedAt >= HBBS_ONLINE_CACHE_TTL_MS * 6) {
+        hbbsPeerStateCache.delete(key);
+        cachesEvicted += 1;
+      }
+    }
+
+    for (const [key, entry] of techProfileCache) {
+      if (now >= entry.expiresAt) {
+        techProfileCache.delete(key);
+        cachesEvicted += 1;
+      }
+    }
+
+    for (const [key, entry] of techMembershipsCache) {
+      if (now >= entry.expiresAt) {
+        techMembershipsCache.delete(key);
+        cachesEvicted += 1;
+      }
+    }
+
+    for (const [key, entry] of orgActiveCache) {
+      if (now >= entry.expiresAt) {
+        orgActiveCache.delete(key);
+        cachesEvicted += 1;
+      }
+    }
+
+    if (orphanGuardsPurged > 0) {
+      systemDiagnostics.recordAutoHealCounter('orphanGuard', orphanGuardsPurged);
+    }
+    if (cachesEvicted > 0) {
+      systemDiagnostics.recordAutoHealCounter('cacheEviction', cachesEvicted);
+    }
+
+    return { orphanGuardsPurged, cachesEvicted };
+  }
+
+  const systemDiagnostics = createSystemDiagnosticsService({
+    hbbsHost,
+    hbbsOnlinePort: hbbsPort,
+    async probeAppwriteLatency() {
+      const start = performance.now();
+      try {
+        await databases.listDocuments('remote_management', 'organizations', [
+          Query.limit(1),
+          Query.select(['$id']),
+        ]);
+        return { ok: true, latencyMs: Math.max(1, Math.round(performance.now() - start)) };
+      } catch {
+        return { ok: false, latencyMs: Math.max(1, Math.round(performance.now() - start)) };
+      }
+    },
+    getCacheSnapshot() {
+      const now = Date.now();
+      let onlineDevicesCount = 0;
+      for (const [, entry] of deviceSnapshotCache) {
+        const seenStr =
+          typeof entry.data.last_seen_at === 'string' ? entry.data.last_seen_at : null;
+        const seenMs = seenStr ? Date.parse(seenStr) : NaN;
+        const rdId =
+          typeof entry.data.rustdesk_id === 'string' ? entry.data.rustdesk_id.trim() : '';
+        const hbbsOnline = rdId ? Boolean(hbbsPeerStateCache.get(rdId)?.online) : false;
+        if (
+          hbbsOnline ||
+          (Number.isFinite(seenMs) && now - seenMs >= -30_000 && now - seenMs <= 90_000)
+        ) {
+          onlineDevicesCount += 1;
+        }
+      }
+      return {
+        deviceSnapshots: deviceSnapshotCache.size,
+        tokenSnapshots: tokenSnapshotCache.size,
+        jwtEntries: jwtCache.size,
+        hbbsPeers: hbbsPeerStateCache.size,
+        activeGuards: heartbeatGuards.size,
+        totalDevicesCount: deviceSnapshotCache.size,
+        onlineDevicesCount,
+      };
+    },
+    async executeInternalSelfHeal() {
+      const now = Date.now();
+      const { orphanGuardsPurged, cachesEvicted } = pruneExpiredMemoryCaches(now);
+      let devicesReconciled = 0;
+      const peerIds: string[] = [];
+
+      for (const [id, entry] of deviceSnapshotCache) {
+        if (entry.data.enabled === false) {
+          entry.data = healDeviceInBackground(id, entry.data);
+          devicesReconciled += 1;
+        }
+        const rdId =
+          typeof entry.data.rustdesk_id === 'string' ? entry.data.rustdesk_id.trim() : '';
+        if (/^[0-9]{6,16}$/.test(rdId)) {
+          peerIds.push(rdId);
+        }
+      }
+
+      for (const [id, entry] of tokenSnapshotCache) {
+        if (entry.data.revoked_at !== null && entry.data.revoked_at !== undefined) {
+          entry.data = healTokenInBackground(id, entry.data);
+          devicesReconciled += 1;
+        }
+      }
+
+      hbbsPeerStateCache.clear();
+      const onlineSet = await resolveHbbsOnlineSet(peerIds, Date.now());
+      return {
+        orphanGuardsPurged,
+        cachesEvicted,
+        devicesReconciled,
+        hbbsOnlineSynced: onlineSet.size,
+      };
+    },
+  });
+
+  const cachePruneInterval = setInterval(() => {
+    try {
+      pruneExpiredMemoryCaches(Date.now());
+    } catch {}
+  }, 5 * 60_000);
+  if (typeof cachePruneInterval.unref === 'function') {
+    cachePruneInterval.unref();
   }
 
   const baseEnrollmentRepository = createEnrollmentRepository(databases);
@@ -434,6 +618,16 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
           Number.isFinite(nextTime) &&
           nextTime - existingTime > 180_000;
         if (!isExpiredOrphan) return false;
+        systemDiagnostics.recordAutoHealCounter('orphanGuard', 1);
+        systemDiagnostics.recordEvent({
+          level: 'warn',
+          component: 'SERVIDOR NODE.JS',
+          operation: 'ORPHAN_GUARD_AUTO_PURGED',
+          message: `[SelfHealingEngine] Trava órfã de heartbeat (>180s) para dispositivo ${guard.deviceId} purgada automaticamente.`,
+          rootCause: 'Operação de heartbeat anterior expirou sem confirmação de término.',
+          autoRemediation: 'Guarda órfã removida para desbloquear novos heartbeats da máquina.',
+          details: { deviceId: guard.deviceId, previousStartedAt: existing.startedAt },
+        });
       }
       heartbeatGuards.set(guard.deviceId, { ...guard });
       return true;
@@ -955,10 +1149,16 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
     },
   });
 
+  const rawHeartbeatService = createHeartbeatService({
+    repository: enrollmentRepository,
+    audit: auditRepository,
+  });
+
   return {
     genericInstallers,
     cnpjNaming,
     technicianManagement,
+    systemDiagnostics,
     projectId: config.appwriteProjectId,
     jwtVerifier: {
       async verify(jwt) {
@@ -1059,7 +1259,65 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
     },
     devices: {
       async scan(organizationIds, afterId, snapshotTime, limit) {
-        const scanResult = await baseDevices.scan(organizationIds, afterId, snapshotTime, limit);
+        let scanResult: Awaited<ReturnType<typeof baseDevices.scan>>;
+        try {
+          scanResult = await baseDevices.scan(organizationIds, afterId, snapshotTime, limit);
+        } catch (err) {
+          const allowedOrgSet = new Set(organizationIds);
+          const fallbackItems = Array.from(deviceSnapshotCache.entries())
+            .filter(([id, entry]) => {
+              const orgId =
+                typeof entry.data.organization_id === 'string' ? entry.data.organization_id : '';
+              if (!allowedOrgSet.has(orgId)) return false;
+              if (afterId && id <= afterId) return false;
+              return true;
+            })
+            .sort(([idA], [idB]) => (idA < idB ? -1 : idA > idB ? 1 : 0));
+
+          if (fallbackItems.length === 0 && deviceSnapshotCache.size === 0) {
+            throw err;
+          }
+
+          const sliced = fallbackItems.slice(0, limit);
+          systemDiagnostics.recordAutoHealCounter('dbFallback', 1);
+          systemDiagnostics.recordEvent({
+            level: 'warn',
+            component: 'APPWRITE DB',
+            operation: 'APPWRITE_SCAN_SNAPSHOT_FALLBACK',
+            message: `[SelfHealingEngine] Oscilação transitória no Appwrite durante listagem de dispositivos. Continuidade assegurada pelo Snapshot Cache em memória (${sliced.length} dispositivos entregues).`,
+            rootCause: 'Timeout ou indisponibilidade momentânea na consulta paginada ao Appwrite.',
+            autoRemediation: 'Fallback automático para deviceSnapshotCache em memória sem interrupção para o operador.',
+            details: { returnedCount: sliced.length, totalCached: deviceSnapshotCache.size },
+          });
+
+          scanResult = {
+            hasMore: fallbackItems.length > limit,
+            records: sliced.map(([id, entry]) => ({
+              id,
+              createdAt: new Date(entry.cachedAt).toISOString(),
+              organizationId: String(entry.data.organization_id ?? ''),
+              deviceUuid: String(entry.data.device_uuid ?? ''),
+              displayName: String(entry.data.display_name ?? id),
+              hostname: String(entry.data.hostname ?? id),
+              operatingSystem: String(entry.data.operating_system ?? 'Windows'),
+              osVersion: String(entry.data.os_version ?? ''),
+              rustdeskId: String(entry.data.rustdesk_id ?? ''),
+              agentVersion:
+                typeof entry.data.agent_version === 'string' ? entry.data.agent_version : null,
+              rustdeskVersion:
+                typeof entry.data.rustdesk_version === 'string'
+                  ? entry.data.rustdesk_version
+                  : null,
+              lastSeenAt:
+                typeof entry.data.last_seen_at === 'string' ? entry.data.last_seen_at : null,
+              ...(typeof entry.data.last_ip === 'string' && entry.data.last_ip
+                ? { publicIp: entry.data.last_ip }
+                : {}),
+              enabled: true,
+              ...(typeof entry.data.notes === 'string' ? { notes: entry.data.notes } : {}),
+            })),
+          };
+        }
         const now = Date.now();
         const mergedInitial = scanResult.records.map((rec) => {
           if (rec.enabled === false) {
@@ -1186,10 +1444,17 @@ export function createAppwriteServices(config: ApiConfig): TechnicianServices {
       encryptionKey: config.masterEncryptionKey,
       keyVersion: config.encryptionKeyVersion,
     }),
-    recordHeartbeat: createHeartbeatService({
-      repository: enrollmentRepository,
-      audit: auditRepository,
-    }),
+    recordHeartbeat: async (tokenHash, input, sourceIp) => {
+      const start = performance.now();
+      try {
+        const res = await rawHeartbeatService(tokenHash, input, sourceIp);
+        systemDiagnostics.recordHeartbeatMetric('success', Math.round(performance.now() - start));
+        return res;
+      } catch (err) {
+        systemDiagnostics.recordHeartbeatMetric('failure', Math.round(performance.now() - start));
+        throw err;
+      }
+    },
     operatorSetup: createOperatorSetupService({
       repository: enrollmentRepository,
       guard: enrollmentRepository,

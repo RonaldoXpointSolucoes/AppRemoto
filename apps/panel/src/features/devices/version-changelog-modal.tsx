@@ -32,12 +32,39 @@ export interface ReleaseVersion {
 
 export const PLATFORM_RELEASES: ReleaseVersion[] = [
   {
+    version: 'v1.8.7',
+    date: 'Novembro 2026',
+    title: 'Motor de Auto-Cura (Self-Healing Engine), Diagnóstico de Causa-Raiz em Tempo Real e Resiliência Multi-Camadas',
+    highlight:
+      'Implementação de inteligência de erros com diagnóstico automático de causa-raiz, coletor TTL de caches em memória, fallback automático de leitura do Appwrite, proteção global contra ChunkLoadError pós-deploy e reconciliação completa sob demanda no Antigravity Cockpit.',
+    isCurrent: true,
+    items: [
+      {
+        title: 'Motor de Auto-Cura Backend & Fallback Resiliente de Listagem (/v1/diagnostics/*)',
+        description:
+          'Expurgo automático de travas órfãs de heartbeat (>180s), coletor de lixo TTL para os 7 caches em memória da API, sondagem TCP ativa das portas RustDesk (21115/21116/21117) e fallback automático para o Snapshot Cache caso o Appwrite apresente oscilação transitória.',
+        tag: 'Infra & Cockpit',
+      },
+      {
+        title: 'Self-Healing Runtime Boundary & Failover Transparente no Painel Web',
+        description:
+          'Interceptador global de falhas de runtime que detecta e recupera automaticamente erros de atualização de pacotes (ChunkLoadError pós-deploy), compacta o armazenamento local sob pressão de quota e registra eventos de failover automático de gateway.',
+        tag: 'Segurança',
+      },
+      {
+        title: 'Botão "Auto-Cura Agora" e Diagnóstico de Causa-Raiz no Antigravity Cockpit',
+        description:
+          'Integração direta do Cockpit com a telemetria real do servidor (Heap/RSS, latências em ms do Appwrite e HBBS, contadores de auto-cura) e execução em 1 clique de reconciliação completa de servidor e navegador.',
+        tag: 'Performance',
+      },
+    ],
+  },
+  {
     version: 'v1.8.6 (EXE v1.4.1)',
     date: 'Novembro 2026',
     title: 'Instalador v1.4.1 para Windows 7 (32 e 64 bits) — Correção Definitiva de Identidade Protegida (win32=6)',
     highlight:
       'Correção definitiva do erro IDENTITY_DIRECTORY_PREPARE (win32=6 / ERROR_INVALID_HANDLE) no Windows 7 de 32 e 64 bits causado pelo pseudo-handle de token do Windows 8+, garantindo abertura real de token de processo no kernel NT 6.1 e propriedade SYSTEM na pasta de identidade.',
-    isCurrent: true,
     items: [
       {
         title: 'Compatibilidade Nativa de Token de Processo no Kernel Windows 7 (32 e 64 bits)',
